@@ -1,27 +1,23 @@
 # Writing a plugin
 
-A plugin is a single .NET assembly that teaches Omega Studio one or more file
-formats. It references `Omega.Plugins` and nothing else of the host's, so it can be
-built, shipped and replaced without the application being rebuilt.
-
+A plugin is a single .NET assembly that teaches Omega Studio one or more file formats.
+It references `Omega.Plugins` and nothing else of the host's, so it can be built, shipped, and replaced without the application being rebuilt.
 For how the host uses what you implement, see [ARCHITECTURE.md](ARCHITECTURE.md).
 
 ## Rules the loader enforces
 
-1. The file is named `*.Formats.dll` and lives in the `formats` folder beside the
-   executable.
-2. The assembly carries `[assembly: OmegaPlugin(typeof(YourPlugin))]`.
-3. That type implements `IFormatPlugin` and has a parameterless constructor.
-4. `Info.ContractVersion` matches the host's `PluginContract.Version`. It defaults to
-   the value you compiled against, so leave it alone and rebuild when it changes.
-5. `Info.Id` is non-blank and not already claimed by another loaded plugin.
+1.  The file is named `*.Formats.dll` and lives in the `formats` folder beside the executable.
+2.  The assembly carries `[assembly: OmegaPlugin(typeof(YourPlugin))]`.
+3.  That type implements `IFormatPlugin` and has a parameterless constructor.
+4.  `Info.ContractVersion` matches the host's `PluginContract.Version`. It defaults to the value you compiled against, so leave it alone and rebuild when it changes.
+5.  `Info.Id` is non-blank and not already claimed by another loaded plugin.
 
-Break any of these and the plugin is skipped with the reason printed in the Console
-pane and listed under **Formats ▸ Failed to load**. The others still load.
+Break any of these and the plugin is skipped with the reason printed in the Console pane and listed under **Formats ▸ Failed to load**. The others still load.
 
 ## Project setup
 
-Copy what the in-tree plugins do. A `.csproj` under `src/Formats/` needs only:
+Copy what the in-tree plugins do.
+A `.csproj` under `src/Formats/` needs only:
 
 ```xml
 <Project Sdk="Microsoft.NET.Sdk">
@@ -32,14 +28,9 @@ Copy what the in-tree plugins do. A `.csproj` under `src/Formats/` needs only:
 </Project>
 ```
 
-`Plugin.props` sets the assembly name to `Yourgame.Formats`, references
-`Omega.Plugins` with `Private="false"` so the contract is not copied beside your
-plugin, and copies the built DLL into the host's `formats` folder after every build.
-
+`Plugin.props` sets the assembly name to `Yourgame.Formats`, references `Omega.Plugins` with `Private="false"` so the contract is not copied beside your plugin, and copies the built DLL into the host's `formats` folder after every build.
 Then add the project to `src/OmegaStudio.slnx`.
-
-Building outside this tree works the same way: reference `Omega.Plugins.dll`, do not
-copy it to your output, and put your DLL in `formats`.
+Building outside this tree works the same way: reference `Omega.Plugins.dll`, do not copy it to your output, and put your DLL in `formats`.
 
 ## The entry point
 
@@ -63,9 +54,8 @@ public sealed class YourgamePlugin : IFormatPlugin
 }
 ```
 
-Both `Archives` and `Recognizers` default to empty, so implement only the one you
-need. A plugin that just teaches the host to understand a payload format implements
-`Recognizers` alone — that is all the Generic plugin does.
+Both `Archives` and `Recognizers` default to empty, so implement only the one you need.
+A plugin that just teaches the host to understand a payload format implements `Recognizers` alone, that is all the Generic plugin does.
 
 ## Opening a container
 
@@ -88,16 +78,11 @@ public sealed class PakFormat : IArchiveFormat
 }
 ```
 
-`CanOpen` receives the first 4 KB and the path. Answer from the head where you can;
-reach for the path when the format genuinely cannot be identified without it, such as
-needing to compare a declared size against the real file length, or checking for
-sibling files. Return `false` rather than throwing when unsure — a format that throws
-while sniffing is treated as saying no, and the file may well belong to a plugin that
-works.
-
-Claim narrowly. Claiming every `.bin` makes the extension a monopoly and shuts out
-any other plugin that also uses it.
-
+`CanOpen` receives the first 4 KB and the path.
+Answer from the head where you can; reach for the path when the format genuinely cannot be identified without it, such as needing to compare a declared size against the real file length, or checking for sibling files.
+Return `false` rather than throwing when unsure.
+A format that throws while sniffing is treated as saying no, and the file may well belong to a plugin that works.
+Claim narrowly. Claiming every `.bin` makes the extension a monopoly and shuts out any other plugin that also uses it.
 `IArchive` is what the host holds while the file is open:
 
 ```csharp
@@ -119,11 +104,10 @@ internal sealed class PakHandle : IArchive
 }
 ```
 
-Serialise completely in memory first. A rebuild that fails half-way through a write
-leaves a truncated file where the user's archive used to be.
-
-List every file `Save` touches in `BackupPaths`. The host copies each to `.bak` before
-the first save of a session.
+Serialize completely in memory first.
+A rebuild that fails halfway through a write leaves a truncated file where the user's archive used to be.
+List every file `Save` touches in `BackupPaths`.
+The host copies each to `.bak` before the first save of a session.
 
 ## Nodes
 
@@ -141,11 +125,10 @@ internal sealed class FolderNode : AssetNode
 }
 ```
 
-Keep `HasChildren` cheap — it is asked for every visible row, and answering it must
-not parse anything.
-
-`BinaryAssetNode` handles the replace plumbing for you. Implement `Data` and `Write`,
-and override `CanReplaceBytes` when the slot cannot take arbitrary bytes:
+Keep `HasChildren` cheap. 
+it is asked for every visible row, and answering it must not parse anything.
+`BinaryAssetNode` handles the replace plumbing for you.
+Implement `Data` and `Write`, and override `CanReplaceBytes` when the slot cannot take arbitrary bytes:
 
 ```csharp
 internal sealed class EntryNode : BinaryAssetNode
@@ -158,32 +141,20 @@ internal sealed class EntryNode : BinaryAssetNode
 
 ## Capabilities
 
-Add an interface and the matching pane and commands appear. Implement only what the
-node can honestly do.
+Add an interface and the matching pane and commands appear.
+Implement only what the node can honestly do.
 
-**`IImageAsset`** — a decoded picture. `ImageData` is RGBA8, top-down, no row padding.
-Build it with `ImageData.Create`, which rejects a buffer that does not match the
-dimensions, so a mistake is named at your boundary rather than surfacing as a torn
-preview. The host owns the swizzle into whatever the UI toolkit wants; do not do it
-yourself.
+**`IImageAsset`** - a decoded picture. `ImageData` is RGBA8, top-down, no row padding. Build it with `ImageData.Create`, which rejects a buffer that does not match the dimensions, so a mistake is named at your boundary rather than surfacing as a torn preview. The host owns the swizzle into whatever the UI toolkit wants; do not do it yourself.
 
-**`IAudioAsset`** — the clip still encoded, exactly as stored. The host decodes it.
+**`IAudioAsset`** -the clip still encoded, exactly as stored. The host decodes it.
 
-**`ISceneAsset`** — geometry as `SceneGeometry`. Positions set the vertex count and
-every other array must match it or be empty. Submeshes are runs of triangles sharing
-a material, and their `TextureIndex` points into the scene's own texture list, or
-`-1` for untextured.
+**`ISceneAsset`** - geometry as `SceneGeometry`. Positions set the vertex count and every other array must match it or be empty. Submeshes are runs of triangles sharing a material, and their `TextureIndex` points into the scene's own texture list, or `-1` for untextured.
 
-Hand over a right-handed, **Z-up** space. Convert handedness once, at parse time, so
-the viewport, the exporter and the skinning cannot disagree. Call
-`SceneGeometry.Validate()` yourself while developing — the host calls it before every
-upload and export, and its messages name the offending mesh.
+Hand over a right-handed, **Z-up** space. Convert handedness once, at parse time, so the viewport, the exporter, and the skinning cannot disagree. Call `SceneGeometry.Validate()` yourself while developing. The host calls it before every upload and export, and its messages name the offending mesh.
 
-**`IAnimatedAsset`** — clips the transport can play, plus `TryPose` to sample one.
-Sampling is yours: the host asks for a time in seconds and expects posed positions and
-normals back.
+**`IAnimatedAsset`** - clips the transport can play, plus `TryPose` to sample one. Sampling is yours: the host asks for a time in seconds and expects posed positions and normals back.
 
-**`IDescribable`** — rows for the Properties pane.
+**`IDescribable`** - rows for the Properties pane.
 
 ```csharp
 public IEnumerable<PropertyRow> Describe()
@@ -193,13 +164,12 @@ public IEnumerable<PropertyRow> Describe()
 }
 ```
 
-**`ICommandSource`** — extra context-menu entries, described below.
+**`ICommandSource`** - extra context-menu entries, described below.
 
-## Recognisers
+## Recognizers
 
-An `IAssetRecognizer` claims a payload by content, wherever it turns up. The host
-pools recognisers from every loaded plugin, so yours applies inside other people's
-archives too:
+An `IAssetRecognizer` claims a payload by content, wherever it turns up.
+The host pools recognizers from every loaded plugin, so yours applies inside other people's archives too:
 
 ```csharp
 public sealed class TimRecognizer : IAssetRecognizer
@@ -210,8 +180,7 @@ public sealed class TimRecognizer : IAssetRecognizer
 }
 ```
 
-`Wrap` returns a `RecognizedAsset`, which forwards name, path and bytes to the node it
-wraps and lets you add the decoded behaviour on top:
+`Wrap` returns a `RecognizedAsset`, which forwards name, path, and bytes to the node it wraps and lets you add the decoded behavior on top:
 
 ```csharp
 internal sealed class TimView(IAssetNode inner) : RecognizedAsset(inner), IImageAsset
@@ -224,17 +193,14 @@ internal sealed class TimView(IAssetNode inner) : RecognizedAsset(inner), IImage
 }
 ```
 
-Nodes that already carry content of their own are never wrapped, so a recogniser
-cannot shadow a format's own richer node.
-
-Recognisers also answer `IHostServices.IsKnownPayload`. Use that while walking a
-container to decide whether a blob is a standalone file to stop at, rather than
-another nested table to descend into.
+Nodes that already carry content of their own are never wrapped, so a recognizer cannot shadow a format's own richer node.
+Recognizers also answer `IHostServices.IsKnownPayload`.
+Use that while walking a container to decide whether a blob is a standalone file to stop at, rather than another nested table to descend into.
 
 ## Commands
 
-`ICommandSource` adds entries to a node's context menu. `Kind` decides whether the
-host prompts for a file first:
+`ICommandSource` adds entries to a node's context menu.
+`Kind` decides whether the host prompts for a file first:
 
 ```csharp
 public IEnumerable<AssetCommand> GetCommands()
@@ -257,21 +223,12 @@ public IEnumerable<AssetCommand> GetCommands()
 
 Three things matter here:
 
-- **Set `Changed`.** It tells the host which views to refresh, and an edit reported as
-  `AssetChange.None` is not recorded in the undo history at all.
-- **Throw on failure.** The host catches, logs the message and leaves the archive
-  alone. Returning quietly makes a command that did nothing look like one that
-  worked.
-- **`Execute` runs off the UI thread.** Report progress through `context.Log`.
+-   **Set `Changed`.** It tells the host which views to refresh, and an edit reported as `AssetChange.None` is not recorded in the undo history at all.
+-   **Throw on failure.** The host catches, logs the message, and leaves the archive alone. Returning quietly makes a command that did nothing look like one that worked.
+-   **`Execute` runs off the UI thread.** Report progress through `context.Log`.
 
-Extract Raw, Replace Raw, Export PNG, Replace from PNG and Export glTF are built in —
-they come from the capability interfaces. Add commands only for what is specific to
-your format.
-
-Note the undo limit: a snapshot covers the node the command ran on, which is all the
-host can see. A command that also rewrites a *sibling* node leaves that sibling as the
-command left it, and the host clears the history rather than offer an undo that would
-half-revert.
+Extract Raw, Replace Raw, Export PNG, Replace from PNG, and Export glTF are built in; they come from the capability interfaces. Add commands only for what is specific to your format.
+Note the undo limit: a snapshot covers the node the command ran on, which is all the host can see. A command that also rewrites a _sibling_ node leaves that sibling as the command left it, and the host clears the history rather than offer an undo that would half-revert.
 
 ## Host services
 
@@ -285,14 +242,13 @@ context.Host.Gltf.Write(scene, path);
 context.Host.Log("something worth seeing in the Console pane");
 ```
 
-`PluginDirectory` is where your DLL was loaded from — read data files you ship
-alongside it from there, not from the working directory.
+`PluginDirectory` is where your DLL was loaded from.
+read data files you ship alongside it from there, not from the working directory.
 
 ## Failure and diagnostics
 
-The host wraps every call into your plugin. A throw costs the user that one operation
-and never the session, and the message you throw is what they read, so make it say
-what was wrong with the file:
+The host wraps every call into your plugin.
+A throw costs the user that one operation and never the session, and the message you throw is what they read, so make it say what was wrong with the file:
 
 ```csharp
 throw new InvalidDataException(
@@ -300,9 +256,7 @@ throw new InvalidDataException(
 ```
 
 Validate on the way in, at the boundary where the offending data is still in hand.
-Every parse boundary in the in-tree plugins bounds its allocations against the real
-file length, because a length read out of a corrupt header is otherwise an arbitrary
-allocation request.
+Every parse boundary in the in-tree plugins bounds its allocations against the real file length, because a length read out of a corrupt header is otherwise an arbitrary allocation request.
 
 ## Checklist
 
