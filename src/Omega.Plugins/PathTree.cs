@@ -1,7 +1,14 @@
 namespace Omega.Plugins;
-
+/// <summary>Turns a flat list of slash-separated paths into a folder tree of nodes.</summary>
 public static class PathTree
 {
+    /// <summary>Groups items by their path and returns the root row of the resulting tree. Folders are created as needed and their children are built only when expanded.</summary>
+    /// <param name="items">The entries to place.</param>
+    /// <param name="pathOf">Reads an entry&apos;s path. Either separator is accepted.</param>
+    /// <param name="leaf">Builds the row for one entry, given its file name, its full path and the entry itself.</param>
+    /// <param name="rootName">Label for the root row.</param>
+    /// <param name="rootDetail">Detail text for the root row, or null for an entry count.</param>
+    /// <returns>The root row.</returns>
     public static IAssetNode Build<T>(
         IEnumerable<T> items,
         Func<T, string> pathOf,

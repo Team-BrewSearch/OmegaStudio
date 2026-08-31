@@ -1,62 +1,114 @@
 # Omega Studio
 
-A game asset editor that knows no formats.
+A desktop browser and editor for game asset archives. The application itself knows
+nothing about any file format — every format it can open arrives as a plugin dropped
+into a `formats` folder beside the executable.
 
-Browse an archive in the Outliner, view models and levels in a hardware 3D viewport,
-textures in 2D, play back audio and animation, export to glTF and PNG, and replace
-assets back into the archive.
+Built with .NET 10 and [Avalonia](https://avaloniaui.net/), so the same code runs on
+Windows and Linux.
 
-Every format it can open comes from a plugin - a single `.dll` in a `formats/` folder
-beside the executable. A plugin says what a node *is* and the window assembles itself
-around that: a node holding an image gets a texture pane with zoom and pan, a node
-holding audio gets a transport, a node holding neither gets neither. No host code knows
-any format's name, and a plugin writes none of the panes.
+## What it does
 
-## What ships with it
+Open an archive and you get a tree of everything inside it. Select a row and the
+panes that make sense for it light up:
 
-| Plugin | Game | Opens |
-|---|---|---|
-| **Harugeki** | *Suzumiya Haruhi no Chourantou / Gekitou* (PC, 2007) | `data/*.bin` - models, `ringtex2` textures, animation |
-| **Kartz** | *DreamWorks Super Star Kartz* and *Madagascar Kartz* (NDS) | `.gda`/`.gdf`/`.gdt` - `TRK` tracks and `5TX` textures |
-| **Generic** | any | recognises OGG, WAV, PNG, JPEG, GIF and BMP wherever they are found |
+| Pane | Appears for | What it gives you |
+| --- | --- | --- |
+| **Viewport** | anything with geometry | Orbit camera, five shading modes — textured, shaded, wireframe, normals, UV |
+| **Texture** | anything that decodes to an image | Zoom, fit, actual size |
+| **Audio** | anything that decodes to sound | Play, pause, stop and a seek bar |
+| **Animation** | anything with clips | Clip picker, transport and a dope sheet |
+| **Console** | always | Every load, edit and failure, timestamped |
 
-`Generic` is why neither game plugin contains a line of audio code: it recognises
-standard payloads inside *anyone's* archive, so a WAV gets a transport whichever format
-it was found in.
+Alongside the panes, each row carries a context menu built from what it can actually
+do: extract the raw bytes, replace them from a file, export a PNG or a glTF, replace
+an image from a PNG, plus whatever commands the owning plugin adds.
 
-Both game plugins round-trip their archives byte for byte against the real retail
-data - open one, save it untouched, and the file is unchanged.
+Editing is undoable. The history keeps the last 24 edits as before-and-after
+snapshots, so `Ctrl+Z` works across formats the host has never heard of.
 
-## Build and run
+Nothing is written until you ask. `File ▸ Save` rewrites the archive in place, and
+the first save of a session copies each affected file to `<name>.bak` first.
+
+## Getting started
+
+You need the [.NET 10 SDK](https://dotnet.microsoft.com/download).
 
 ```bash
+git clone https://github.com/Team-BrewSearch/OmegaStudio.git
+cd OmegaStudio
 dotnet build src/OmegaStudio.slnx
+dotnet run --project src/OmegaStudio/OmegaStudio.csproj
 ```
+
+Building the solution also copies each plugin into the host's `formats` folder, so a
+plain `dotnet build` produces a working application. Building only
+`OmegaStudio.csproj` produces one that opens nothing.
+
+You can also pass an archive on the command line, or associate the file type with the
+executable:
 
 ```bash
-dotnet run --project src/OmegaStudio
+dotnet run --project src/OmegaStudio/OmegaStudio.csproj -- path/to/archive.bin
 ```
 
-The plugins build into `formats/` beside the executable automatically, one flat `.dll`
-each. **Formats** in the menu bar lists every loaded plugin - what it opens, who wrote
-it, what version - and anything that failed to load, with the reason.
+### Shortcuts
 
-For a release build, `src/publish.cmd` publishes single-file executables for win-x64,
-linux-x64 and linux-arm64 into `src/publish/<runtime>/`, each with its plugins
-alongside. It builds the solution first, because the app does not reference the
-plugins and so cannot pull them into a publish on its own.
+| Key | Action |
+| --- | --- |
+| `Ctrl+O` | Open |
+| `Ctrl+S` | Save |
+| `Ctrl+Z` | Undo |
+| `Ctrl+Y` | Redo |
 
-## Documentation
+## Formats it ships with
 
-- **[Writing a format plugin](docs/PLUGINS.md)** - the guide. Start here if you want
-  to add a game.
-- **[Architecture](docs/ARCHITECTURE.md)** - the layers, what crosses the seam, and
-  why it is shaped this way.
+Three plugins are built from this repository.
 
-## A note on plugins and trust
+**Harugeki** — *Suzumiya Haruhi no Chourantou / Gekitou* (PC, 2007). Reads the
+`data/*.bin` containers: models, embedded `ringtex2` textures, materials, skeletons
+and animation. Textures and raw payloads can be replaced and written back.
 
-.NET has no in-process sandbox: a DLL in `formats/` runs with the same privileges the app does. Nothing is ever downloaded or installed automatically, the folder is yours but treat a format plugin exactly as you would any other program you chose to run. [PLUGINS.md §9](docs/PLUGINS.md#9-security--what-this-does-and-does-not-protect-against) sets out what the loader does and does not guarantee.
+**Kartz** — *Madagascar Kartz* and *DreamWorks Super Star Kartz* (Nintendo DS). Reads
+the GDA/GDF/GDT archive triple: track geometry and textures, with the resource
+database picked up automatically when it sits beside the archive.
+
+**Standard Formats** — no archives of its own. It recognises OGG, WAV, PNG, JPEG, GIF
+and BMP payloads wherever they turn up, so a sound buried inside somebody else's
+container still gets an Audio pane and an extract command.
+
+## Layout
+
+```
+src/
+  Omega.Plugins/       The plugin contract. Fully documented; the only public API.
+  OmegaStudio/         The application: UI, rendering, audio, plugin host.
+  Formats/
+    Harugeki/          Suzumiya Haruhi no Gekitou
+    Kartz/             Madagascar Kartz / Super Star Kartz
+    Generic/           OGG, WAV, PNG, JPEG, GIF, BMP recognisers
+docs/
+  ARCHITECTURE.md      How the pieces fit together
+  PLUGINS.md           How to write a plugin
+```
+
+## Writing a plugin
+
+A plugin is one assembly named `*.Formats.dll`, referencing `Omega.Plugins` and
+nothing else of the host's. Implement `IFormatPlugin`, name it with an assembly
+attribute, drop the file in `formats`, and it loads on the next launch.
+
+See [docs/PLUGINS.md](docs/PLUGINS.md) for the walkthrough and
+[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for how the host uses what you
+implement.
+
+## Publishing
+
+`src/publish.cmd` builds release binaries for `win-x86`, `win-x64`, `linux-x64` and
+`linux-arm64` into `src/publish/<runtime>`, each a single file with the plugins
+copied alongside. The Linux targets are self-contained; the Windows ones expect a
+.NET runtime to be installed.
 
 ## Licence
 
-MIT. See [LICENSE](LICENSE).
+See [LICENSE](LICENSE).

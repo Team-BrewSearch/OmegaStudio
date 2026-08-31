@@ -1,131 +1,200 @@
 # Architecture
 
-## Why this shape
+Omega Studio is an asset browser that knows no formats. Everything it can open, draw
+or edit is supplied by a plugin, and the whole boundary between the two is the
+`Omega.Plugins` assembly.
 
-Omega Studio began as two applications: an editor for *Suzumiya Haruhi no Gekitou*
-and a fork of it for *DreamWorks Super Star Kartz*. Comparing them file by file is
-what produced this design.
+This document describes how the host uses that boundary. For the other side of it —
+how to implement a plugin — see [PLUGINS.md](PLUGINS.md).
 
-The **format layers** had barely diverged - 11 of 15 shared files were byte-identical
-after a namespace rename. The **frontends** had diverged everywhere they touched a
-format: the tree builder, the property inspector, the view models, the vertex packer,
-the image codec, the window. And yet the two 3D viewports, 733 and 738 lines, differed
-almost entirely in one thing: `StyledProperty<RingModel?>` against
-`StyledProperty<SskTrack?>`, and which overload of `MeshBuffer.Build` they called. The
-vertex layout, the shaders, the camera and the upload path were identical, down to the
-36-byte stride.
-
-That is the whole argument. The frontend was never Harugeki-specific or
-Kartz-specific; it was generic, and had been copy-pasted twice because there was no
-seam to hang a format on. Forking it a third time for a third game is the failure mode
-this exists to prevent.
-
-## The layers
-
-Strictly one-directional. Each knows only the layer above it.
+## The three layers
 
 ```
-src/Omega.Plugins/     the contract. Plain .NET: no Avalonia, no UI, no game knowledge.
-src/OmegaStudio/       the Avalonia host. Knows the contract; knows no format.
-src/Formats/Generic/   recognisers for standard payloads. Opens no container.
-src/Formats/<Name>/    a format plugin. Knows the contract; knows one game.
+                 ┌──────────────────────────────────────────┐
+                 │  OmegaStudio                             │
+                 │  Views, view models, rendering, audio,    │
+                 │  glTF and PNG codecs, the plugin host     │
+                 └────────────────────┬─────────────────────┘
+                                      │ references
+                 ┌────────────────────┴─────────────────────┐
+                 │  Omega.Plugins                           │
+                 │  The contract. Interfaces, node bases,    │
+                 │  neutral geometry and image types.        │
+                 └────────────────────┬─────────────────────┘
+                                      │ references
+      ┌───────────────┬───────────────┴───────────────┐
+      │  Harugeki     │  Kartz        │  Generic      │  …loaded at run time
+      │  .Formats     │  .Formats     │  .Formats     │
+      └───────────────┴───────────────┴───────────────┘
 ```
 
-A plugin references `Omega.Plugins` and nothing else - not the host, not Avalonia, not
-OpenGL, not a glTF library. Anything it needs from those arrives as a service on
-`IHostServices`. That constraint is load-bearing: it is why a plugin is small enough
-to be worth writing, and it is what stops a format from quietly acquiring an opinion
-about the UI.
+Plugins never reference `OmegaStudio`. The arrow only points one way, which is what
+lets a plugin be built and dropped in without the host being rebuilt.
 
-## The seam
+`Omega.Plugins` is the only assembly in the tree that is fully documented, and it is
+built with `DocumentEveryMember` so a public member without an XML comment fails the
+build. Everything else exempts itself in `Directory.Build.targets`.
 
-The host walks a tree of `IAssetNode`. What a node *can do* is expressed by which
-optional interfaces it implements, and the host lights up exactly the UI those imply.
-`IBinaryAsset` earns extract and replace; `ISceneAsset` earns the viewport and glTF
-export; `IImageAsset` earns the texture pane and PNG round-trip; `IAudioAsset` earns
-the transport; `IAnimatedAsset` earns the dope sheet. Panes and menu items with no
-capability behind them hide themselves.
+## Loading
 
-This is the only extension mechanism, and there is no registration step. It is also
-why the Kartz plugin has no Audio tab and the Harugeki plugin does, with neither
-plugin - nor the host - containing a line of code about the difference.
+`PluginLoader` scans `formats/` beside the executable for `*.Formats.dll`, in
+ordinal filename order. Each file is loaded into its own `AssemblyLoadContext`
+(`PluginLoadContext`), which resolves that plugin's private dependencies from its own
+folder. One assembly is deliberately *not* isolated: `Omega.Plugins` is forced back
+to the host's copy, because a plugin returning types from a second, separately loaded
+copy of the contract would not be assignable to the interfaces the host holds.
 
-`docs/PLUGINS.md` is the working guide to all of it.
+A plugin is rejected, with the reason logged to the Console pane, when it:
 
-## The generic layer
+- has no `[assembly: OmegaPlugin(typeof(...))]` attribute;
+- names a type that does not implement `IFormatPlugin` or cannot be constructed;
+- reports a `ContractVersion` other than `PluginContract.Version`;
+- has a blank `Id`, or an `Id` another loaded plugin already claimed.
 
-A plugin should not have to know what an OGG file looks like. `Generic.Formats`
-contributes `IAssetRecognizer`s rather than an archive format: the host offers it every
-leaf that holds bytes and claims no content capability, and it hands back a view
-wearing the capabilities the content implies. So a WAV gets a transport and a PNG gets
-the texture pane in *every* archive, from a plugin that has heard of none of them.
+One bad plugin never stops the others. The result is a `PluginCatalog` of what
+loaded and a list of `PluginFailure` for what did not, and both appear under the
+Formats menu.
 
-Three rules make that safe. A node that already claims a content capability is skipped,
-because the plugin knows its own format better than a magic number does. Recognition is
-magic-number only, because it runs for every row as a folder expands. And
-`RecognizedAsset` forwards `IDescribable` and `ICommandSource`, so a wrapped node keeps
-its Properties rows and its plugin's own commands.
+## Opening an archive
 
-The one cost is a dependency between plugins: remove `Generic.Formats.dll` and every
-other plugin loses audio and image previews. It degrades to raw blobs rather than
-failing, and it is the price of recognising a PNG once instead of per format.
+`ArchiveSession` owns exactly one open archive at a time.
 
-Because `Generic` also answers `IHostServices.IsKnownPayload`, a container walk that
-must stop at a payload can ask rather than carrying its own copy of the magic numbers -
-which is how the Harugeki walk still refuses to descend into an OGG despite no longer
-knowing what one is.
+1. Read the first 4 KB of the chosen file.
+2. Ask each format in the catalog, in load order, whether it claims the file. The
+   first `CanOpen` that returns true wins.
+3. Call `Open` on that format, on a background thread, handing it an `IHostServices`
+   scoped to the owning plugin.
 
-## What crosses the seam, and why those types
+`CanOpen` gets the head *and* the path, because not every container can be identified
+from its opening bytes. Harugeki's `.bin` has no magic number at all — it starts with
+a count and a table of offsets — so it validates that table against the file's real
+length. Kartz checks that the `.gdf` and `.gdt` siblings exist beside the `.gda`.
 
-| Type | Why it is shaped this way |
-|---|---|
-| `SceneGeometry` / `SceneMesh` | `Indices` is nullable. Null means the vertex arrays are already an expanded triangle list, which is exactly the Harugeki draw stream; non-null means indexed, which is exactly a Kartz track. One packer serves both, replacing two near-identical copies of the same walk. |
-| `ImageData` | RGBA8, validated at construction. The BGRA swizzle both formats used to perform lives in the host now, so it exists once. |
-| `AnimationClip` | The host owns the clock, the transport and the dope sheet, because those are the same for every game. The plugin owns `TryPose`, because how a vertex follows a bone is not. |
-| `AssetCommand` | The host's own built-ins are expressed in the same type a plugin returns, so the context menu has one shape and one execution path. |
-| `SceneSubmesh.Extras` | An escape hatch for source detail no exporter can re-derive. Written verbatim into glTF `extras`; the host never looks inside. It is what keeps a byte-exact track reconversion possible. |
-| `BinaryAssetNode`, `PathTree` | Not contract types but shared implementations, in the SDK because two plugins had each written them. A format that stores a path list now writes no tree code at all. |
+## The asset tree
 
-## Things that are deliberate
+An archive exposes a single `Root` node, and the tree grows from it lazily:
+`HasChildren` must answer without parsing anything, and `GetChildren` runs only when
+a row is expanded. That is what lets a 133 MB container open instantly.
 
-**The plugin loader shares one assembly on purpose.** Each plugin gets its own
-`AssemblyLoadContext` so dependencies stay isolated, but `Omega.Plugins` always
-resolves from the host. If a plugin loaded its own copy, its `IFormatPlugin` would be a
-different type with an identical name, and every cast across the boundary would fail
-while the error message looked correct.
+Nodes describe themselves through capability interfaces rather than a type hierarchy.
+A node implements as many as apply:
 
-**Every call into a plugin is guarded.** A plugin is third-party code parsing files it
-has reverse engineered, so it will eventually throw. The rule is that this costs the
-user the one thing they were doing and never the session.
+| Interface | Earns |
+| --- | --- |
+| `IBinaryAsset` | Extract Raw, and Replace Raw when it says bytes can be swapped |
+| `IImageAsset` | The Texture pane, Export PNG, and Replace from PNG |
+| `IAudioAsset` | The Audio pane and Extract Audio |
+| `ISceneAsset` | The Viewport and Export glTF |
+| `IAnimatedAsset` | The Animation pane, its clip picker and dope sheet |
+| `IDescribable` | Rows in the Properties pane |
+| `ICommandSource` | Extra entries in the row's context menu |
 
-**A node's kind is derived, not declared.** `AssetKinds.Resolve` reads it off the
-capabilities - an `ISceneAsset` is a model, an `IImageAsset` a texture - so a plugin
-only names a kind for something no capability implies. The brush key is derived in turn
-(`Model` → `AssetModelBrush`), so adding a kind is a constant and a colour rather than
-three edits in three files.
+`NodeCommands` builds a row's menu purely by testing which of these a node
+implements, so the host needs no knowledge of what the node actually is.
 
-**Two panes are asked of what is on screen, not of the selection.** `HasScene` reads
-the viewport, not the selected node - so clicking a bone under a model changes the
-Properties pane and the context menu and leaves the model where it is.
+### Recognition
 
-**A scene says where its lighting comes from.** The two viewports this replaced had
-quietly different fragment shaders: one multiplied by vertex colour and one did not.
-Unifying them needed that stated rather than implied, and stating it exposed a real
-bug - the merged shader did *both*, shading a DS track whose vertex colours are
-already a baked lightmap, which darkened every course. `SceneGeometry.Lighting` now
-picks one or the other and the shader can never apply both.
+Some payloads are worth understanding regardless of whose container they came out of.
+An `IAssetRecognizer` claims bytes by content, and `AssetRecognition.Enrich` wraps any
+plain byte node it claims in a `RecognizedAsset` that forwards identity and bytes to
+the original while adding decoded behaviour.
 
-**Texture filtering is the scene's call too.** `SceneGeometry.Filtering` reaches the
-viewport's sampler and the glTF export's, so a DS track's hand-placed texels stay
-crisp in both rather than being interpolated into mush.
+Recognisers are pooled across every loaded plugin, so the Generic plugin's OGG
+recogniser gives an Audio pane to a sound found inside a Harugeki archive without
+either plugin knowing about the other. A node that already carries content of its
+own is left alone.
 
-## Where to look
+The same pool answers `IHostServices.IsKnownPayload`, which lets a container walk stop
+descending when a blob turns out to be a standalone file rather than another table.
 
-| | |
-|---|---|
-| The contract | [`src/Omega.Plugins`](../src/Omega.Plugins) - the assembly is the reference, and the compiler enforces it: CS1591 is an error there, so every public member carries a comment. |
-| Plugin loading | [`src/OmegaStudio/Plugins`](../src/OmegaStudio/Plugins) |
-| Capability-driven UI | [`MainViewModel.cs`](../src/OmegaStudio/ViewModels/MainViewModel.cs), [`NodeCommands.cs`](../src/OmegaStudio/ViewModels/NodeCommands.cs), [`MainWindow.axaml`](../src/OmegaStudio/Views/MainWindow.axaml) |
-| The generic layer | [`src/Formats/Generic`](../src/Formats/Generic), applied by [`AssetRecognition.cs`](../src/OmegaStudio/Plugins/AssetRecognition.cs) |
-| The game formats | [`docs/formats/harugeki.md`](formats/harugeki.md). The Kartz formats are documented in the source instead — `SskTrack`, `SskTexture` and `TrkWriter` carry the measurements. |
-| Writing your own | [PLUGINS.md](PLUGINS.md) |
+## Editing and undo
+
+Every edit — the host's own replace commands and a plugin's alike — arrives as an
+`AssetCommand`, executed on a background thread with an `AssetCommandContext`. The
+command reports what it invalidated by setting `Changed`, and the host refreshes only
+those views.
+
+Undo is snapshot-based rather than operation-based, because the host does not know
+what any given command *does*. Before running a command that could modify something,
+`AssetSnapshot.Capture` reads the node's current bytes, or its current image for a
+format that only swaps images. `EditHistory` keeps up to 24 of those, as one list
+with a cursor.
+
+Two cases clear the history rather than risk reverting the wrong thing: a command on a
+node with neither restorable bytes nor a replaceable image, and a command that edits
+a node other than the one it ran on.
+
+## Saving
+
+Saving is explicit. `IArchive.BackupPaths` names every file `Save` will overwrite,
+and on the first save of a session each of those is copied to `<name>.bak` — never
+overwriting a backup that already exists. Only then does `Save` run.
+
+Formats are expected to serialise fully in memory before touching the file, so a
+failure part-way through a rebuild cannot leave a truncated archive where the
+original was.
+
+## Containing plugin failures
+
+A plugin is third-party code parsing formats somebody reverse engineered, so it will
+eventually throw. `PluginGuard` wraps every call from the host into a plugin. The
+rule is that a failure costs the user the one thing they were doing and never the
+session: an unreadable node shows an error row, a throwing sniff means that format
+simply does not claim the file, a throwing property leaves the pane empty.
+
+The catches are broad on purpose — guessing which exception types a plugin author
+will use, and guessing wrong, turns a contained failure back into a crash.
+`OutOfMemoryException` is the single exclusion: that is not a plugin failure, every
+later call will fail the same way, and logging one line per node while continuing
+turns a clean crash into a hang.
+
+## Host services
+
+What the host lends a plugin, through `IHostServices`:
+
+- **`Images`** — decode PNG, JPEG, GIF and BMP; encode PNG. No plugin carries a codec.
+- **`Gltf`** — read a glTF or GLB in full, open one for selective reading, or write
+  geometry out. One writer serves every format: a plugin produces neutral
+  `SceneGeometry` and gets export for free.
+- **`Log`** — a line in the Console pane, prefixed with the plugin's display name.
+- **`PluginDirectory`** — where this plugin was loaded from, for reading data files
+  shipped beside it.
+- **`IsKnownPayload`** — described under Recognition above.
+
+## Rendering
+
+The viewport is an Avalonia `OpenGlControlBase`. `SceneGeometry` arrives already in a
+right-handed, Z-up space — converting handedness is the plugin's job, done once at
+parse time so the viewport, the exporter and the skinning all agree.
+
+`SceneGeometry.Validate` runs before an upload and before an export: array lengths
+against the vertex count, indices and joint indices in range, every submesh covering
+real entries with a real texture. A plugin bug is named at that boundary rather than
+surfacing later as a torn draw or corrupt output.
+
+Shaders carry no `#version` line; the preamble is supplied at compile time from the
+context Avalonia actually provided, so one copy of each shader serves both desktop GL
+and GLES.
+
+## Audio
+
+`AudioPlaybackEngine` drives a single OpenAL source fed by one static buffer holding
+the whole clip. Because the buffer is complete, the driver owns the play position:
+seeking is a property set on the source and the position it reports back is the real
+one, so the UI clock and the audio cannot disagree.
+
+`AudioPlaybackService` adds the transport on top — one `PlaybackState` rather than
+several booleans kept consistent by hand — and polls the source every 25 ms, since
+OpenAL offers no completion callback.
+
+## Threading
+
+The UI thread owns the view models and the tree. Archive opening, command execution
+and saving all run on the thread pool. The search walk is debounced by 200 ms and
+carries a cancellation token, so typing cancels the previous walk rather than queuing
+another.
+
+Anything a background thread reaches — an archive's alias table, the audio transport's
+state — is locked at the object that owns it. The audio poll timer fires on the pool
+and raises `StateChanged` without marshalling, so subscribers post to the UI thread
+themselves.

@@ -7,7 +7,6 @@ public sealed partial class ConsoleLog : ObservableObject
 {
     private const int MaxLines = 500;
     private readonly Queue<string> _lines = new(MaxLines);
-
     [AllowNull]
     public string Text
     {
