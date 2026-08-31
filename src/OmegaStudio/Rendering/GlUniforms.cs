@@ -40,8 +40,16 @@ internal sealed class GlUniforms : IDisposable
     private readonly Dictionary<int, object?[]> _argsByLocation = [];
 
     private readonly float[] _scratch = new float[16];
-    private readonly GCHandle _pin;
     private readonly IntPtr _scratchAddress;
+
+    /// <summary>
+    /// Not readonly: <see cref="GCHandle.Free"/> mutates the struct, and calling it on a
+    /// readonly field would free through a defensive copy — leaving this one still
+    /// reporting <see cref="GCHandle.IsAllocated"/> and throwing on a second Free.
+    /// </summary>
+    private GCHandle _pin;
+
+    private bool _disposed;
 
     private GlUniforms(GlInterface gl, MethodInfo? uniformMatrix4fv)
     {
@@ -71,7 +79,10 @@ internal sealed class GlUniforms : IDisposable
     /// </summary>
     public void Matrix(int location, in Matrix4x4 m)
     {
-        if (_uniformMatrix4fv is null)
+        // Once disposed the pinned address is stale, so an upload here would hand the
+        // driver freed memory. The viewport can still hold a reference across a device
+        // loss, so this is checked rather than assumed.
+        if (_uniformMatrix4fv is null || _disposed)
         {
             return;
         }
@@ -87,8 +98,35 @@ internal sealed class GlUniforms : IDisposable
         _ = _uniformMatrix4fv.Invoke(_gl, args);
     }
 
+    /// <summary>
+    /// The backstop for the pinned handle. A pin is not collectable state: if the GL
+    /// control is torn down without <c>OnOpenGlDeinit</c>
+    /// running — a lost device, a throw during teardown — nothing else ever frees it,
+    /// and the scratch array stays pinned in gen 0 for the life of the process.
+    /// </summary>
+    ~GlUniforms()
+    {
+        Release();
+    }
+
     public void Dispose()
     {
+        Release();
+        GC.SuppressFinalize(this);
+    }
+
+    /// <summary>
+    /// Frees the pin, once. Touches nothing managed, so it is safe from the finalizer.
+    /// </summary>
+    private void Release()
+    {
+        if (_disposed)
+        {
+            return;
+        }
+
+        _disposed = true;
+
         if (_pin.IsAllocated)
         {
             _pin.Free();

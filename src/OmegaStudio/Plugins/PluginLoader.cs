@@ -170,6 +170,7 @@ internal static class PluginLoader
         }
 
         FormatPluginInfo info = plugin.Info;
+        string? directory = Path.GetDirectoryName(full);
 
         return info.ContractVersion != PluginContract.Version
             ? throw new InvalidOperationException(
@@ -178,7 +179,9 @@ internal static class PluginLoader
                 "Rebuild the plugin against the matching Omega.Plugins.")
             : string.IsNullOrWhiteSpace(info.Id)
             ? throw new InvalidOperationException("its FormatPluginInfo has no Id")
-            : new LoadedPlugin(plugin, info, Path.GetDirectoryName(full)!);
+            : string.IsNullOrEmpty(directory)
+            ? throw new InvalidOperationException($"'{full}' has no containing directory")
+            : new LoadedPlugin(plugin, info, directory);
     }
 
     /// <summary>

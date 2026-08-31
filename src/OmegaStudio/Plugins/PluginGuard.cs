@@ -19,6 +19,15 @@ namespace OmegaStudio.Plugins;
 /// turns a contained failure back into a crash, which is the exact outcome this
 /// exists to prevent.
 /// </para>
+///
+/// <para>
+/// <see cref="OutOfMemoryException"/> is the one exclusion, because it is not a
+/// plugin failure: the process is out of memory, every later call is going to fail
+/// the same way, and logging one line per node while continuing turns a clean crash
+/// into a hang. It propagates. Nothing else is excluded —
+/// <see cref="StackOverflowException"/> cannot be caught on .NET at all, and
+/// <c>ThreadAbortException</c> is never raised on it.
+/// </para>
 /// </summary>
 internal static class PluginGuard
 {
@@ -35,7 +44,7 @@ internal static class PluginGuard
         {
             return work();
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is not OutOfMemoryException)
         {
             Log?.Invoke($"{what} failed: {ex.Message}");
             return fallback;
@@ -49,7 +58,7 @@ internal static class PluginGuard
         {
             work();
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is not OutOfMemoryException)
         {
             Log?.Invoke($"{what} failed: {ex.Message}");
         }
@@ -74,7 +83,7 @@ internal static class PluginGuard
         {
             return format.CanOpen(path, head);
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is not OutOfMemoryException)
         {
             Log?.Invoke($"{format.DisplayName} failed while identifying {Path.GetFileName(path)}: {ex.Message}");
             return false;

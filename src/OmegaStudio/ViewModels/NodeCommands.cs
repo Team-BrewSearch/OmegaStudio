@@ -230,6 +230,7 @@ internal static class NodeCommands
             : !string.IsNullOrWhiteSpace(node.PathText) ? node.PathText
             : "asset";
 
-        return ImageIO.SafeName(stem.Replace('/', '_').Replace('\\', '_')) + extension;
+        return ImageIO.SafeName(
+            stem.Replace('/', '_').Replace('\\', '_').Replace("..", "_")) + extension;
     }
 }

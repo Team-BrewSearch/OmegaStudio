@@ -95,6 +95,32 @@ public sealed class RingTexture
         Pixels = rgba;
     }
 
+    /// <summary>
+    /// The full encoded length of the texture at the head of <paramref name="blob"/> —
+    /// header plus pixels — taken from its own dimension fields.
+    ///
+    /// <para>
+    /// Measuring lives here rather than at the call site because the two dimensions are
+    /// unbounded as read: <c>width * height * 4</c> on a corrupt pair overflows even
+    /// <see cref="long"/>, and a wrapped product then sails through any plain "does it
+    /// fit in the blob" test downstream. <see cref="ValidateDimensions"/> is the single
+    /// place that rule is written, so every measurement goes through it and the result
+    /// is always a sane <see cref="int"/>.
+    /// </para>
+    /// </summary>
+    public static int EncodedSize(ReadOnlySpan<byte> blob)
+    {
+        if (!IsTexture(blob))
+        {
+            throw new ArgumentException("not a ringtex2 blob", nameof(blob));
+        }
+
+        long pixels = ValidateDimensions(
+            (int)BinaryRead.U32(blob, 0x2C), (int)BinaryRead.U32(blob, 0x30));
+
+        return HeaderSize + (int)pixels;
+    }
+
     /// <summary>Checks a size is one we are willing to store, and returns its RGBA8 byte count.</summary>
     private static long ValidateDimensions(int width, int height)
     {

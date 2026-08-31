@@ -156,14 +156,20 @@ public static class ModelTextures
             throw new InvalidDataException($"no ringtex2 header at 0x{offset:X}");
         }
 
-        long width = BinaryRead.U32(at, 0x2C);
-        long height = BinaryRead.U32(at, 0x30);
-        long size = RingTexture.HeaderSize + (width * height * 4);
+        int size;
+        try
+        {
+            size = RingTexture.EncodedSize(at);
+        }
+        catch (ArgumentException ex)
+        {
+            throw new InvalidDataException($"embedded texture at 0x{offset:X}: {ex.Message}", ex);
+        }
 
         return size > blob.Length - offset
             ? throw new InvalidDataException(
                 $"embedded texture at 0x{offset:X} claims {size} bytes, past the end of the blob")
-            : (int)size;
+            : size;
     }
 
     /// <summary>Rewrites both kinds of pointer to the moved textures.</summary>

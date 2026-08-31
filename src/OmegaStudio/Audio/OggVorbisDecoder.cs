@@ -37,8 +37,16 @@ public sealed class OggVorbisDecoder : IAudioDecoder
         // written without a final granule position, reports zero. Sizing the buffer from it and
         // then looping while `written < expected` decoded nothing at all for those clips, so
         // they played as silence. Decode until the reader stops instead, and grow as needed.
-        long hint = reader.TotalSamples * Channels;
-        short[] pcm = new short[hint is > 0 and <= MaxSamples ? hint : ChunkSamples];
+        //
+        // Divided rather than multiplied because both operands come out of the file: a
+        // corrupt final granule position near long.MaxValue overflows the product, and a
+        // wrapped positive result is a hint the ceiling below would then wave through.
+        long frames = reader.TotalSamples;
+        long hint = Channels > 0 && frames > 0 && frames <= MaxSamples / Channels
+            ? frames * Channels
+            : 0;
+
+        short[] pcm = new short[hint > 0 ? hint : ChunkSamples];
 
         float[] buffer = new float[ChunkSamples];
         int written = 0;
