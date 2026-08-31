@@ -9,33 +9,20 @@
         Background="{DynamicResource SurfacePanel}"
         FontSize="{DynamicResource FontSizeBody}"
         Icon="/Assets/icon.png">
-
-  <!--
-    The app's message box. Avalonia ships no MessageBox of its own, and a dialog is
-    the one thing a NuGet package cannot supply better than fifteen lines of XAML
-    that already speak this app's palette, spacing and type scale.
-  -->
   <StackPanel Width="360" Margin="{DynamicResource ContentMargin}" Spacing="{DynamicResource SpaceL}">
-
     <StackPanel Orientation="Horizontal" Spacing="{DynamicResource SpaceL}">
       <Image Source="/Assets/icon.png" Width="48" Height="48" VerticalAlignment="Top" />
-
       <StackPanel Spacing="{DynamicResource SpaceS}">
         <TextBlock Name="ProductText" FontSize="18" FontWeight="SemiBold"
                    Foreground="{DynamicResource TextPrimary}" />
         <TextBlock Name="SummaryText" Classes="value" Width="280" />
       </StackPanel>
     </StackPanel>
-
     <Border Height="1" Background="{DynamicResource Divider}" />
-
-    <!-- Version bottom left, the way every About box puts it; the button keeps the
-         right, where the window's default action belongs. -->
     <DockPanel>
       <Button DockPanel.Dock="Right" Content="OK" MinWidth="88"
               IsDefault="True" IsCancel="True" Click="Ok_OnClick" />
       <TextBlock Name="VersionText" Classes="meta" VerticalAlignment="Center" />
     </DockPanel>
-
   </StackPanel>
 </Window>

@@ -2,25 +2,16 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:vm="clr-namespace:OmegaStudio.ViewModels"
              x:Class="OmegaStudio.App">
-
-  <!--
-    No RequestedThemeVariant: leaving it unset means the app inherits the
-    platform's light/dark preference and follows it live when the user changes it.
-  -->
-
   <Application.Resources>
     <ResourceDictionary>
       <ResourceDictionary.MergedDictionaries>
         <ResourceInclude Source="avares://OmegaStudio/Themes/Palette.axaml" />
       </ResourceDictionary.MergedDictionaries>
-
       <vm:AssetKindBrushConverter x:Key="AssetKindBrush" />
     </ResourceDictionary>
   </Application.Resources>
-
   <Application.Styles>
     <FluentTheme />
     <StyleInclude Source="avares://OmegaStudio/Themes/Controls.axaml" />
   </Application.Styles>
-
 </Application>

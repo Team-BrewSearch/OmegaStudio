@@ -1,5 +1,4 @@
 using Avalonia;
-
 namespace OmegaStudio;
 
 internal static class Program
@@ -9,7 +8,6 @@ internal static class Program
     {
         _ = BuildAvaloniaApp().StartWithClassicDesktopLifetime(args);
     }
-
     public static AppBuilder BuildAvaloniaApp()
     {
         return AppBuilder.Configure<App>()

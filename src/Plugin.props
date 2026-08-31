@@ -1,47 +1,19 @@
 <Project>
-
-  <!--
-    Imported by every format plugin. A plugin csproj should need nothing beyond this
-    import and an <OmegaPluginName> — see docs/PLUGINS.md.
-  -->
-
   <PropertyGroup>
     <AssemblyName>$(OmegaPluginName).Formats</AssemblyName>
     <RootNamespace>$(OmegaPluginName).Formats</RootNamespace>
-
-    <!--
-      A plugin is loaded by the host, never run on its own, so it must not drag a
-      second copy of anything in beside it. Most importantly it must not copy
-      Omega.Plugins.dll: the loader deliberately resolves that from the default load
-      context so IFormatPlugin is one type on both sides of the boundary. A private
-      copy would make it two, and every cast across the seam would fail with a
-      message blaming the wrong thing.
-    -->
     <CopyLocalLockFileAssemblies>false</CopyLocalLockFileAssemblies>
   </PropertyGroup>
-
   <ItemGroup>
     <ProjectReference Include="$(MSBuildThisFileDirectory)Omega.Plugins\Omega.Plugins.csproj"
                       Private="false"
                       ExcludeAssets="runtime" />
   </ItemGroup>
-
-  <!--
-    Drop the built plugin straight into the formats folder beside the host. Flat: the
-    loader reads *.Formats.dll from there and nothing else, so a plugin is one file
-    you can add or delete by hand.
-  -->
   <Target Name="CopyToFormatsFolder" AfterTargets="Build" Condition="'$(OmegaSkipFormatsCopy)' != 'true'">
     <Copy SourceFiles="$(TargetPath)" DestinationFolder="$(OmegaFormatsPath)" SkipUnchangedFiles="true" />
     <Message Importance="normal" Text="$(AssemblyName).dll -> $(OmegaFormatsPath)" />
   </Target>
-
-  <!--
-    Take it back out on clean, or a renamed or retired plugin stays in the formats
-    folder forever and keeps being loaded.
-  -->
   <Target Name="CleanFormatsFolder" AfterTargets="Clean">
     <Delete Files="$(OmegaFormatsPath)\$(AssemblyName).dll" />
   </Target>
-
 </Project>

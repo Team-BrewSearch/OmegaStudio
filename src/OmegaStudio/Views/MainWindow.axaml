@@ -11,27 +11,13 @@
         Background="{DynamicResource SurfaceWell}"
         FontSize="{DynamicResource FontSizeBody}"
         Icon="/Assets/icon.png">
-
-  <!--
-    Every accelerator in the app, in one place. A MenuItem's InputGesture only *draws*
-    the shortcut in the flyout — it does not execute it, which is why Ctrl+O and
-    Ctrl+S did nothing for as long as they had been listed in the File menu. The
-    binding that makes a key work has to live on the window, so each of these fires
-    whether or not the menu has ever been opened.
-
-    A TextBox handles Ctrl+Z itself and marks the event handled, so typing in the
-    search box still undoes typing rather than the last archive edit.
-  -->
   <Window.KeyBindings>
     <KeyBinding Gesture="Ctrl+O" Command="{Binding OpenCommand}" />
     <KeyBinding Gesture="Ctrl+S" Command="{Binding SaveCommand}" />
     <KeyBinding Gesture="Ctrl+Z" Command="{Binding UndoCommand}" />
     <KeyBinding Gesture="Ctrl+Y" Command="{Binding RedoCommand}" />
   </Window.KeyBindings>
-
   <DockPanel>
-
-    <!-- ==================== menu ==================== -->
     <Menu DockPanel.Dock="Top">
       <MenuItem Header="_File">
         <MenuItem Header="_Open" Command="{Binding OpenCommand}" InputGesture="Ctrl+O" />
@@ -40,21 +26,12 @@
         <MenuItem Header="_Close" Command="{Binding CloseAllCommand}" />
         <MenuItem Header="E_xit" Command="{Binding ExitCommand}" InputGesture="Alt+F4" />
       </MenuItem>
-
-      <!-- Both items name what they would reverse — "Undo Replace Raw" rather than a
-           bare "Undo" — and disable themselves through their commands' CanExecute. -->
       <MenuItem Header="_Edit">
         <MenuItem Header="{Binding UndoLabel}" Command="{Binding UndoCommand}" InputGesture="Ctrl+Z" />
         <MenuItem Header="{Binding RedoLabel}" Command="{Binding RedoCommand}" InputGesture="Ctrl+Y" />
       </MenuItem>
-
-      <!-- What loaded from formats/, and what did not. The only place the shell
-           says anything about plugins at all. -->
       <MenuItem Header="F_ormats">
         <MenuItem Header="Loaded" ItemsSource="{Binding LoadedFormats}">
-          <!-- Everything a plugin declares about itself, on its own lines. One
-               formatted string clipped at the flyout's width and lost the file
-               patterns off the end. -->
           <MenuItem.ItemTemplate>
             <DataTemplate x:DataType="vm:PluginRow">
               <StackPanel MaxWidth="460" Margin="0,3">
@@ -75,8 +52,6 @@
                   ItemsSource="{Binding FailedFormats}">
           <MenuItem.ItemTemplate>
             <DataTemplate x:DataType="x:String">
-              <!-- Wrapped: a load failure's reason is a sentence, and clipping it
-                   hides the half that says what to do about it. -->
               <TextBlock Text="{Binding}" MaxWidth="460" TextWrapping="Wrap" Margin="0,3" />
             </DataTemplate>
           </MenuItem.ItemTemplate>
@@ -84,15 +59,10 @@
         <Separator />
         <MenuItem Header="{Binding FormatsFolder, StringFormat='Folder: {0}'}" IsEnabled="False" />
       </MenuItem>
-
-      <!-- A dialog is the view's own business, so this one item is a click handler
-           rather than a command on a view model that owns no windows. -->
       <MenuItem Header="_Help">
         <MenuItem Header="_About Omega Studio…" Click="About_OnClick" />
       </MenuItem>
     </Menu>
-
-    <!-- ==================== status bar ==================== -->
     <Border DockPanel.Dock="Bottom"
             Background="{DynamicResource SurfaceRaised}"
             BorderBrush="{DynamicResource Divider}"
@@ -100,9 +70,6 @@
             Padding="{DynamicResource StatusPadding}">
       <TextBlock Text="{Binding Status}" Foreground="{DynamicResource TextSecondary}" TextTrimming="CharacterEllipsis" />
     </Border>
-
-    <!-- Outliner | viewport | Properties, with min widths so no pane can be
-         dragged away to nothing. -->
     <Grid>
       <Grid.ColumnDefinitions>
         <ColumnDefinition Width="290" MinWidth="200" />
@@ -111,19 +78,15 @@
         <ColumnDefinition Width="1" />
         <ColumnDefinition Width="310" MinWidth="220" />
       </Grid.ColumnDefinitions>
-
-      <!-- ==================== Outliner ==================== -->
       <Border Grid.Column="0" Classes="pane" BorderThickness="0">
         <DockPanel>
           <Border DockPanel.Dock="Top" Classes="toolbar" Padding="{DynamicResource PanePadding}">
             <TextBlock Text="Outliner" Classes="paneHeader" />
           </Border>
-
           <TextBox DockPanel.Dock="Top" Name="SearchBox"
                    Text="{Binding SearchFilter, Mode=TwoWay}"
                    PlaceholderText="Search assets"
                    Margin="8,8,8,4" />
-
           <TreeView ItemsSource="{Binding CurrentItems}"
                     SelectedItem="{Binding SelectedItem, Mode=TwoWay}"
                     Background="Transparent" BorderThickness="0"
@@ -132,9 +95,6 @@
               <Style Selector="TreeViewItem" x:DataType="vm:TreeItemViewModel">
                 <Setter Property="IsExpanded" Value="{Binding IsExpanded, Mode=TwoWay}" />
                 <Setter Property="ContextMenu">
-                  <!-- Built from the selected node's capabilities rather than listed
-                       here, so a plugin's own commands appear beside the built-in
-                       ones with nothing in this file naming either. -->
                   <ContextMenu DataContext="{Binding DataContext, ElementName=RootWindow}"
                                x:DataType="vm:MainViewModel"
                                IsVisible="{Binding HasCommands}"
@@ -153,14 +113,11 @@
                 </Setter>
               </Style>
             </TreeView.Styles>
-
             <TreeView.ItemTemplate>
               <TreeDataTemplate ItemsSource="{Binding Children}" x:DataType="vm:TreeItemViewModel">
                 <StackPanel Orientation="Horizontal" Spacing="{DynamicResource SpaceS}">
-                  <!-- Kind dot: hue identifies the asset type at a glance. -->
                   <Border Width="7" Height="7" CornerRadius="4" VerticalAlignment="Center"
                           Background="{Binding Kind, Converter={StaticResource AssetKindBrush}}" />
-
                   <ItemsControl ItemsSource="{Binding HeaderSegments}">
                     <ItemsControl.ItemsPanel>
                       <ItemsPanelTemplate>
@@ -173,7 +130,6 @@
                       </DataTemplate>
                     </ItemsControl.ItemTemplate>
                   </ItemsControl>
-
                   <TextBlock Text="{Binding Detail}" Classes="meta" />
                 </StackPanel>
               </TreeDataTemplate>
@@ -181,23 +137,15 @@
           </TreeView>
         </DockPanel>
       </Border>
-
       <GridSplitter Grid.Column="1" ResizeDirection="Columns" />
-
-      <!-- ==================== centre ==================== -->
       <Grid Grid.Column="2" Background="{DynamicResource SurfaceWell}">
         <Grid.RowDefinitions>
           <RowDefinition Height="*" MinHeight="140" />
           <RowDefinition Height="1" />
           <RowDefinition Height="190" MinHeight="80" />
         </Grid.RowDefinitions>
-
-        <!-- Each tab hides itself when the selection has nothing to put in it, so
-             the window shows exactly what the loaded plugins can actually do. -->
         <TabControl Grid.Row="0" SelectedIndex="{Binding SelectedPane, Mode=TwoWay}"
                     Background="{DynamicResource SurfaceWell}">
-
-          <!-- viewport -->
           <TabItem Header="Viewport" IsVisible="{Binding HasScene}">
             <DockPanel>
               <Border DockPanel.Dock="Top" Classes="toolbar">
@@ -211,13 +159,10 @@
                              Margin="8,0,0,0" />
                 </StackPanel>
               </Border>
-
               <Grid>
                 <r:GlViewport Name="Viewport"
                               Scene="{Binding ViewportScene}"
                               Shading="{Binding Shading}" />
-                <!-- Transparent overlay so pointer input reaches us regardless of
-                     how the GL surface is composited. -->
                 <Canvas Background="Transparent"
                         PointerPressed="Overlay_OnPointerPressed"
                         PointerMoved="Overlay_OnPointerMoved"
@@ -226,8 +171,6 @@
               </Grid>
             </DockPanel>
           </TabItem>
-
-          <!-- texture -->
           <TabItem Header="Texture" IsVisible="{Binding HasImage}">
             <DockPanel Background="{DynamicResource SurfaceWell}">
               <Border DockPanel.Dock="Top" Classes="toolbar">
@@ -242,35 +185,24 @@
                   <TextBlock Classes="meta" Text="Wheel to zoom · Drag to pan" Margin="8,0,0,0" />
                 </StackPanel>
               </Border>
-
               <views:TextureView Name="TexturePreviewView" Source="{Binding TexturePreview}" />
             </DockPanel>
           </TabItem>
-
-          <!-- audio -->
           <TabItem Header="Audio" IsVisible="{Binding HasAudio}">
             <DockPanel Background="{DynamicResource SurfaceWell}">
               <Border DockPanel.Dock="Top" Classes="toolbar">
                 <TextBlock Text="{Binding AudioStatus}" Classes="label" />
               </Border>
-
               <StackPanel Margin="24" Spacing="{DynamicResource SpaceL}" VerticalAlignment="Center">
                 <TextBlock Text="{Binding AudioTimeDisplay}"
                            HorizontalAlignment="Center"
                            FontFamily="{DynamicResource MonoFont}"
                            FontSize="20"
                            Foreground="{DynamicResource TextPrimary}" />
-
-                <!-- Two-way so that every way of moving a slider scrubs: thumb drag,
-                     click on the track, arrow and page keys, touch. The view model
-                     tells its own writes apart from the user's; see
-                     AudioPositionSeconds. Thumb drag start/end are wired up in
-                     code-behind because the Thumb marks its pointer events handled. -->
                 <Slider Name="AudioSeek" Minimum="0" Maximum="{Binding AudioTotalSeconds}"
                         Value="{Binding AudioPositionSeconds, Mode=TwoWay}"
                         SmallChange="0.1" LargeChange="1"
                         IsEnabled="{Binding AudioIsLoaded}" />
-
                 <StackPanel Orientation="Horizontal" HorizontalAlignment="Center"
                             Spacing="{DynamicResource SpaceM}">
                   <Button Content="Play" Command="{Binding PlayAudioCommand}"
@@ -284,12 +216,8 @@
             </DockPanel>
           </TabItem>
         </TabControl>
-
         <GridSplitter Grid.Row="1" ResizeDirection="Rows" HorizontalAlignment="Stretch" />
-
-        <!-- console | animation -->
         <TabControl Grid.Row="2" Background="{DynamicResource SurfaceWell}">
-
           <TabItem Header="Console">
             <Border Background="{DynamicResource SurfaceWell}">
               <ScrollViewer Name="ConsoleScroll" Padding="{DynamicResource ToolbarPadding}">
@@ -300,7 +228,6 @@
               </ScrollViewer>
             </Border>
           </TabItem>
-
           <TabItem Header="Animation" IsVisible="{Binding HasAnimation}">
             <DockPanel Background="{DynamicResource SurfaceWell}">
               <Border DockPanel.Dock="Top" Classes="toolbar">
@@ -326,8 +253,6 @@
                              VerticalAlignment="Center" Margin="8,0,0,0" />
                 </StackPanel>
               </Border>
-
-              <!-- Scrolls: a 49-bone skeleton is far taller than this pane. -->
               <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
                 <views:DopeSheetView SelectedAnimation="{Binding Animation.SelectedClip}"
                                      CurrentTime="{Binding Animation.Time}"
@@ -337,16 +262,12 @@
           </TabItem>
         </TabControl>
       </Grid>
-
       <GridSplitter Grid.Column="3" ResizeDirection="Columns" />
-
-      <!-- ==================== Properties ==================== -->
       <Border Grid.Column="4" Classes="pane" BorderThickness="0">
         <DockPanel>
           <Border DockPanel.Dock="Top" Classes="toolbar" Padding="{DynamicResource PanePadding}">
             <TextBlock Text="Properties" Classes="paneHeader" />
           </Border>
-
           <ScrollViewer>
             <ItemsControl ItemsSource="{Binding Properties}" Margin="10,8">
               <ItemsControl.ItemTemplate>
