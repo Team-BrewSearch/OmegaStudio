@@ -1,0 +1,34 @@
+<Project>
+
+  <!--
+    Settings shared by every project in the repository. Each csproj used to carry
+    its own copy of this block, which is how the two forks drifted apart in the
+    first place.
+  -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+
+  <PropertyGroup>
+    <AnalysisLevel>latest-recommended</AnalysisLevel>
+    <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
+    <!--
+      On for every project, because it validates every <see cref="..."/> at build time
+      and a broken cross-reference is a real error worth catching. It also turns on
+      CS1591 ("this public member has no comment"), which is a different and much
+      weaker rule — see Directory.Build.targets for where that one is enforced.
+    -->
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+  </PropertyGroup>
+
+  <PropertyGroup>
+    <Optimize>true</Optimize>
+    <DebugType>none</DebugType>
+    <DebugSymbols>false</DebugSymbols>
+  </PropertyGroup>
+
+</Project>

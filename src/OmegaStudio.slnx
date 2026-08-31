@@ -1,0 +1,7 @@
+<Solution>
+  <Project Path="Omega.Plugins/Omega.Plugins.csproj" />
+  <Project Path="OmegaStudio/OmegaStudio.csproj" />
+  <Project Path="Formats/Generic/Generic.Formats.csproj" />
+  <Project Path="Formats/Harugeki/Harugeki.Formats.csproj" />
+  <Project Path="Formats/Kartz/Kartz.Formats.csproj" />
+</Solution>

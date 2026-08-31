@@ -1,0 +1,6 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OmegaPluginName>Harugeki</OmegaPluginName>
+  </PropertyGroup>
+  <Import Project="../../Plugin.props" />
+</Project>

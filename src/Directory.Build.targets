@@ -1,0 +1,35 @@
+<Project>
+
+  <!--
+    Where a built format plugin has to land: a "formats" folder beside the host
+    executable.
+
+    In .targets rather than .props because it depends on $(Configuration), which the
+    SDK does not default until after Directory.Build.props has been imported.
+    Defining it there produced a second, half-named copy of every plugin under
+    bin\net10.0\formats — correct-looking, never loaded, and stale forever after.
+
+    Paths here are relative to this file, which sits in src\. Spelling "src" again
+    inside them is the mistake that sent every plugin to src\src\ and left the host
+    with no formats folder at all.
+  -->
+  <PropertyGroup>
+    <OmegaHostOutputPath>$(MSBuildThisFileDirectory)OmegaStudio\bin\$(Configuration)\$(TargetFramework)</OmegaHostOutputPath>
+    <OmegaFormatsPath>$(OmegaHostOutputPath)\formats</OmegaFormatsPath>
+  </PropertyGroup>
+
+  <!--
+    CS1591 — a comment on every public member — is enforced only where it earns its
+    keep: Omega.Plugins, which is the SDK a plugin author reads and where the assembly
+    itself is the reference. Applying it to the format layers would mean a prose
+    comment on every field of a reverse-engineered header, which is noise rather than
+    documentation.
+
+    Set in .targets rather than .props because it reads a property the project sets,
+    and .props is imported before the project body.
+  -->
+  <PropertyGroup Condition="'$(DocumentEveryMember)' != 'true'">
+    <NoWarn>$(NoWarn);CS1591</NoWarn>
+  </PropertyGroup>
+
+</Project>

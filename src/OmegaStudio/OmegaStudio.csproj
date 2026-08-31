@@ -1,0 +1,56 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <Version>1.0.0</Version>
+    <RootNamespace>OmegaStudio</RootNamespace>
+    <OutputType>Exe</OutputType>
+    <OutputType Condition="$([MSBuild]::IsOSPlatform('Windows'))">WinExe</OutputType>
+    <ApplicationManifest Condition="$([MSBuild]::IsOSPlatform('Windows'))">app.manifest</ApplicationManifest>
+    <ApplicationIcon>Assets\icon.ico</ApplicationIcon>
+    <AvaloniaUseCompiledBindingsByDefault>true</AvaloniaUseCompiledBindingsByDefault>
+  </PropertyGroup>
+  <PropertyGroup>
+    <UseAppHost>true</UseAppHost>
+    <PublishDocumentationFile>false</PublishDocumentationFile>
+    <PublishDocumentationFiles>false</PublishDocumentationFiles>
+    <SelfContained>false</SelfContained>
+    <PublishReadyToRun>true</PublishReadyToRun>
+    <InvariantGlobalization>true</InvariantGlobalization>
+    <EventSourceSupport>false</EventSourceSupport>
+    <UseSystemResourceKeys>true</UseSystemResourceKeys>
+    <HttpActivityPropagationSupport>false</HttpActivityPropagationSupport>
+  </PropertyGroup>
+  <ItemGroup>
+    <AvaloniaResource Include="Assets/icon.png" />
+  </ItemGroup>
+  <ItemGroup>
+    <Using Include="System.Collections.ObjectModel" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="Avalonia" Version="12.1.1" />
+    <PackageReference Include="Avalonia.Desktop" Version="12.1.1" />
+    <PackageReference Include="Avalonia.Themes.Fluent" Version="12.1.1" />
+    <PackageReference Include="Avalonia.Fonts.Inter" Version="12.1.1" />
+    <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.2" />
+    <PackageReference Include="Silk.NET.OpenAL" Version="2.23.0" />
+    <PackageReference Include="NVorbis" Version="0.10.5" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="../Omega.Plugins/Omega.Plugins.csproj" />
+  </ItemGroup>
+  <Target Name="StripNativePdbs" AfterTargets="Publish">
+    <ItemGroup>
+      <_NativePdbs Include="$(PublishDir)**\*.pdb" />
+    </ItemGroup>
+    <Delete Files="@(_NativePdbs)" />
+  </Target>
+  <Target Name="CopyFormatsToPublish" AfterTargets="Publish">
+    <ItemGroup>
+      <_PublishedPlugins Include="$(OmegaFormatsPath)\*.Formats.dll" />
+    </ItemGroup>
+    <Warning Condition="'@(_PublishedPlugins)' == ''"
+             Text="No plugins found in $(OmegaFormatsPath). The published app will not open anything — build the solution before publishing." />
+    <Copy SourceFiles="@(_PublishedPlugins)" DestinationFolder="$(PublishDir)formats" />
+    <Message Importance="high" Condition="'@(_PublishedPlugins)' != ''"
+             Text="Published @(_PublishedPlugins->Count()) plugin(s) to $(PublishDir)formats" />
+  </Target>
+</Project>

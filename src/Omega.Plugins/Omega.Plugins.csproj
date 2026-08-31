@@ -1,0 +1,7 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <RootNamespace>Omega.Plugins</RootNamespace>
+    <AssemblyName>Omega.Plugins</AssemblyName>
+    <DocumentEveryMember>true</DocumentEveryMember>
+  </PropertyGroup>
+</Project>
