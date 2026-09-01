@@ -2,11 +2,19 @@ using Avalonia;
 using Avalonia.Media.Imaging;
 using Avalonia.Platform;
 using Omega.Plugins;
+using System.Buffers.Binary;
 using System.Runtime.InteropServices;
 namespace OmegaStudio.Services;
 
 public sealed class ImageIO : IImageCodec
 {
+    private const int BmpFileHeader = 14;
+    private const int BmpInfoHeader = 108;
+    private const int BiBitfields = 3;
+    private const int PixelsPerMetre = 2835;
+    private const uint LcsSrgb = 0x73524742;
+    private const int JpegQuality = 92;
+    private static readonly string[] s_writable = [".png", ".jpg", ".jpeg", ".bmp"];
     public static ImageIO Instance { get; } = new();
     public static WriteableBitmap ToBitmap(ImageData image)
     {
@@ -23,20 +31,85 @@ public sealed class ImageIO : IImageCodec
         }
         return bitmap;
     }
-    public void SavePng(ImageData image, string path)
+    public void Save(ImageData image, string path)
     {
         ArgumentNullException.ThrowIfNull(image);
         ArgumentException.ThrowIfNullOrEmpty(path);
         _ = Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(path))!);
-        using WriteableBitmap bitmap = ToBitmap(image);
-        bitmap.Save(path, new PngBitmapEncoderOptions());
+        File.WriteAllBytes(path, Encode(image, Path.GetExtension(path)));
     }
+    public byte[] Encode(ImageData image, string extension)
+    {
+        ArgumentNullException.ThrowIfNull(image);
+        return Normalise(extension) switch
+        {
+            ".png" => EncodePng(image),
+            ".jpg" => EncodeWith(image, new JpegBitmapEncoderOptions { Quality = JpegQuality }),
+            ".bmp" => EncodeBmp(image),
+            _ => throw new NotSupportedException(
+                $"'{extension}' is not an image format this build can write; " +
+                $"use one of {string.Join(", ", s_writable)}."),
+        };
+    }
+    public IReadOnlyList<string> WritableExtensions => s_writable;
     public static byte[] EncodePng(ImageData image)
+    {
+        return EncodeWith(image, new PngBitmapEncoderOptions());
+    }
+    private static string Normalise(string extension)
+    {
+        string found = extension ?? string.Empty;
+        return found.Equals(".jpg", StringComparison.OrdinalIgnoreCase)
+            || found.Equals(".jpeg", StringComparison.OrdinalIgnoreCase) ? ".jpg"
+            : found.Equals(".png", StringComparison.OrdinalIgnoreCase) ? ".png"
+            : found.Equals(".bmp", StringComparison.OrdinalIgnoreCase) ? ".bmp"
+            : string.Empty;
+    }
+    private static byte[] EncodeWith(ImageData image, BitmapEncoderOptions options)
     {
         using WriteableBitmap bitmap = ToBitmap(image);
         using MemoryStream stream = new();
-        bitmap.Save(stream, new PngBitmapEncoderOptions());
+        bitmap.Save(stream, options);
         return stream.ToArray();
+    }
+    private static byte[] EncodeBmp(ImageData image)
+    {
+        int stride = image.Width * 4;
+        byte[] file = new byte[BmpFileHeader + BmpInfoHeader + (stride * image.Height)];
+        Span<byte> span = file;
+        span[0] = (byte)'B';
+        span[1] = (byte)'M';
+        BinaryPrimitives.WriteInt32LittleEndian(span[2..], file.Length);
+        BinaryPrimitives.WriteInt32LittleEndian(span[10..], BmpFileHeader + BmpInfoHeader);
+        Span<byte> header = span[BmpFileHeader..];
+        BinaryPrimitives.WriteInt32LittleEndian(header, BmpInfoHeader);
+        BinaryPrimitives.WriteInt32LittleEndian(header[4..], image.Width);
+        BinaryPrimitives.WriteInt32LittleEndian(header[8..], image.Height);
+        BinaryPrimitives.WriteUInt16LittleEndian(header[12..], 1);
+        BinaryPrimitives.WriteUInt16LittleEndian(header[14..], 32);
+        BinaryPrimitives.WriteInt32LittleEndian(header[16..], BiBitfields);
+        BinaryPrimitives.WriteInt32LittleEndian(header[20..], stride * image.Height);
+        BinaryPrimitives.WriteInt32LittleEndian(header[24..], PixelsPerMetre);
+        BinaryPrimitives.WriteInt32LittleEndian(header[28..], PixelsPerMetre);
+        BinaryPrimitives.WriteUInt32LittleEndian(header[40..], 0x00FF0000);
+        BinaryPrimitives.WriteUInt32LittleEndian(header[44..], 0x0000FF00);
+        BinaryPrimitives.WriteUInt32LittleEndian(header[48..], 0x000000FF);
+        BinaryPrimitives.WriteUInt32LittleEndian(header[52..], 0xFF000000);
+        BinaryPrimitives.WriteUInt32LittleEndian(header[56..], LcsSrgb);
+        Span<byte> pixels = span[(BmpFileHeader + BmpInfoHeader)..];
+        for (int y = 0; y < image.Height; y++)
+        {
+            int source = y * stride;
+            int destination = (image.Height - 1 - y) * stride;
+            for (int x = 0; x < stride; x += 4)
+            {
+                pixels[destination + x + 0] = image.Rgba[source + x + 2];
+                pixels[destination + x + 1] = image.Rgba[source + x + 1];
+                pixels[destination + x + 2] = image.Rgba[source + x + 0];
+                pixels[destination + x + 3] = image.Rgba[source + x + 3];
+            }
+        }
+        return file;
     }
     public ImageData Load(string path)
     {

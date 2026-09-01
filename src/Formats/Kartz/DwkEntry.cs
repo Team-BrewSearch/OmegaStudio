@@ -11,6 +11,7 @@ public sealed class DwkEntry
         _source = source;
         GdaOffset = gdaOffset;
     }
+    internal DwkArchive? Owner { get; set; }
     public int Index { get; }
     public int GdaOffset { get; }
     public string GdfPath { get; }
@@ -29,6 +30,7 @@ public sealed class DwkEntry
         ArgumentNullException.ThrowIfNull(newData);
         _replacement = newData;
         IsDirty = true;
+        Owner?.MarkChanged();
     }
     public override string ToString()
     {

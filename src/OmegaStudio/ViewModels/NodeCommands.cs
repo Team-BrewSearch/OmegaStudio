@@ -7,44 +7,84 @@ namespace OmegaStudio.ViewModels;
 internal static class NodeCommands
 {
     private static readonly FileFilter s_anyFile = new("All files", "*.*");
-    private static readonly FileFilter s_png = new("PNG image", "*.png");
     private static readonly FileFilter s_gltf = new("glTF 2.0", "*.glb", "*.gltf");
+    private static readonly FileFilter[] s_imageWrite =
+    [
+        new FileFilter("PNG image", "*.png"),
+        new FileFilter("JPEG image", "*.jpg", "*.jpeg"),
+        new FileFilter("BMP image", "*.bmp"),
+    ];
+    private static readonly FileFilter s_imageRead = new("Image", "*.png", "*.jpg", "*.jpeg", "*.bmp");
     public static IReadOnlyList<AssetCommand> For(IAssetNode node)
     {
-        List<AssetCommand> commands = [];
+        List<AssetCommand> own = [], exports = [], replacements = [], extra = [];
         if (node is IBinaryAsset binary)
         {
-            AddBinary(commands, node, binary);
+            own.Add(Extract(node, binary));
+            if (binary.CanReplaceBytes)
+            {
+                replacements.Add(ReplaceBytes(node));
+            }
         }
         if (node is IAudioAsset audio)
         {
-            AddAudio(commands, node, audio);
+            own.Add(ExtractAudio(node, audio));
         }
         if (node is IImageAsset image)
         {
-            AddImage(commands, node, image);
+            exports.Add(ExportImage(node));
+            if (image.CanReplaceImage)
+            {
+                replacements.Add(ReplaceImage(node));
+            }
         }
         if (node is ISceneAsset)
         {
-            AddScene(commands, node);
+            exports.Add(ExportScene(node));
         }
         if (node is ICommandSource source)
         {
-            commands.AddRange(PluginGuard.Try(
+            foreach (AssetCommand command in PluginGuard.Try(
                 $"Listing commands for '{node.Name}'",
                 () => (IReadOnlyList<AssetCommand>)[.. source.GetCommands()],
-                []));
+                []))
+            {
+                Bucket(command.Role, exports, replacements, extra).Add(command);
+            }
         }
-        return commands;
+        List<AssetCommand> menu = [.. own];
+        if (exports.Count > 0)
+        {
+            menu.Add(Merge("Export…", AssetCommandKind.SaveFile, exports));
+        }
+        if (replacements.Count > 0)
+        {
+            menu.Add(Merge("Replace…", AssetCommandKind.OpenFile, replacements));
+        }
+        menu.AddRange(extra);
+        return menu;
     }
-    private static void AddBinary(List<AssetCommand> commands, IAssetNode node, IBinaryAsset binary)
+    private static List<AssetCommand> Bucket(
+        AssetCommandRole role,
+        List<AssetCommand> exports,
+        List<AssetCommand> replacements,
+        List<AssetCommand> extra)
+    {
+        return role switch
+        {
+            AssetCommandRole.Export => exports,
+            AssetCommandRole.Replace => replacements,
+            _ => extra,
+        };
+    }
+    private static AssetCommand Extract(IAssetNode node, IBinaryAsset binary)
     {
         string extension = string.IsNullOrEmpty(binary.Extension) ? ".bin" : binary.Extension;
-        commands.Add(new AssetCommand
+        return new AssetCommand
         {
-            Title = "Extract Raw…",
+            Title = "Extract…",
             Kind = AssetCommandKind.SaveFile,
-            Filter = new FileFilter("Raw data", "*" + extension),
+            Filters = [new FileFilter("Raw data", "*" + extension)],
             SuggestedFileName = SuggestName(node, extension),
             Execute = context =>
             {
@@ -53,16 +93,16 @@ internal static class NodeCommands
                 context.Log($"Extracted {node.PathText} ({Sizes.Describe(bytes.Length)}) " +
                     $"to {Path.GetFileName(context.Path!)}.");
             },
-        });
-        if (!binary.CanReplaceBytes)
+        };
+    }
+    private static AssetCommand ReplaceBytes(IAssetNode node)
+    {
+        return new AssetCommand
         {
-            return;
-        }
-        commands.Add(new AssetCommand
-        {
-            Title = "Replace Raw…",
+            Title = "Replace raw",
             Kind = AssetCommandKind.OpenFile,
-            Filter = s_anyFile,
+            Role = AssetCommandRole.Replace,
+            Filters = [s_anyFile],
             Execute = context =>
             {
                 IBinaryAsset target = (IBinaryAsset)context.Node;
@@ -81,20 +121,20 @@ internal static class NodeCommands
                 context.Changed = AssetChange.Bytes | AssetChange.Children | AssetChange.Scene
                     | AssetChange.Image | AssetChange.Properties | AssetChange.Dirty;
             },
-        });
+        };
     }
-    private static void AddAudio(List<AssetCommand> commands, IAssetNode node, IAudioAsset audio)
+    private static AssetCommand ExtractAudio(IAssetNode node, IAudioAsset audio)
     {
         string extension = PluginGuard.Try(
             $"Reading the audio of '{node.Name}'",
             () => AudioFormats.ExtensionOf(audio.EncodedAudio),
             ".wav");
         string label = extension == ".ogg" ? "OGG Vorbis" : "WAV audio";
-        commands.Add(new AssetCommand
+        return new AssetCommand
         {
             Title = "Extract Audio…",
             Kind = AssetCommandKind.SaveFile,
-            Filter = new FileFilter(label, "*" + extension),
+            Filters = [new FileFilter(label, "*" + extension)],
             SuggestedFileName = SuggestName(node, extension),
             Execute = context =>
             {
@@ -103,35 +143,34 @@ internal static class NodeCommands
                 context.Log($"Extracted {label} ({Sizes.Describe(bytes.Length)}) " +
                     $"to {Path.GetFileName(context.Path!)}.");
             },
-        });
+        };
     }
-    private static void AddImage(List<AssetCommand> commands, IAssetNode node, IImageAsset image)
+    private static AssetCommand ExportImage(IAssetNode node)
     {
-        commands.Add(new AssetCommand
+        return new AssetCommand
         {
-            Title = "Export PNG…",
+            Title = "Export image",
             Kind = AssetCommandKind.SaveFile,
-            Filter = s_png,
+            Role = AssetCommandRole.Export,
+            Filters = s_imageWrite,
             SuggestedFileName = SuggestName(node, ".png"),
             Execute = context =>
             {
                 ImageData data = ((IImageAsset)context.Node).Image;
-                context.Host.Images.SavePng(data, context.Path!);
+                context.Host.Images.Save(data, context.Path!);
                 context.Log($"Exported {data.Name} ({data.Width}x{data.Height}) " +
                     $"to {Path.GetFileName(context.Path!)}.");
             },
-        });
-        if (!image.CanReplaceImage)
+        };
+    }
+    private static AssetCommand ReplaceImage(IAssetNode node)
+    {
+        return new AssetCommand
         {
-            return;
-        }
-        ImageData? current = PluginGuard.Try<ImageData?>($"Reading '{node.Name}'", () => image.Image, null);
-        string size = current is null ? "any size" : $"{current.Width}x{current.Height}, any size accepted";
-        commands.Add(new AssetCommand
-        {
-            Title = $"Replace from PNG… ({size})",
+            Title = "Replace image",
             Kind = AssetCommandKind.OpenFile,
-            Filter = s_png,
+            Role = AssetCommandRole.Replace,
+            Filters = [s_imageRead],
             Execute = context =>
             {
                 IImageAsset target = (IImageAsset)context.Node;
@@ -146,15 +185,16 @@ internal static class NodeCommands
                 context.Changed = AssetChange.Image | AssetChange.Bytes | AssetChange.Scene
                     | AssetChange.Properties | AssetChange.Dirty;
             },
-        });
+        };
     }
-    private static void AddScene(List<AssetCommand> commands, IAssetNode node)
+    private static AssetCommand ExportScene(IAssetNode node)
     {
-        commands.Add(new AssetCommand
+        return new AssetCommand
         {
-            Title = "Export glTF…",
+            Title = "Export glTF",
             Kind = AssetCommandKind.SaveFile,
-            Filter = s_gltf,
+            Role = AssetCommandRole.Export,
+            Filters = [s_gltf],
             SuggestedFileName = SuggestName(node, ".glb"),
             Execute = context =>
             {
@@ -164,11 +204,71 @@ internal static class NodeCommands
                 context.Log($"Exported {node.Name} to {Path.GetFileName(context.Path!)} " +
                     $"({scene.TriangleCount:N0} triangles, {scene.Textures.Count} texture(s)).");
             },
-        });
+        };
+    }
+    private static AssetCommand Merge(
+        string title, AssetCommandKind kind, List<AssetCommand> alternatives)
+    {
+        List<FileFilter> filters = [.. alternatives.SelectMany(alternative => alternative.Filters)];
+        if (kind == AssetCommandKind.OpenFile && filters.Count > 1)
+        {
+            FileFilter combined = Combined(filters);
+            _ = filters.RemoveAll(filter => Same(filter, combined));
+            filters.Insert(0, combined);
+        }
+        return new AssetCommand
+        {
+            Title = title,
+            Kind = kind,
+            Filters = filters,
+            SuggestedFileName = alternatives[0].SuggestedFileName,
+            Execute = context => Choose(alternatives, context.Path).Execute(context),
+        };
+    }
+    private static FileFilter Combined(IEnumerable<FileFilter> filters)
+    {
+        string[] patterns = [.. filters
+            .SelectMany(filter => filter.Patterns)
+            .Distinct(StringComparer.OrdinalIgnoreCase)];
+        return Array.IndexOf(patterns, "*.*") >= 0
+            ? s_anyFile
+            : new FileFilter("Supported files", patterns);
+    }
+    private static bool Same(FileFilter filter, FileFilter other)
+    {
+        return filter.Label == other.Label && filter.Patterns.SequenceEqual(other.Patterns);
+    }
+    private static AssetCommand Choose(List<AssetCommand> alternatives, string? path)
+    {
+        string extension = Path.GetExtension(path ?? string.Empty);
+        foreach (AssetCommand alternative in alternatives)
+        {
+            if (Names(alternative, extension))
+            {
+                return alternative;
+            }
+        }
+        foreach (AssetCommand alternative in alternatives)
+        {
+            if (alternative.Filters.SelectMany(filter => filter.Patterns).Contains("*.*"))
+            {
+                return alternative;
+            }
+        }
+        return alternatives[0];
+    }
+    private static bool Names(AssetCommand command, string extension)
+    {
+        return extension.Length > 1 && command.Filters
+            .SelectMany(filter => filter.Patterns)
+            .Any(pattern => pattern.Length > 2
+                && pattern.StartsWith("*.", StringComparison.Ordinal)
+                && pattern.AsSpan(1).Equals(extension, StringComparison.OrdinalIgnoreCase));
     }
     private static string SuggestName(IAssetNode node, string extension)
     {
-        string stem = !string.IsNullOrWhiteSpace(node.Name) ? node.Name
+        string stem = !string.IsNullOrWhiteSpace(node.FileStem) ? node.FileStem
+            : !string.IsNullOrWhiteSpace(node.Name) ? node.Name
             : !string.IsNullOrWhiteSpace(node.PathText) ? node.PathText
             : "asset";
         return ImageIO.SafeName(

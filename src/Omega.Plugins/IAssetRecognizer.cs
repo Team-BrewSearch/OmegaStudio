@@ -35,6 +35,8 @@ public abstract class RecognizedAsset : IAssetNode, IBinaryAsset, IDescribable, 
     public string Detail => Inner.Detail;
     /// <summary>Slash-separated location, from the wrapped node.</summary>
     public string PathText => Inner.PathText;
+    /// <summary>Name to build an exported filename from, from the wrapped node.</summary>
+    public virtual string FileStem => Inner.FileStem;
     /// <summary>The row&apos;s kind. Override to advertise what the payload turned out to be.</summary>
     public virtual string Kind => Inner.Kind;
     /// <summary>Whether the wrapped node has children.</summary>

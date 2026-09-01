@@ -64,15 +64,19 @@ Nodes describe themselves through capability interfaces rather than a type hiera
 
 | Interface | Earns |
 | --- | --- |
-| `IBinaryAsset` | Extract Raw, and Replace Raw when it says bytes can be swapped |
-| `IImageAsset` | The Texture pane, Export PNG, and Replace from PNG |
+| `IBinaryAsset` | Extract, and a raw file type under Replace when it says bytes can be swapped |
+| `IImageAsset` | The Texture pane, and PNG, JPEG and BMP under both Export and Replace |
 | `IAudioAsset` | The Audio pane and Extract Audio |
-| `ISceneAsset` | The Viewport and Export glTF |
+| `ISceneAsset` | The Viewport, and glTF under Export |
 | `IAnimatedAsset` | The Animation pane, its clip picker and dope sheet |
 | `IDescribable` | Rows in the Properties pane |
 | `ICommandSource` | Extra entries in the row's context menu |
 
 `NodeCommands` builds a row's menu purely by testing which of these a node implements, so the host needs no knowledge of what the node actually is.
+
+A row gets at most one `Export…` and one `Replace…` entry, however many capabilities it has.
+Each capability, and each plugin command that sets `AssetCommandRole`, contributes file types rather than a menu entry of its own; the dialog offers all of them and the host then runs whichever one claims the extension the user chose, falling back to the raw-bytes handler when nothing claims it.
+That is why replacing a texture from a PNG and replacing a model from a glTF are one command: the file the user picked says which.
 
 ### Recognition
 
@@ -105,7 +109,7 @@ The catches are broad on purpose, guessing which exception types a plugin author
 ## Host services
 
 What the host lends a plugin, through `IHostServices`:
--   **`Images`** - decode PNG, JPEG, GIF, and BMP; encode PNG. No plugin carries a codec.
+-   **`Images`** - decode PNG, JPEG, GIF, and BMP; encode PNG, JPEG and BMP. No plugin carries a codec.
 -   **`glTF`** - read a glTF or GLB in full, open one for selective reading, or write geometry out. One writer serves every format: a plugin produces neutral `SceneGeometry` and gets export for free.
 -   **`Log`** - a line in the Console pane, prefixed with the plugin's display name.
 -   **`PluginDirectory`** - where this plugin was loaded from, for reading data files shipped beside it.

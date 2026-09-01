@@ -1,6 +1,6 @@
 using Omega.Plugins.Gltf;
 namespace Omega.Plugins;
-/// <summary>Image decoding and PNG writing, so no plugin carries a codec of its own.</summary>
+/// <summary>Image decoding and writing, so no plugin carries a codec of its own.</summary>
 public interface IImageCodec
 {
     /// <summary>Decodes an image file from disk.</summary>
@@ -12,10 +12,17 @@ public interface IImageCodec
     /// <param name="name">Name to give the result, used to suggest an export filename.</param>
     /// <returns>The decoded image.</returns>
     ImageData Load(ReadOnlySpan<byte> bytes, string name = "");
-    /// <summary>Writes an image to disk as a PNG.</summary>
+    /// <summary>Writes an image to disk, in the format the destination&apos;s extension names.</summary>
     /// <param name="image">The image to write.</param>
-    /// <param name="path">Destination path.</param>
-    void SavePng(ImageData image, string path);
+    /// <param name="path">Destination path, ending in one of <see cref="WritableExtensions"/>.</param>
+    void Save(ImageData image, string path);
+    /// <summary>Encodes an image in memory, in the format an extension names.</summary>
+    /// <param name="image">The image to encode.</param>
+    /// <param name="extension">One of <see cref="WritableExtensions"/>, leading dot included.</param>
+    /// <returns>The encoded bytes.</returns>
+    byte[] Encode(ImageData image, string extension);
+    /// <summary>Extensions <see cref="Save"/> and <see cref="Encode"/> accept, leading dots included.</summary>
+    IReadOnlyList<string> WritableExtensions { get; }
     /// <summary>Encodes an image as a PNG in memory.</summary>
     /// <param name="image">The image to encode.</param>
     /// <returns>The PNG bytes.</returns>

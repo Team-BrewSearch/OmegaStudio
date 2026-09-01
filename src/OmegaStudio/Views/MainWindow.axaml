@@ -60,7 +60,7 @@
         <MenuItem Header="{Binding FormatsFolder, StringFormat='Folder: {0}'}" IsEnabled="False" />
       </MenuItem>
       <MenuItem Header="_Help">
-        <MenuItem Header="_About Omega Studio…" Click="About_OnClick" />
+        <MenuItem Header="_About…" Click="About_OnClick" />
       </MenuItem>
     </Menu>
     <Border DockPanel.Dock="Bottom"

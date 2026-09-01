@@ -1,14 +1,24 @@
 using Omega.Plugins;
+using System.Globalization;
 namespace Harugeki.Formats.Nodes;
 
 internal abstract class SlotNode : BinaryAssetNode
 {
-    protected SlotNode(RingNode slot, string name, string kind = AssetKinds.Auto, string? detail = null)
+    protected SlotNode(
+        RingNode slot,
+        string name,
+        string kind = AssetKinds.Auto,
+        string? detail = null,
+        string? stem = null)
         : base(name, slot.PathText, kind, detail ?? Describe(slot))
     {
         Slot = slot;
+        FileStem = string.IsNullOrWhiteSpace(stem)
+            ? slot.Index.ToString("00", CultureInfo.InvariantCulture)
+            : stem;
     }
     protected RingNode Slot { get; }
+    public override string FileStem { get; }
     public override ReadOnlySpan<byte> Data => Slot.Span;
     public override int Size => Slot.Size;
     public override bool CanReplaceBytes => !Slot.IsDirectory;
@@ -26,7 +36,6 @@ internal abstract class SlotNode : BinaryAssetNode
     }
     protected IEnumerable<PropertyRow> SlotRows()
     {
-        yield return PropertyRow.Of("Slot", Slot.PathText);
         yield return PropertyRow.Of("Offset", $"0x{Slot.Offset:X}");
     }
 }

@@ -18,7 +18,10 @@ internal sealed class TextureNode : SlotNode, IImageAsset, IDescribable
         return new TextureNode(slot, header, texture, owner, index);
     }
     private TextureNode(RingNode slot, string header, RingTexture texture, RingModel? owner, int index)
-        : base(slot, Label(header, texture), detail: $"{texture.Width}x{texture.Height}")
+        : base(slot,
+               Label(header, texture),
+               detail: $"{texture.Width}x{texture.Height}",
+               stem: Stem(slot, texture, owner, index))
     {
         _texture = texture;
         _owner = owner;
@@ -27,6 +30,12 @@ internal sealed class TextureNode : SlotNode, IImageAsset, IDescribable
     private static string Label(string header, RingTexture texture)
     {
         return string.IsNullOrEmpty(texture.Name) ? header : $"{header} {texture.Name}";
+    }
+    private static string? Stem(RingNode slot, RingTexture texture, RingModel? owner, int index)
+    {
+        return !string.IsNullOrWhiteSpace(texture.Name) ? texture.Name
+            : owner is null ? null
+            : $"{slot.Index:00}_{index}";
     }
     public override string Extension => ".ringtex2";
     public override ReadOnlySpan<byte> Data =>

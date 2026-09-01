@@ -12,7 +12,8 @@ internal sealed class AnimationNode : SlotNode, IDescribable
         : base(slot,
                $"{header} {animation.Name}",
                AssetKinds.Animation,
-               $"{animation.Frames} frames, {animation.Tracks.Count} tracks")
+               $"{animation.Frames} frames, {animation.Tracks.Count} tracks",
+               animation.Name)
     {
         _animation = animation;
     }

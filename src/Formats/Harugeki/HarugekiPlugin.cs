@@ -10,7 +10,7 @@ public sealed class HarugekiPlugin : IFormatPlugin
     {
         Id = "harugeki",
         DisplayName = "Suzumiya Haruhi no Chourantou / Gekitou",
-        Version = "1.0.0",
+        Version = "1.0.1",
         Author = "Omega Studio",
         Description = "Models, textures and animation from the 2007 PC game's data/*.bin archives.",
     };

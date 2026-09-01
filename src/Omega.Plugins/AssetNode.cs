@@ -18,6 +18,8 @@ public abstract class AssetNode : IAssetNode
     public string Name { get; }
     /// <summary>Slash-separated location inside the archive.</summary>
     public string PathText { get; }
+    /// <summary>Name to build an extracted or exported filename from. Defaults to <see cref="Name"/>; override where the label carries decoration the file should not.</summary>
+    public virtual string FileStem => Name;
     /// <summary>Secondary text beside the name. Subclasses update this after an edit.</summary>
     public string Detail { get; protected set; }
     /// <summary>The row&apos;s kind, or empty for the host to infer.</summary>

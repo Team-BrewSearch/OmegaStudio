@@ -11,22 +11,21 @@ public partial class MainViewModel
     [RelayCommand]
     private async Task OpenAsync()
     {
-        (string label, string[] patterns) = OpenFilter();
-        string? path = await FilePickers.OpenAsync(_storage, "Open archive", label, patterns);
+        string? path = await FilePickers.OpenAsync(_storage, "Open archive", [OpenFilter()]);
         if (path is not null)
         {
             await OpenPathAsync(path);
         }
     }
-    private (string Label, string[] Patterns) OpenFilter()
+    private FileFilter OpenFilter()
     {
         string[] patterns = [.. _catalog.Formats
             .SelectMany(entry => entry.Format.Filter.Patterns)
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .Order(StringComparer.OrdinalIgnoreCase)];
         return patterns.Length == 0
-            ? ("All files", ["*.*"])
-            : ("Supported archives", patterns);
+            ? new FileFilter("All files", "*.*")
+            : new FileFilter("Supported archives", patterns);
     }
     public async Task OpenPathAsync(string path)
     {
@@ -57,6 +56,7 @@ public partial class MainViewModel
         Properties.Clear();
         Commands.Clear();
         SelectedItem = null;
+        _sceneSource = null;
         ViewportScene = null;
         TexturePreview = null;
         SearchFilter = "";
@@ -101,14 +101,15 @@ public partial class MainViewModel
     }
     private Task<string?> PickForAsync(AssetCommand command)
     {
-        FileFilter filter = command.Filter ?? new FileFilter("All files", "*.*");
+        IReadOnlyList<FileFilter> filters = command.Filters.Count > 0
+            ? command.Filters
+            : [new FileFilter("All files", "*.*")];
         string title = command.Title.TrimEnd('…', ' ');
         return command.Kind switch
         {
             AssetCommandKind.SaveFile => FilePickers.SaveAsync(
-                _storage, title, command.SuggestedFileName, filter.PrimaryExtension, filter.Label),
-            AssetCommandKind.OpenFile => FilePickers.OpenAsync(
-                _storage, title, filter.Label, [.. filter.Patterns]),
+                _storage, title, command.SuggestedFileName, filters),
+            AssetCommandKind.OpenFile => FilePickers.OpenAsync(_storage, title, filters),
             _ => Task.FromResult<string?>(null),
         };
     }
@@ -138,7 +139,9 @@ public partial class MainViewModel
         }
         if (changed.HasFlag(AssetChange.Scene))
         {
-            ShowScene(node);
+            // A texture is not itself a scene, so refresh whichever node the viewport is
+            // showing rather than clearing it: replacing a texture repaints the model.
+            ShowScene(node is ISceneAsset ? node : _sceneSource);
         }
         if (changed.HasFlag(AssetChange.Image))
         {

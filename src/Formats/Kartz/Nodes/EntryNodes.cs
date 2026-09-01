@@ -21,6 +21,7 @@ internal abstract class EntryNode : BinaryAssetNode
     public override int Size => Entry.Size;
     public override string Extension =>
         Path.GetExtension(Entry.Name) is { Length: > 1 } found ? found : ".bin";
+    public override string FileStem => Path.GetFileNameWithoutExtension(Entry.Name);
     protected override void Write(byte[] payload)
     {
         Entry.Replace(payload);
@@ -99,6 +100,7 @@ internal sealed class TextureNode : EntryNode, IImageAsset, IDescribable
 internal sealed class TrackNode : EntryNode, ISceneAsset, IDescribable, ICommandSource
 {
     private SceneGeometry? _scene;
+    private int _revision = -1;
     public TrackNode(TrackContext context, string name, string path, DwkEntry entry)
         : base(context, name, path, entry)
     {
@@ -107,6 +109,7 @@ internal sealed class TrackNode : EntryNode, ISceneAsset, IDescribable, ICommand
     private SskTrack Track { get => field ??= Context.ParseTrack(Entry); set; }
     public SceneGeometry? GetScene()
     {
+        DropStaleCache();
         _scene ??= TrackScene.Build(Track);
         return _scene.TriangleCount > 0 ? _scene : null;
     }
@@ -119,14 +122,23 @@ internal sealed class TrackNode : EntryNode, ISceneAsset, IDescribable, ICommand
     {
         Track = null;
         _scene = null;
+        _revision = Context.Archive.Revision;
+    }
+    private void DropStaleCache()
+    {
+        if (_revision != Context.Archive.Revision)
+        {
+            Invalidate();
+        }
     }
     public IEnumerable<AssetCommand> GetCommands()
     {
         yield return new AssetCommand
         {
-            Title = "Replace Track from glTF…",
+            Title = "Replace track from glTF",
             Kind = AssetCommandKind.OpenFile,
-            Filter = new FileFilter("glTF model", "*.glb", "*.gltf"),
+            Role = AssetCommandRole.Replace,
+            Filters = [new FileFilter("glTF model", "*.glb", "*.gltf")],
             Execute = Import,
         };
     }
@@ -170,6 +182,7 @@ internal sealed class TrackNode : EntryNode, ISceneAsset, IDescribable, ICommand
     }
     public IEnumerable<PropertyRow> Describe()
     {
+        DropStaleCache();
         SskTrack track = Track;
         yield return PropertyRow.Of("Vertices", track.Positions.Length / 3);
         yield return PropertyRow.Of("Triangles", track.Indices.Length / 3);

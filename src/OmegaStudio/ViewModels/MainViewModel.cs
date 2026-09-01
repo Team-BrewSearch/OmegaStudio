@@ -19,6 +19,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
     private AssetRecognition _recognition = AssetRecognition.None;
     private TreeBuilder _tree = new(AssetRecognition.None);
     private IAudioAsset? _currentAudio;
+    private IAssetNode? _sceneSource;
     private Task? _audioLoad;
     private AudioInfo? _audioInfo;
     private bool _disposed;
@@ -122,9 +123,11 @@ public partial class MainViewModel : ObservableObject, IDisposable
         if (node is not ISceneAsset source)
         {
             Animation.Unbind();
+            _sceneSource = null;
             ViewportScene = null;
             return;
         }
+        _sceneSource = node;
         Viewport?.ClearAnimatedFrame();
         SceneGeometry? scene = PluginGuard.Try($"Building the scene for '{node.Name}'", source.GetScene, null);
         if (scene is not null)

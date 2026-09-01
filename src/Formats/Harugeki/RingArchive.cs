@@ -25,9 +25,11 @@ public sealed class RingArchive
     public RingNode Root { get; }
     internal IHostServices? Host { get; }
     public bool IsDirty { get; private set; }
+    public int Revision { get; private set; }
     internal void MarkDirty()
     {
         IsDirty = true;
+        Revision++;
     }
     public void MarkSaved()
     {

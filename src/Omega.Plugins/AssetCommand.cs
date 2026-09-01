@@ -56,15 +56,27 @@ public sealed class AssetCommandContext
         Host.Log(message);
     }
 }
+/// <summary>Where the host puts a command in the row&apos;s menu.</summary>
+public enum AssetCommandRole
+{
+    /// <summary>An entry of its own, titled by the command.</summary>
+    Own,
+    /// <summary>One of the file types the row&apos;s single <c>Replace…</c> entry accepts. The host runs whichever command claims the extension the user picked.</summary>
+    Replace,
+    /// <summary>One of the file types the row&apos;s single <c>Export…</c> entry writes, chosen the same way.</summary>
+    Export,
+}
 /// <summary>One entry a node adds to its own context menu.</summary>
 public sealed class AssetCommand
 {
-    /// <summary>Menu text.</summary>
+    /// <summary>Menu text. Shown only for an <see cref="AssetCommandRole.Own"/> command; the others are folded into a shared entry.</summary>
     public required string Title { get; init; }
     /// <summary>Whether the host prompts for a file before running.</summary>
     public AssetCommandKind Kind { get; init; } = AssetCommandKind.Immediate;
-    /// <summary>File types the prompt offers. Unused by an immediate command.</summary>
-    public FileFilter? Filter { get; init; }
+    /// <summary>Whether this command stands alone in the menu or is one of the file types a shared entry offers.</summary>
+    public AssetCommandRole Role { get; init; } = AssetCommandRole.Own;
+    /// <summary>File types the prompt offers, in the order the dialog lists them. Unused by an immediate command.</summary>
+    public IReadOnlyList<FileFilter> Filters { get; init; } = [];
     /// <summary>Name to pre-fill in a save prompt.</summary>
     public string SuggestedFileName { get; init; } = string.Empty;
     /// <summary>The work itself. Runs off the UI thread; report what changed through the context.</summary>

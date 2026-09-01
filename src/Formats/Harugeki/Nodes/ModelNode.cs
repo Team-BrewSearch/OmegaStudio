@@ -11,12 +11,13 @@ internal sealed class ModelNode : SlotNode, ISceneAsset, IAnimatedAsset, IDescri
     private readonly Dictionary<RingMesh, SkinBinding?> _bindings = [];
     private RingModel _model;
     private SceneGeometry? _scene;
+    private int _sceneRevision = -1;
     public ModelNode(RingNode slot, string header)
         : this(slot, header, RingModel.Parse(slot.Span))
     {
     }
     private ModelNode(RingNode slot, string header, RingModel model)
-        : base(slot, $"{header} {model.Name}")
+        : base(slot, $"{header} {model.Name}", stem: model.Name)
     {
         _header = header;
         _model = model;
@@ -24,7 +25,13 @@ internal sealed class ModelNode : SlotNode, ISceneAsset, IAnimatedAsset, IDescri
     }
     public SceneGeometry? GetScene()
     {
-        return _scene ??= ModelScene.Build(_model);
+        int revision = Slot.Archive.Revision;
+        if (_scene is null || _sceneRevision != revision)
+        {
+            _scene = ModelScene.Build(_model);
+            _sceneRevision = revision;
+        }
+        return _scene;
     }
     [AllowNull]
     public IReadOnlyList<AnimationClip> Clips { get => field ??= FindClips(); private set; }
@@ -57,9 +64,10 @@ internal sealed class ModelNode : SlotNode, ISceneAsset, IAnimatedAsset, IDescri
     {
         yield return new AssetCommand
         {
-            Title = "Replace Geometry from glTF…",
+            Title = "Replace geometry from glTF",
             Kind = AssetCommandKind.OpenFile,
-            Filter = new FileFilter("glTF model", "*.gltf", "*.glb"),
+            Role = AssetCommandRole.Replace,
+            Filters = [new FileFilter("glTF model", "*.gltf", "*.glb")],
             Execute = Import,
         };
     }
@@ -101,7 +109,7 @@ internal sealed class ModelNode : SlotNode, ISceneAsset, IAnimatedAsset, IDescri
         string path = Slot.PathText;
         yield return new GroupNode(
             "Meshes", $"{path}/meshes", $"{model.Meshes.Count}",
-            () => model.Meshes.Select(mesh => new MeshNode(model, mesh, path)));
+            () => model.Meshes.Select(mesh => new MeshNode(Slot.Archive, model, mesh, path)));
         yield return new GroupNode(
             "Materials", $"{path}/materials", $"{model.Meshes.Sum(m => m.Materials.Count)}",
             () => model.Meshes

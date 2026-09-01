@@ -5,25 +5,29 @@ namespace Harugeki.Formats.Nodes;
 
 internal sealed class MeshNode : AssetNode, ISceneAsset, IDescribable
 {
+    private readonly RingArchive _archive;
     private readonly RingModel _model;
     private readonly RingMesh _mesh;
     private SceneGeometry? _scene;
-    public MeshNode(RingModel model, RingMesh mesh, string parentPath)
+    private int _sceneRevision = -1;
+    public MeshNode(RingArchive archive, RingModel model, RingMesh mesh, string parentPath)
         : base(mesh.Name,
                $"{parentPath}/mesh/{mesh.NodeIndex:00}",
                AssetKinds.Mesh,
                $"{mesh.TriangleCount} tris, {mesh.VertexCount} verts")
     {
+        _archive = archive;
         _model = model;
         _mesh = mesh;
         ChildFactory = () => _mesh.Materials.Select(m => (IAssetNode)new MaterialNode(_model, m, PathText));
     }
     public SceneGeometry? GetScene()
     {
-        if (_scene is not null)
+        if (_scene is not null && _sceneRevision == _archive.Revision)
         {
             return _scene;
         }
+        _sceneRevision = _archive.Revision;
         SceneGeometry whole = ModelScene.Build(_model);
         SceneMesh? mine = whole.Meshes.FirstOrDefault(m => m.Name == _mesh.Name);
         return _scene = mine is null

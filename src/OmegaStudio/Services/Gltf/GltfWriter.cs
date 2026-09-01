@@ -46,6 +46,7 @@ internal static class GltfWriter
         private readonly JsonArray _nodes = [];
         private readonly JsonArray _meshes = [];
         private readonly JsonArray _materials = [];
+        private readonly Dictionary<(string Name, int Texture, bool AlphaClip), int> _materialIndex = [];
         private readonly JsonArray _images = [];
         private readonly JsonArray _textures = [];
         private readonly JsonArray _sceneNodes = [];
@@ -330,6 +331,11 @@ internal static class GltfWriter
         }
         private int Material(SceneSubmesh submesh)
         {
+            (string, int, bool) key = (submesh.Name, submesh.TextureIndex, submesh.AlphaClip);
+            if (_materialIndex.TryGetValue(key, out int existing))
+            {
+                return existing;
+            }
             JsonObject pbr = new()
             {
                 ["baseColorFactor"] = new JsonArray(
@@ -356,6 +362,7 @@ internal static class GltfWriter
                 material["alphaCutoff"] = 0.5;
             }
             _materials.Add(material);
+            _materialIndex[key] = _materials.Count - 1;
             return _materials.Count - 1;
         }
         private static JsonArray MatrixArray(in Matrix4x4 m)

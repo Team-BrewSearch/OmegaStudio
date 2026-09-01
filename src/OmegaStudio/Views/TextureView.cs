@@ -15,6 +15,7 @@ public sealed class TextureView : Control
     public static readonly StyledProperty<double> ZoomProperty =
         AvaloniaProperty.Register<TextureView, double>(nameof(Zoom), 1.0);
     private Point _origin;
+    private bool _actualSizePreferred;
     private bool _pendingFirstView;
     private bool _dragging;
     private Point _lastPointer;
@@ -40,13 +41,26 @@ public sealed class TextureView : Control
     }
     public void Fit()
     {
-        _ = Rescale(magnify: true);
+        _actualSizePreferred = false;
+        _pendingFirstView = !Rescale();
+    }
+    public void ActualSize()
+    {
+        _actualSizePreferred = true;
+        _pendingFirstView = false;
+        Zoom = 1.0;
+        Centre();
     }
     private void ShowFirstView()
     {
-        _pendingFirstView = !Rescale(magnify: false);
+        if (_actualSizePreferred)
+        {
+            ActualSize();
+            return;
+        }
+        _pendingFirstView = !Rescale();
     }
-    private bool Rescale(bool magnify)
+    private bool Rescale()
     {
         if (Source is not { } image || Bounds.Width <= 0 || Bounds.Height <= 0)
         {
@@ -58,14 +72,9 @@ public sealed class TextureView : Control
             return false;
         }
         double scale = Math.Min(Bounds.Width / size.Width, Bounds.Height / size.Height);
-        Zoom = Math.Clamp(magnify ? scale : Math.Min(scale, 1.0), MinZoom, MaxZoom);
+        Zoom = Math.Clamp(scale, MinZoom, MaxZoom);
         Centre();
         return true;
-    }
-    public void ActualSize()
-    {
-        Zoom = 1.0;
-        Centre();
     }
     protected override void OnSizeChanged(SizeChangedEventArgs e)
     {

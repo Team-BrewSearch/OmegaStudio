@@ -125,6 +125,10 @@ internal sealed class FolderNode : AssetNode
 }
 ```
 
+`Name` is the tree label, and a label often carries what a filename should not: a slot number, a prefix, an extension the payload already names.
+Override `FileStem` with the row's plain name where it does, because that is what the host offers when the row is extracted or exported.
+A row named `[00] haruhi00` with a `FileStem` of `haruhi00` extracts as `haruhi00.bin`, and one with no name of its own falls back to its slot number.
+
 Keep `HasChildren` cheap. 
 it is asked for every visible row, and answering it must not parse anything.
 `BinaryAssetNode` handles the replace plumbing for you.
@@ -209,7 +213,7 @@ public IEnumerable<AssetCommand> GetCommands()
     {
         Title = "Import Track from glTF…",
         Kind = AssetCommandKind.OpenFile,
-        Filter = new FileFilter("glTF 2.0", "*.glb", "*.gltf"),
+        Filters = [new FileFilter("glTF 2.0", "*.glb", "*.gltf")],
         Execute = context =>
         {
             GltfDocument document = context.Host.Gltf.Read(context.Path!);
@@ -221,13 +225,14 @@ public IEnumerable<AssetCommand> GetCommands()
 }
 ```
 
-Three things matter here:
+Four things matter here:
 
 -   **Set `Changed`.** It tells the host which views to refresh, and an edit reported as `AssetChange.None` is not recorded in the undo history at all.
 -   **Throw on failure.** The host catches, logs the message, and leaves the archive alone. Returning quietly makes a command that did nothing look like one that worked.
 -   **`Execute` runs off the UI thread.** Report progress through `context.Log`.
+-   **`Role` decides where the entry lands.** Left at `AssetCommandRole.Own` the command is its own menu entry, titled by `Title`. Set it to `Replace` or `Export` and the command instead becomes one of the file types the row's single `Replace…` or `Export…` entry offers; the host runs it when the file the user chose carries one of your `Filters`' extensions, and `Title` is then only a label for the undo history. Use it for anything that rewrites the node from a file, so the user has one Replace command rather than three.
 
-Extract Raw, Replace Raw, Export PNG, Replace from PNG, and Export glTF are built in; they come from the capability interfaces. Add commands only for what is specific to your format.
+Extract, Extract Audio, Export (PNG, JPEG, BMP and glTF) and Replace (raw bytes and the same image formats) are built in; they come from the capability interfaces. Add commands only for what is specific to your format.
 Note the undo limit: a snapshot covers the node the command ran on, which is all the host can see. A command that also rewrites a _sibling_ node leaves that sibling as the command left it, and the host clears the history rather than offer an undo that would half-revert.
 
 ## Host services
@@ -236,7 +241,7 @@ Note the undo limit: a snapshot covers the node the command ran on, which is all
 
 ```csharp
 ImageData png   = context.Host.Images.Load(path);
-byte[] encoded  = context.Host.Images.EncodePng(image);
+byte[] encoded  = context.Host.Images.Encode(image, ".bmp");
 GltfDocument in = context.Host.Gltf.Read(path);
 context.Host.Gltf.Write(scene, path);
 context.Host.Log("something worth seeing in the Console pane");
@@ -265,8 +270,9 @@ Every parse boundary in the in-tree plugins bounds its allocations against the r
 - [ ] `Info.Id` unique, `ContractVersion` left at its default
 - [ ] `CanOpen` claims narrowly and never throws
 - [ ] `HasChildren` answers without parsing; `GetChildren` does the work
+- [ ] `FileStem` overridden wherever `Name` carries decoration a filename should not
 - [ ] `BackupPaths` lists every file `Save` overwrites
 - [ ] `Save` serialises fully before writing
 - [ ] Geometry is right-handed, Z-up, and passes `SceneGeometry.Validate()`
-- [ ] Commands set `Changed` and throw on failure
+- [ ] Commands set `Changed` and throw on failure, and anything that rewrites the node from a file sets `Role`
 - [ ] Parse errors name the offset and say what was wrong

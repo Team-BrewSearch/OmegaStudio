@@ -13,9 +13,18 @@ public sealed class DwkArchive
     {
         _entries = entries;
         _alignment = alignment;
+        foreach (DwkEntry entry in entries)
+        {
+            entry.Owner = this;
+        }
     }
     public IReadOnlyList<DwkEntry> Entries => _entries;
     public bool HasChanges => _entries.Exists(e => e.IsDirty);
+    public int Revision { get; private set; }
+    internal void MarkChanged()
+    {
+        Revision++;
+    }
     public static DwkArchive Load(string gdaPath, string gdfPath, string gdtPath)
     {
         byte[] gdaData = File.ReadAllBytes(gdaPath);

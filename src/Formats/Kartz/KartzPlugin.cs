@@ -10,7 +10,7 @@ public sealed class KartzPlugin : IFormatPlugin
     {
         Id = "kartz",
         DisplayName = "Madagascar Kartz / Super Star Kartz",
-        Version = "1.0.0",
+        Version = "1.0.1",
         Author = "Omega Studio",
         Description = "Tracks and textures from the Nintendo DS GDA/GDF/GDT archives.",
     };
