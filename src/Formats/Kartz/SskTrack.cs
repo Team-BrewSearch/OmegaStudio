@@ -1,6 +1,5 @@
 using Kartz.Formats.Binary;
 using System.Buffers.Binary;
-using SMath = System.Math;
 namespace Kartz.Formats;
 
 public sealed class SskDrawSection
@@ -40,43 +39,6 @@ public sealed class SskTrack
             }
             return max;
         }
-    }
-    public readonly record struct SlotUsage(float MaxU, float MaxV, int Samples);
-    public SlotUsage[] MeasureSlotUsage(int slotCount)
-    {
-        if (slotCount <= 0)
-        {
-            return [];
-        }
-        float[] maxU = new float[slotCount];
-        float[] maxV = new float[slotCount];
-        int[] samples = new int[slotCount];
-        foreach (SskDrawSection section in Sections)
-        {
-            int slot = section.TextureIndex;
-            if (slot < 0 || slot >= slotCount)
-            {
-                continue;
-            }
-            int end = SMath.Min(section.IndexFirst + section.IndexCount, Indices.Length);
-            for (int i = section.IndexFirst; i < end; i++)
-            {
-                int v = Indices[i];
-                if (v < 0 || (v * 2) + 1 >= Uvs.Length)
-                {
-                    continue;
-                }
-                maxU[slot] = SMath.Max(maxU[slot], SMath.Abs(Uvs[v * 2]));
-                maxV[slot] = SMath.Max(maxV[slot], SMath.Abs(Uvs[(v * 2) + 1]));
-                samples[slot]++;
-            }
-        }
-        SlotUsage[] usage = new SlotUsage[slotCount];
-        for (int i = 0; i < slotCount; i++)
-        {
-            usage[i] = new SlotUsage(maxU[i], maxV[i], samples[i]);
-        }
-        return usage;
     }
     public void AttachTextures(IReadOnlyList<SskTexture> textures)
     {

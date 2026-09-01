@@ -1,15 +1,15 @@
-using Kartz.Formats.Binary;
+using Kartz.Formats.Rdf;
 namespace Kartz.Formats;
 
 public sealed class KartzResourceIndex
 {
-    private const uint ArchiveReference = 1;
-    private readonly List<(string File, int[] Values)> _files;
-    private KartzResourceIndex(List<(string File, int[] Values)> files)
+    private readonly Dictionary<int, int[][]> _slotsByModel;
+    private KartzResourceIndex(Dictionary<int, int[][]> slotsByModel, int databaseCount)
     {
-        _files = files;
+        _slotsByModel = slotsByModel;
+        DatabaseCount = databaseCount;
     }
-    public int DatabaseCount => _files.Count;
+    public int DatabaseCount { get; }
     public static KartzResourceIndex? Load(string archiveDirectory, int archiveEntryCount)
     {
         if (string.IsNullOrEmpty(archiveDirectory)
@@ -18,7 +18,8 @@ public sealed class KartzResourceIndex
         {
             return null;
         }
-        List<(string File, int[] Values)> files = [];
+        Dictionary<int, int[][]> slots = [];
+        int databases = 0;
         foreach (string path in Directory.EnumerateFiles(archiveDirectory, "*.rdf")
             .OrderBy(p => p, StringComparer.OrdinalIgnoreCase))
         {
@@ -35,56 +36,78 @@ public sealed class KartzResourceIndex
             {
                 continue;
             }
-            int[] values = [.. CollectReferences(data, archiveEntryCount)];
-            if (values.Length > 0)
+            if (RdfDocument.Load(data) is not { } document)
             {
-                files.Add((Path.GetFileName(path), values));
-            }
-        }
-        return files.Count > 0 ? new KartzResourceIndex(files) : null;
-    }
-    public IReadOnlyList<int>? FindTextureOrder(IReadOnlySet<int> own)
-    {
-        ArgumentNullException.ThrowIfNull(own);
-        List<(string File, int[] Values)> ordered = [.. _files
-            .OrderByDescending(f => f.Values.Count(own.Contains))
-            .ThenBy(f => f.File, StringComparer.OrdinalIgnoreCase)];
-        List<int> sequence = [];
-        HashSet<int> seen = [];
-        foreach ((_, int[] values) in ordered)
-        {
-            foreach (int value in values)
-            {
-                if (own.Contains(value) && seen.Add(value))
-                {
-                    sequence.Add(value);
-                }
-            }
-        }
-        return sequence.Count > 0 ? sequence : null;
-    }
-    private static List<int> CollectReferences(byte[] data, int archiveEntryCount)
-    {
-        List<int> values = [];
-        int i = 0;
-        while (i + 8 <= data.Length)
-        {
-            if (!IsReference(data, i, archiveEntryCount))
-            {
-                i += 4;
                 continue;
             }
-            while (i + 8 <= data.Length && IsReference(data, i, archiveEntryCount))
+            databases++;
+            Collect(document.Root, archiveEntryCount, slots, []);
+        }
+        return databases > 0 ? new KartzResourceIndex(slots, databases) : null;
+    }
+    public IReadOnlyList<int[]>? TextureSlots(int modelEntryIndex)
+    {
+        return _slotsByModel.TryGetValue(modelEntryIndex, out int[][]? slots) ? slots : null;
+    }
+    private static void Collect(
+        RdfRecord record,
+        int archiveEntryCount,
+        Dictionary<int, int[][]> slots,
+        HashSet<RdfRecord> visited)
+    {
+        if (!visited.Add(record))
+        {
+            return;
+        }
+        Register(record, archiveEntryCount, slots);
+        foreach (RdfProperty property in record.Properties)
+        {
+            if (property.Record is { } child)
             {
-                values.Add((int)BinaryRead.U32(data, i + 4));
-                i += 8;
+                Collect(child, archiveEntryCount, slots, visited);
+            }
+            if (property.Records is not { } children)
+            {
+                continue;
+            }
+            foreach (RdfRecord element in children)
+            {
+                Collect(element, archiveEntryCount, slots, visited);
             }
         }
-        return values;
     }
-    private static bool IsReference(byte[] data, int at, int archiveEntryCount)
+    private static void Register(RdfRecord record, int archiveEntryCount, Dictionary<int, int[][]> slots)
     {
-        return BinaryRead.U32(data, at) == ArchiveReference
-            && BinaryRead.U32(data, at + 4) < (uint)archiveEntryCount;
+        if (record.Find("model") is not { Ids: { Length: > 0 } ids }
+            || SlotTable(record) is not { } table)
+        {
+            return;
+        }
+        foreach (int id in ids)
+        {
+            if (id >= 0 && id < archiveEntryCount)
+            {
+                slots[id] = table;
+            }
+        }
+    }
+    private static int[][]? SlotTable(RdfRecord record)
+    {
+        if (record.Find("textures") is not { } textures)
+        {
+            return null;
+        }
+        IReadOnlyList<RdfRecord>? entries = textures.Records
+            ?? textures.Record?.Find("texture")?.Records;
+        if (entries is null)
+        {
+            return null;
+        }
+        int[][] table = new int[entries.Count][];
+        for (int i = 0; i < entries.Count; i++)
+        {
+            table[i] = entries[i].Find("name")?.Ids ?? [];
+        }
+        return table;
     }
 }

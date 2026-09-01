@@ -21,32 +21,6 @@ public sealed class SskTexture
     {
         return blob.Length >= 16 && blob[..4].SequenceEqual(NttxMagic);
     }
-    public static bool TryReadDimensions(ReadOnlySpan<byte> blob, out int width, out int height)
-    {
-        width = 0;
-        height = 0;
-        if (!IsTexture(blob))
-        {
-            return false;
-        }
-        int secOff = 0x10;
-        while (secOff + 8 <= blob.Length && blob.Slice(secOff, 4).SequenceEqual(PaltMagic))
-        {
-            uint paltSize = BinaryRead.U32(blob, secOff + 4);
-            if (paltSize == 0 || secOff + paltSize > blob.Length)
-            {
-                return false;
-            }
-            secOff += (int)paltSize;
-        }
-        if (secOff + 20 > blob.Length || !blob.Slice(secOff, 4).SequenceEqual(ImgeMagic))
-        {
-            return false;
-        }
-        width = BinaryRead.U16(blob, secOff + 12);
-        height = BinaryRead.U16(blob, secOff + 14);
-        return width > 0 && height > 0;
-    }
     public static SskTexture Parse(ReadOnlySpan<byte> blob, string name)
     {
         return Parse(blob, name, colorZeroTransparency: true);
