@@ -1,0 +1,73 @@
+name: .NET Core Desktop
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+jobs:
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+
+    - name: Setup .NET
+      uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: '10'
+
+    - name: Restore dependencies
+      run: dotnet restore src/OmegaStudio.slnx
+
+    - name: Run tests
+      run: dotnet test src/OmegaStudio.slnx --configuration Release --no-restore
+
+  build:
+    name: Build ${{ matrix.rid }}
+    runs-on: ${{ matrix.os }}
+    needs: test
+
+    strategy:
+      matrix:
+        include:
+          - os: windows-latest
+            rid: win-x86
+            self-contained: 'false'
+          - os: windows-latest
+            rid: win-x64
+            self-contained: 'false'
+          - os: ubuntu-latest
+            rid: linux-x64
+            self-contained: 'true'
+          - os: ubuntu-latest
+            rid: linux-arm64
+            self-contained: 'true'
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+
+    - name: Setup .NET
+      uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: '10'
+
+    - name: Build Release
+      run: dotnet build src/OmegaStudio.slnx --configuration Release --nologo --verbosity minimal
+
+    - name: Publish
+      run: dotnet publish src/OmegaStudio/OmegaStudio.csproj --configuration Release --runtime ${{ matrix.rid }} --self-contained ${{ matrix.self-contained }} -p:PublishSingleFile=true -p:DebugType=none -p:DebugSymbols=false -p:IncludeNativeLibrariesForSelfExtract=true ${{ matrix.self-contained == 'true' && '-p:EnableCompressionInSingleFile=true' || '' }} --output src/publish/${{ matrix.rid }} --nologo --verbosity minimal
+
+    - name: Upload artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: OmegaStudio-${{ matrix.rid }}
+        path: src/publish/${{ matrix.rid }}/
