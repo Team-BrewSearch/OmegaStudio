@@ -48,7 +48,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
     [ObservableProperty]
     public partial string Status { get; set; } = "Open an archive to begin.";
     public ObservableCollection<TreeItemViewModel> Roots { get; } = [];
-    public ObservableCollection<PropertyRow> Properties { get; } = [];
+    public ObservableCollection<PropertyItem> Properties { get; } = [];
     public ObservableCollection<AssetCommandViewModel> Commands { get; } = [];
     public string ConsoleText => _console.Text;
     public Array ShadingModes { get; } = Enum.GetValues<ShadingMode>();
@@ -197,10 +197,37 @@ public partial class MainViewModel : ObservableObject, IDisposable
     private void RebuildProperties(IAssetNode? node)
     {
         Properties.Clear();
+        TreeItemViewModel? owner = SelectedItem;
         foreach (PropertyRow row in PropertyInspector.Describe(node, _audioInfo))
         {
-            Properties.Add(row);
+            Properties.Add(PropertyItem.For(
+                row, (edited, value) => CommitProperty(edited, value, owner, node)));
         }
+    }
+    private void CommitProperty(
+        PropertyRow row, string value, TreeItemViewModel? item, IAssetNode? node)
+    {
+        if (item is null || node is null || row.Apply is not { } apply)
+        {
+            return;
+        }
+        bool applied = PluginGuard.Try($"Setting '{row.Name}'", () => { apply(value); return true; }, false);
+        if (applied)
+        {
+            RecordPropertyEdit(row, item, row.Value, value);
+            Log($"Set {row.Name} to {value}.");
+        }
+        Dispatcher.UIThread.Post(() =>
+        {
+            if (applied)
+            {
+                ApplyChanges(item, node, row.Changed | AssetChange.Properties);
+            }
+            else
+            {
+                RebuildProperties(node);
+            }
+        });
     }
     private void RebuildCommands(IAssetNode? node)
     {

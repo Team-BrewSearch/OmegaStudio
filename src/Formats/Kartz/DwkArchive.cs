@@ -21,15 +21,24 @@ public sealed class DwkArchive
     public IReadOnlyList<DwkEntry> Entries => _entries;
     public bool HasChanges => _entries.Exists(e => e.IsDirty);
     public int Revision { get; private set; }
+    public event Action? Changed;
     internal void MarkChanged()
     {
         Revision++;
+        Changed?.Invoke();
     }
     public static DwkArchive Load(string gdaPath, string gdfPath, string gdtPath)
     {
         byte[] gdaData = File.ReadAllBytes(gdaPath);
         byte[] gdfData = File.ReadAllBytes(gdfPath);
         byte[] gdtData = File.ReadAllBytes(gdtPath);
+        return Build(gdaData, gdfData, gdtData);
+    }
+    public static DwkArchive Load(byte[] gdaData, byte[] gdfData, byte[] gdtData)
+    {
+        ArgumentNullException.ThrowIfNull(gdaData);
+        ArgumentNullException.ThrowIfNull(gdfData);
+        ArgumentNullException.ThrowIfNull(gdtData);
         return Build(gdaData, gdfData, gdtData);
     }
     private static DwkArchive Build(byte[] gdaData, byte[] gdfData, byte[] gdtData)
@@ -102,11 +111,11 @@ public sealed class DwkArchive
         {
             return;
         }
-        (byte[] gdaBytes, byte[] gdtBytes) = await Task.Run(Repack);
+        (byte[] gdaBytes, byte[] gdtBytes) = await Task.Run(Pack);
         await File.WriteAllBytesAsync(gdaPath, gdaBytes);
         await File.WriteAllBytesAsync(gdtPath, gdtBytes);
     }
-    private (byte[] Gda, byte[] Gdt) Repack()
+    public (byte[] Gda, byte[] Gdt) Pack()
     {
         int count = _entries.Count;
         byte[] gdtBytes = new byte[8 + (count * 8)];

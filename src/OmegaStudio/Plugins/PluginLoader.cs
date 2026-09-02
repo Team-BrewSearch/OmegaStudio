@@ -81,7 +81,7 @@ internal static class PluginLoader
     {
         string full = Path.GetFullPath(file);
         PluginLoadContext context = new(full);
-        Assembly assembly = context.LoadFromAssemblyPath(full);
+        Assembly assembly = context.LoadPlugin();
         OmegaPluginAttribute? attribute = assembly.GetCustomAttribute<OmegaPluginAttribute>();
         if (attribute is null)
         {

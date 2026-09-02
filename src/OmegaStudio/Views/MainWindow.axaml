@@ -270,15 +270,40 @@
           </Border>
           <ScrollViewer>
             <ItemsControl ItemsSource="{Binding Properties}" Margin="10,8">
-              <ItemsControl.ItemTemplate>
-                <DataTemplate x:DataType="up:PropertyRow">
+              <ItemsControl.DataTemplates>
+                <DataTemplate x:DataType="vm:ReadOnlyPropertyItem">
                   <Grid ColumnDefinitions="120,*" Margin="0,3">
                     <TextBlock Grid.Column="0" Text="{Binding Name}" Classes="label" TextWrapping="Wrap"
                                VerticalAlignment="Top" />
                     <TextBlock Grid.Column="1" Text="{Binding Value}" Classes="value" />
                   </Grid>
                 </DataTemplate>
-              </ItemsControl.ItemTemplate>
+                <DataTemplate x:DataType="vm:TextPropertyItem">
+                  <Grid ColumnDefinitions="120,*" Margin="0,3">
+                    <TextBlock Grid.Column="0" Text="{Binding Name}" Classes="label" TextWrapping="Wrap"
+                               VerticalAlignment="Center" />
+                    <TextBox Grid.Column="1" Padding="6,2"
+                             KeyDown="PropertyBox_OnKeyDown"
+                             Text="{Binding Value, Mode=TwoWay, UpdateSourceTrigger=LostFocus}" />
+                  </Grid>
+                </DataTemplate>
+                <DataTemplate x:DataType="vm:TogglePropertyItem">
+                  <Grid ColumnDefinitions="120,*" Margin="0,3">
+                    <TextBlock Grid.Column="0" Text="{Binding Name}" Classes="label" TextWrapping="Wrap"
+                               VerticalAlignment="Center" />
+                    <CheckBox Grid.Column="1" IsChecked="{Binding IsChecked, Mode=TwoWay}" />
+                  </Grid>
+                </DataTemplate>
+                <DataTemplate x:DataType="vm:ChoicePropertyItem">
+                  <Grid ColumnDefinitions="120,*" Margin="0,3">
+                    <TextBlock Grid.Column="0" Text="{Binding Name}" Classes="label" TextWrapping="Wrap"
+                               VerticalAlignment="Center" />
+                    <ComboBox Grid.Column="1" HorizontalAlignment="Stretch"
+                              ItemsSource="{Binding Choices}"
+                              SelectedItem="{Binding Selected, Mode=TwoWay}" />
+                  </Grid>
+                </DataTemplate>
+              </ItemsControl.DataTemplates>
             </ItemsControl>
           </ScrollViewer>
         </DockPanel>

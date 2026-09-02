@@ -135,12 +135,10 @@ public partial class MainViewModel
         }
         if (changed.HasFlag(AssetChange.Children) && node.HasChildren)
         {
-            target.Reload(() => node.GetChildren().Select(_tree.ForNode));
+            target.Reload(() => _tree.Children(node));
         }
         if (changed.HasFlag(AssetChange.Scene))
         {
-            // A texture is not itself a scene, so refresh whichever node the viewport is
-            // showing rather than clearing it: replacing a texture repaints the model.
             ShowScene(node is ISceneAsset ? node : _sceneSource);
         }
         if (changed.HasFlag(AssetChange.Image))

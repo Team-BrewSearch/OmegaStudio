@@ -4,6 +4,7 @@ namespace OmegaStudio.Plugins;
 internal sealed class AssetRecognition
 {
     private readonly List<Entry> _entries = [];
+    private readonly List<ContainerEntry> _containers = [];
     private AssetRecognition()
     {
     }
@@ -23,6 +24,15 @@ internal sealed class AssetRecognition
             {
                 recognition._entries.Add(
                     new Entry(recognizer, new HostServices(plugin, log, recognition)));
+            }
+            IReadOnlyList<IContainerRecognizer> containers = PluginGuard.Try(
+                $"Listing container recognisers for {plugin.Info.DisplayName}",
+                () => (IReadOnlyList<IContainerRecognizer>)[.. plugin.Plugin.Containers],
+                []);
+            foreach (IContainerRecognizer container in containers)
+            {
+                recognition._containers.Add(
+                    new ContainerEntry(container, new HostServices(plugin, log, recognition)));
             }
         }
         return recognition;
@@ -50,6 +60,28 @@ internal sealed class AssetRecognition
             }
         }
         return node;
+    }
+    public IReadOnlyList<IAssetNode> Group(IReadOnlyList<IAssetNode> children)
+    {
+        foreach (ContainerEntry entry in _containers)
+        {
+            IReadOnlyList<IAssetNode>? claimed = PluginGuard.Try<IReadOnlyList<IAssetNode>?>(
+                $"Looking for {entry.Recognizer.Id} containers",
+                () => entry.Recognizer.Claim(children, entry.Host),
+                null);
+            if (claimed is null)
+            {
+                continue;
+            }
+            if (claimed.Any(row => row is null))
+            {
+                PluginGuard.Log?.Invoke(
+                    $"Container recogniser {entry.Recognizer.Id} returned an empty row; its claim was ignored.");
+                continue;
+            }
+            children = claimed;
+        }
+        return children;
     }
     public bool IsKnownPayload(ReadOnlySpan<byte> data)
     {
@@ -83,4 +115,5 @@ internal sealed class AssetRecognition
         }
     }
     private readonly record struct Entry(IAssetRecognizer Recognizer, IHostServices Host);
+    private readonly record struct ContainerEntry(IContainerRecognizer Recognizer, IHostServices Host);
 }

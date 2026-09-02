@@ -24,4 +24,6 @@ public interface IFormatPlugin
     IEnumerable<IArchiveFormat> Archives => [];
     /// <summary>Payload recognisers this plugin contributes to every open archive, whichever plugin opened it.</summary>
     IEnumerable<IAssetRecognizer> Recognizers => [];
+    /// <summary>Recognisers for containers split across sibling rows, offered every folder of every open archive.</summary>
+    IEnumerable<IContainerRecognizer> Containers => [];
 }

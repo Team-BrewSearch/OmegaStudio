@@ -72,6 +72,20 @@ public partial class MainViewModel
         _history.Push(new AssetEdit(Describe(title), row, before, after, changed));
         HistoryChanged();
     }
+    private void RecordPropertyEdit(PropertyRow row, TreeItemViewModel item, string before, string after)
+    {
+        if (row.Apply is not { } apply || !row.Changed.HasFlag(AssetChange.Dirty) || before == after)
+        {
+            return;
+        }
+        _history.Push(new AssetEdit(
+            Describe($"Set {row.Name}"),
+            item.Source ?? item,
+            AssetSnapshot.ForProperty(apply, before),
+            AssetSnapshot.ForProperty(apply, after),
+            row.Changed | AssetChange.Properties));
+        HistoryChanged();
+    }
     private void ClearHistory()
     {
         _history.Clear();

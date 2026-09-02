@@ -6,7 +6,7 @@ For how the host uses what you implement, see [ARCHITECTURE.md](ARCHITECTURE.md)
 
 ## Rules the loader enforces
 
-1.  The file is named `*.Formats.dll` and lives in the `formats` folder beside the executable.
+1.  The file is named `*.Formats.dll` and lives in the `formats` folder beside the executable, on its own: whatever else it needs travels inside it.
 2.  The assembly carries `[assembly: OmegaPlugin(typeof(YourPlugin))]`.
 3.  That type implements `IFormatPlugin` and has a parameterless constructor.
 4.  `Info.ContractVersion` matches the host's `PluginContract.Version`. It defaults to the value you compiled against, so leave it alone and rebuild when it changes.
@@ -29,6 +29,8 @@ A `.csproj` under `src/Formats/` needs only:
 ```
 
 `Plugin.props` sets the assembly name to `Yourgame.Formats`, references `Omega.Plugins` with `Private="false"` so the contract is not copied beside your plugin, and copies the built DLL into the host's `formats` folder after every build.
+A plugin may take `PackageReference` dependencies of its own; `Plugin.props` embeds those libraries into your assembly as resources, and the host's load context reads them back out, privately to your plugin.
+You still ship one file, however many libraries you pull in: the Nintendo plugin carries [SceneGate Ekona](https://github.com/SceneGate/Ekona), Yarhl and Texim inside `Nintendo.Formats.dll`.
 Then add the project to `src/OmegaStudio.slnx`.
 Building outside this tree works the same way: reference `Omega.Plugins.dll`, do not copy it to your output, and put your DLL in `formats`.
 
@@ -54,7 +56,7 @@ public sealed class YourgamePlugin : IFormatPlugin
 }
 ```
 
-Both `Archives` and `Recognizers` default to empty, so implement only the one you need.
+`Archives`, `Recognizers` and `Containers` all default to empty, so implement only what you need.
 A plugin that just teaches the host to understand a payload format implements `Recognizers` alone, that is all the Generic plugin does.
 
 ## Opening a container
@@ -168,6 +170,25 @@ public IEnumerable<PropertyRow> Describe()
 }
 ```
 
+A row can also be editable. `PropertyRow.Editable` gives it a text box, `Switch` a check box and `Options` a drop-down, and the delegate you hand over is called with the committed value, once the user leaves the box or presses Enter:
+
+```csharp
+public IEnumerable<PropertyRow> Describe()
+{
+    yield return PropertyRow.Editable("Game title", _header.Title, value => _header.Title = Title(value));
+    yield return PropertyRow.Switch("Widescreen", _header.Widescreen, value => _header.Widescreen = value);
+    yield return PropertyRow.Options("Region", _header.Region, ["NTSC", "PAL"], value => _header.Region = value);
+}
+```
+
+Three things matter:
+
+-   **Validate, and throw to refuse.** The message you throw is what the user reads, and the pane redraws from the format, so a rejected edit visibly reverts. Validate where the field still is what the format can hold, not later at save time, when the user has no idea which of their edits was the bad one.
+-   **Mark the archive dirty.** `Changed` defaults to `AssetChange.Properties | AssetChange.Dirty`; set it where an edit also invalidates the tree, the viewport or the pixels. `IsDirty` on your archive is what `File ▸ Save` reads.
+-   **They land in the undo history.** The host records the row's old and new text and reverses an edit by handing the old value back to the same delegate, so `Apply` must accept any value it previously produced. A row whose old value the plugin would now reject is a row that cannot be undone.
+
+`Describe` is called again after every accepted edit, so build the rows from the format each time rather than caching them.
+
 **`ICommandSource`** - extra context-menu entries, described below.
 
 ## Recognizers
@@ -200,6 +221,41 @@ internal sealed class TimView(IAssetNode inner) : RecognizedAsset(inner), IImage
 Nodes that already carry content of their own are never wrapped, so a recognizer cannot shadow a format's own richer node.
 Recognizers also answer `IHostServices.IsKnownPayload`.
 Use that while walking a container to decide whether a blob is a standalone file to stop at, rather than another nested table to descend into.
+
+## Containers split across files
+
+Some archives are not one file. A Kartz archive is three — the data, the name table and the entry table — and none of them can be recognised alone, so `IArchiveFormat` only covers the case where the user picks one off disk.
+`IContainerRecognizer` covers the rest. The host offers it the rows of every folder in every open archive, once those rows have each been recognised on their own:
+
+```csharp
+public sealed class DwkContainerRecognizer : IContainerRecognizer
+{
+    public string Id => "kartz.gda.container";
+
+    public IReadOnlyList<IAssetNode>? Claim(IReadOnlyList<IAssetNode> children, IHostServices host)
+    {
+        // Return null to leave the folder alone, or the rows to show in place of the ones given.
+        // Kartz replaces the three rows of each triple with the archive row they make up.
+    }
+}
+```
+
+The rows you are handed are the ones the folder holds, so read their bytes through `IBinaryAsset` rather than reaching for a path: the folder may be inside somebody else's archive, and there may be no file to open.
+That is what makes the same recogniser work on a folder on disk and on `data/Publish.NDS` inside a DS ROM.
+
+A container you open this way has no `Save`. Only the archive the host opened has one, and it knows nothing about you.
+Write each edit back into the rows you were given, with `IBinaryAsset.ReplaceBytes`, as it happens:
+
+```csharp
+archive.Changed += () =>
+{
+    (byte[] data, byte[] table) = archive.Pack();
+    gdaRow.ReplaceBytes(data);
+    gdtRow.ReplaceBytes(table);
+};
+```
+
+That marks the outer archive dirty, so **File ▸ Save** rebuilds it with your bytes inside, and the host's undo history keeps working: it snapshots the node the user edited, and reversing that edit runs the same write-back again.
 
 ## Commands
 
@@ -268,11 +324,12 @@ Every parse boundary in the in-tree plugins bounds its allocations against the r
 - [ ] Assembly named `*.Formats.dll`, references only `Omega.Plugins`
 - [ ] `[assembly: OmegaPlugin(typeof(...))]` present
 - [ ] `Info.Id` unique, `ContractVersion` left at its default
-- [ ] `CanOpen` claims narrowly and never throws
+- [ ] `CanOpen` claims narrowly and never throws, and a container recogniser reads bytes through `IBinaryAsset` rather than paths
 - [ ] `HasChildren` answers without parsing; `GetChildren` does the work
 - [ ] `FileStem` overridden wherever `Name` carries decoration a filename should not
 - [ ] `BackupPaths` lists every file `Save` overwrites
 - [ ] `Save` serialises fully before writing
 - [ ] Geometry is right-handed, Z-up, and passes `SceneGeometry.Validate()`
+- [ ] Editable rows validate their input, throw a message worth reading, and leave the archive dirty
 - [ ] Commands set `Changed` and throw on failure, and anything that rewrites the node from a file sets `Role`
 - [ ] Parse errors name the offset and say what was wrong

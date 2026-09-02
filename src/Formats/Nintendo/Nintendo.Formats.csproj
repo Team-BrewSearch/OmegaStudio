@@ -1,0 +1,9 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OmegaPluginName>Nintendo</OmegaPluginName>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="SceneGate.Ekona" Version="1.2.1" />
+  </ItemGroup>
+  <Import Project="../../Plugin.props" />
+</Project>

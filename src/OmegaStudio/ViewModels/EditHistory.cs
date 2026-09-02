@@ -19,6 +19,10 @@ internal abstract class AssetSnapshot
             _ => null,
         };
     }
+    public static AssetSnapshot ForProperty(Action<string> apply, string value)
+    {
+        return new PropertySnapshot(apply, value);
+    }
     public abstract bool SameAs(AssetSnapshot other);
     public abstract void Restore(IAssetNode node);
     private sealed class BytesSnapshot : AssetSnapshot
@@ -35,6 +39,24 @@ internal abstract class AssetSnapshot
         public override void Restore(IAssetNode node)
         {
             ((IBinaryAsset)node).ReplaceBytes([.. _bytes]);
+        }
+    }
+    private sealed class PropertySnapshot : AssetSnapshot
+    {
+        private readonly Action<string> _apply;
+        private readonly string _value;
+        public PropertySnapshot(Action<string> apply, string value)
+        {
+            _apply = apply;
+            _value = value;
+        }
+        public override bool SameAs(AssetSnapshot other)
+        {
+            return other is PropertySnapshot snapshot && _value == snapshot._value;
+        }
+        public override void Restore(IAssetNode node)
+        {
+            _apply(_value);
         }
     }
     private sealed class ImageSnapshot : AssetSnapshot

@@ -10,11 +10,12 @@ public sealed class KartzPlugin : IFormatPlugin
     {
         Id = "kartz",
         DisplayName = "Madagascar Kartz / Super Star Kartz",
-        Version = "1.0.2",
+        Version = "1.0.3",
         Author = "Omega Studio",
-        Description = "Tracks and textures from the Nintendo DS GDA/GDF/GDT archives.",
+        Description = "Tracks and textures from the Nintendo DS GDA/GDF/GDT archives, on disk or inside a DS ROM.",
     };
     public IEnumerable<IArchiveFormat> Archives { get; } = [new DwkArchiveFormat()];
+    public IEnumerable<IContainerRecognizer> Containers { get; } = [new DwkContainerRecognizer()];
 }
 public sealed class DwkArchiveFormat : IArchiveFormat
 {

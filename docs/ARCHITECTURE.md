@@ -19,10 +19,10 @@ This document describes how the host uses that boundary. For the other side of i
                  │  neutral geometry and image types.       │
                  └────────────────────┬─────────────────────┘
                                       │ references
-      ┌───────────────┬───────────────┴───────────────┐
-      │  Harugeki     │  Kartz        │  Generic      │  …loaded at runtime
-      │  .Formats     │  .Formats     │  .Formats     │
-      └───────────────┴───────────────┴───────────────┘
+      ┌───────────┬───────────┬───────┴───┬───────────┐
+      │ Harugeki  │ Kartz     │ Nintendo  │ Generic   │  …loaded at runtime
+      │ .Formats  │ .Formats  │ .Formats  │ .Formats  │
+      └───────────┴───────────┴───────────┴───────────┘
 ```
 
 Plugins never reference `OmegaStudio`.
@@ -33,7 +33,10 @@ Everything else exempts itself in `Directory.Build.targets`.
 ## Loading
 
 `PluginLoader` scans `formats/` beside the executable for `*.Formats.dll`, in ordinal filename order.
-Each file is loaded into its own `AssemblyLoadContext` (`PluginLoadContext`), which resolves that plugin's private dependencies from its own folder.
+Each file is loaded into its own `AssemblyLoadContext` (`PluginLoadContext`), which resolves that plugin's private dependencies itself.
+A plugin is one file, so the libraries it depends on are embedded in it as resources named `omega/deps/<assembly>.dll`, and the context loads them straight out of the plugin assembly; that is how the Nintendo plugin reaches Ekona, Yarhl and Texim without a single loose DLL in `formats/`.
+Nothing it carries is visible to another plugin or to the host.
+A plugin built elsewhere that ships its libraries beside itself still works: what the resources do not answer falls through to an `AssemblyDependencyResolver` over the plugin's own folder.
 One assembly is deliberately not isolated: `Omega.Plugins` is forced back to the host's copy, because a plugin returning types from a second, separately loaded copy of the contract would not be assignable to the interfaces the host holds.
 
 A plugin is rejected, with the reason logged to the Console pane, when it:
@@ -55,6 +58,7 @@ The result is a `PluginCatalog` of what loaded and a list of `PluginFailure` for
 `CanOpen` gets the head and the path, because not every container can be identified from its opening bytes.
 Harugeki's `.bin` has no magic number at all; it starts with a count and a table of offsets, so it validates that table against the file's real length.
 Kartz checks that the `.gdf` and `.gdt` siblings exist beside the `.gda`.
+A DS ROM carries no magic number either, so the Nintendo plugin validates the header's section table, offsets and sizes, against the real length of the file it is in.
 
 ## The asset tree
 
@@ -69,7 +73,7 @@ Nodes describe themselves through capability interfaces rather than a type hiera
 | `IAudioAsset` | The Audio pane and Extract Audio |
 | `ISceneAsset` | The Viewport, and glTF under Export |
 | `IAnimatedAsset` | The Animation pane, its clip picker and dope sheet |
-| `IDescribable` | Rows in the Properties pane |
+| `IDescribable` | Rows in the Properties pane, editable ones included |
 | `ICommandSource` | Extra entries in the row's context menu |
 
 `NodeCommands` builds a row's menu purely by testing which of these a node implements, so the host needs no knowledge of what the node actually is.
@@ -86,11 +90,18 @@ Recognizers are pooled across every loaded plugin, so the Generic plugin's OGG r
 A node that already carries content of its own is left alone.
 The same pool answers `IHostServices.IsKnownPayload`, which lets a container walk stop descending when a blob turns out to be a standalone file rather than another table.
 
+Some containers are not one blob at all. A Kartz archive is three files — data, name table and entry table — so no single row can be recognised as one. `IContainerRecognizer` is offered every folder's rows instead, after each row has been recognised on its own, and returns the rows to show in their place: the three collapse into one archive row whose children are the tracks and textures inside. Because the pool spans plugins, the same recogniser opens a `.gda` sitting in a folder on disk and one sitting in `data/Publish.NDS` of a DS ROM.
+
+A nested container has no `Save` of its own; only the archive the host opened has one. It writes each edit straight back into the rows it was read from, through `IBinaryAsset.ReplaceBytes`, which leaves the outer archive dirty and lets the one Save rebuild everything from the outside in.
+
 ## Editing and undo
 
 Every edit, whether the host's own replace commands and a plugin's alike, arrives as an `AssetCommand`, executed on a background thread with an `AssetCommandContext`. The command reports what it invalidated by setting `Changed`, and the host refreshes only those views.
 Undo is snapshot-based rather than operation-based, because the host does not know what any given command does. Before running a command that could modify something, `AssetSnapshot.Capture` reads the node's current bytes, or its current image for a format that only swaps images. `EditHistory` keeps up to 24 of those, as one list with a cursor.
 Two cases clear the history rather than risk reverting the wrong thing: a command on a node with neither restorable bytes nor a replaceable image, and a command that edits a node other than the one it ran on.
+
+An editable Properties row is the one edit that does not arrive as a command. A `PropertyRow` carrying an `Apply` is shown as a text box, a check box or a drop-down; committing it — leaving a text box, or pressing Enter in one — calls the plugin straight back, on the UI thread, and the plugin either stores the value or throws, in which case the message is logged and the pane redrawn from the format. The row reports what it invalidated through the same `AssetChange` flags a command uses.
+These edits are undoable like any other. The host cannot read a plugin's header fields back generically, so the snapshot is the row's own text: `PropertySnapshot` keeps the value and the delegate, and reversing the edit hands the old text to that same delegate. An `Apply` that would reject a value it produced earlier is therefore an edit that cannot be reversed, and the guarded call turns that into a cleared history rather than a half-reverted format.
 
 ## Saving
 

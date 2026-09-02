@@ -36,6 +36,14 @@ public partial class MainWindow : Window
         }
         DataContextChanged += OnDataContextChanged;
     }
+    private void PropertyBox_OnKeyDown(object? sender, KeyEventArgs e)
+    {
+        if (e.Key == Key.Enter && sender is TextBox { DataContext: TextPropertyItem row } box)
+        {
+            row.Value = box.Text ?? string.Empty;
+            e.Handled = true;
+        }
+    }
     private void InitializeComponent()
     {
         AvaloniaXamlLoader.Load(this);

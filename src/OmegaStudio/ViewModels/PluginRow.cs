@@ -33,7 +33,7 @@ public sealed record PluginRow(
         }
         int recognizers = PluginGuard.Try(
             $"Listing recognisers for {plugin.Info.DisplayName}",
-            () => plugin.Plugin.Recognizers.Count(),
+            () => plugin.Plugin.Recognizers.Count() + plugin.Plugin.Containers.Count(),
             0);
         return recognizers > 0
             ? $"Opens nothing — contributes {recognizers} content recogniser(s)"

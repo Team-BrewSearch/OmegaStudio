@@ -18,24 +18,31 @@ public sealed class KartzResourceIndex
         {
             return null;
         }
-        Dictionary<int, int[][]> slots = [];
-        int databases = 0;
+        List<byte[]> documents = [];
         foreach (string path in Directory.EnumerateFiles(archiveDirectory, "*.rdf")
             .OrderBy(p => p, StringComparer.OrdinalIgnoreCase))
         {
-            byte[] data;
             try
             {
-                data = File.ReadAllBytes(path);
+                documents.Add(File.ReadAllBytes(path));
             }
-            catch (IOException)
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
             {
-                continue;
             }
-            catch (UnauthorizedAccessException)
-            {
-                continue;
-            }
+        }
+        return Load(documents, archiveEntryCount);
+    }
+    public static KartzResourceIndex? Load(IReadOnlyList<byte[]> rdfDocuments, int archiveEntryCount)
+    {
+        ArgumentNullException.ThrowIfNull(rdfDocuments);
+        if (archiveEntryCount <= 0)
+        {
+            return null;
+        }
+        Dictionary<int, int[][]> slots = [];
+        int databases = 0;
+        foreach (byte[] data in rdfDocuments)
+        {
             if (RdfDocument.Load(data) is not { } document)
             {
                 continue;

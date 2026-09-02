@@ -20,6 +20,8 @@ Select a row and the panes that make sense for it appear:
 | **Animation** | anything with clips | Clip picker, transport and a dope sheet |
 | **Console** | always | Every load, edit and failure, timestamped |
 
+The Properties pane lists what the selected row knows about itself, and a plugin can make a row editable: a text box, a check box or a drop-down beside the label, written straight back into the format.
+
 Alongside the panes, each row carries a context menu built from what it can actually do: extract the raw bytes, replace them from a file, export a PNG or a glTF, replace an image from a PNG, plus whatever commands the owning plugin adds.
 
 Editing is undoable. The history keeps the last 24 edits as before-and-after snapshots, so `Ctrl+Z` works across formats the host has never heard of.
@@ -59,13 +61,16 @@ dotnet run --project src/OmegaStudio/OmegaStudio.csproj -- path/to/archive.bin
 
 ## Formats it ships with
 
-Three plugins are built from this repository.
+Four plugins are built from this repository.
 
 **Harugeki** - *Suzumiya Haruhi no Chourantou / Gekitou* (PC).
 Reads the `data/*.bin` containers: models, embedded `ringtex2` textures, materials, skeletons and animation. Textures and raw payloads can be replaced and written back.
 
 **Kartz** - *Madagascar Kartz* and *DreamWorks Super Star Kartz* (Nintendo DS).
-Reads the GDA/GDF/GDT archive triple: track geometry and textures, with the resource database picked up automatically when it sits beside the archive.
+Reads the GDA/GDF/GDT archive triple: track geometry and textures, with the resource database picked up automatically when it sits beside the archive. The triple is recognised wherever it turns up, so the archive opens and edits in place inside a DS ROM as well as from a folder on disk.
+
+**Nintendo DS** - any DS ROM image (`.nds`, `.srl`).
+Reads the ROM's file system, its header and its banner through [SceneGate Ekona](https://github.com/SceneGate/Ekona): every file can be extracted or replaced, the banner icon shows in the Texture pane and can be replaced from a PNG, and the header and the banner text, in every language the banner holds, are edited in the Properties pane. Saving rebuilds the whole image.
 
 **Standard Formats** - no archives of its own.
 It recognises OGG, WAV, PNG, JPEG, GIF and BMP payloads wherever they turn up, so a sound buried inside another container still gets an Audio pane and an extract command.
@@ -79,6 +84,7 @@ src/
   Formats/
     Harugeki/          Suzumiya Haruhi no Chourantou / Gekitou
     Kartz/             Madagascar Kartz / Super Star Kartz
+    Nintendo/          Nintendo DS ROM images
     Generic/           OGG, WAV, PNG, JPEG, GIF, BMP recognisers
 docs/
   ARCHITECTURE.md      How the pieces fit together
@@ -87,7 +93,7 @@ docs/
 
 ## Writing a plugin
 
-A plugin is one assembly named `*.Formats.dll`, referencing `Omega.Plugins` and nothing else of the host's.
+A plugin is one assembly named `*.Formats.dll`, referencing `Omega.Plugins` and nothing else of the host's; libraries it depends on are embedded in it, so it stays a single file.
 Implement `IFormatPlugin`, name it with an assembly attribute, drop the file in `formats`, and it loads on the next launch.
 
 See [docs/PLUGINS.md](docs/PLUGINS.md) for the walkthrough and [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for how the host uses what you implement.
