@@ -118,6 +118,60 @@ public static class TrkWriter
         }
         return positions;
     }
+    public static ushort[] ReadChunkTypes(ReadOnlySpan<byte> template, IReadOnlyList<int> chunkOffsets)
+    {
+        ArgumentNullException.ThrowIfNull(chunkOffsets);
+        ushort[] types = new ushort[chunkOffsets.Count];
+        for (int i = 0; i < chunkOffsets.Count; i++)
+        {
+            int chunkOff = chunkOffsets[i];
+            types[i] = chunkOff + 4 <= template.Length
+                ? (ushort)(template[chunkOff + 2] | (template[chunkOff + 3] << 8))
+                : (ushort)0x000E;
+        }
+        return types;
+    }
+    public static (uint CoordScale, uint PackedParams)[] ReadChunkExtraFields(
+        ReadOnlySpan<byte> template, IReadOnlyList<int> chunkOffsets)
+    {
+        ArgumentNullException.ThrowIfNull(chunkOffsets);
+        (uint, uint)[] fields = new (uint, uint)[chunkOffsets.Count];
+        for (int i = 0; i < chunkOffsets.Count; i++)
+        {
+            int chunkOff = chunkOffsets[i];
+            fields[i] = chunkOff + 0x10 <= template.Length
+                ? (ReadU32(template, chunkOff + 0x08), ReadU32(template, chunkOff + 0x0C))
+                : (0u, 0u);
+        }
+        return fields;
+    }
+    public static float?[] ReadChunkVtxScales(ReadOnlySpan<byte> template, IReadOnlyList<int> chunkOffsets)
+    {
+        ArgumentNullException.ThrowIfNull(chunkOffsets);
+        float?[] scales = new float?[chunkOffsets.Count];
+        for (int i = 0; i < chunkOffsets.Count; i++)
+        {
+            int chunkOff = chunkOffsets[i];
+            if (chunkOff + 24 > template.Length)
+            {
+                continue;
+            }
+            uint texCount = ReadU32(template, chunkOff + 0x10);
+            uint dlSize = ReadU32(template, chunkOff + 0x04);
+            int dlOff = chunkOff + 24 + ((int)texCount * 12);
+            if (dlSize < 28 || dlOff + 28 > template.Length)
+            {
+                continue;
+            }
+            if (template[dlOff] != 0x11 || template[dlOff + 1] != 0x1C || template[dlOff + 2] != 0x1B)
+            {
+                continue;
+            }
+            int scaleRaw = (int)ReadU32(template, dlOff + 16);
+            scales[i] = scaleRaw / 4096f;
+        }
+        return scales;
+    }
     public static ushort[] ReadChunkTypes(ReadOnlySpan<byte> template)
     {
         if (template.Length < HeaderSize)
@@ -266,7 +320,7 @@ public static class TrkWriter
             WriteU32(tail, at, (uint)(ReadU32(tail, at) + delta));
         }
     }
-    private static byte[] BuildChunk(TrkChunk chunk, int chunkIndex)
+    public static byte[] BuildChunk(TrkChunk chunk, int chunkIndex)
     {
         if (chunk.Triangles.Count == 0)
         {

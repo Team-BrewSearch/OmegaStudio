@@ -195,3 +195,236 @@ internal sealed class TrackNode : EntryNode, ISceneAsset, IDescribable, ICommand
         }
     }
 }
+internal sealed class ZoneNode : EntryNode, ISceneAsset, IDescribable, ICommandSource
+{
+    private SceneGeometry? _scene;
+    private int _revision = -1;
+    public ZoneNode(TrackContext context, string name, string path, DwkEntry entry)
+        : base(context, name, path, entry, AssetKinds.Model)
+    {
+    }
+    [AllowNull]
+    private ZonModel Model { get => field ??= ZonModel.Parse(Entry.Span); set; }
+    [AllowNull]
+    private SskTrack Geometry { get => field ??= Context.ParseZone(Entry, Model); set; }
+    public SceneGeometry? GetScene()
+    {
+        DropStaleCache();
+        _scene ??= TrackScene.Build(Geometry);
+        return _scene.TriangleCount > 0 ? _scene : null;
+    }
+    protected override void Write(byte[] payload)
+    {
+        ZonModel parsed = ZonModel.Parse(payload);
+        base.Write(payload);
+        Invalidate();
+        Model = parsed;
+    }
+    public IEnumerable<AssetCommand> GetCommands()
+    {
+        yield return new AssetCommand
+        {
+            Title = "Replace model from glTF",
+            Kind = AssetCommandKind.OpenFile,
+            Role = AssetCommandRole.Replace,
+            Filters = [new FileFilter("glTF model", "*.glb", "*.gltf")],
+            Execute = Import,
+        };
+    }
+    private void Import(AssetCommandContext context)
+    {
+        using Omega.Plugins.Gltf.IGltfSource source = context.Host.Gltf.Open(context.Path!);
+        (byte[] bytes, int triangles) = ZonWriter.Convert(source, Entry.Span, Geometry.Textures, context.Log);
+        Entry.Replace(bytes);
+        Invalidate();
+        Detail = Sizes.Describe(Entry.Size);
+        context.Log(
+            $"Converted {Path.GetFileName(context.Path!)} into {Entry.Name} " +
+            $"({triangles} triangles). Use File ▸ Save to write it back.");
+        context.Changed = AssetChange.Bytes | AssetChange.Scene
+            | AssetChange.Properties | AssetChange.Dirty;
+    }
+    private void Invalidate()
+    {
+        Model = null;
+        Geometry = null;
+        _scene = null;
+        _revision = Context.Archive.Revision;
+    }
+    private void DropStaleCache()
+    {
+        if (_revision != Context.Archive.Revision)
+        {
+            Invalidate();
+        }
+    }
+    public IEnumerable<PropertyRow> Describe()
+    {
+        DropStaleCache();
+        SskTrack geometry = Geometry;
+        yield return PropertyRow.Of("Models", Model.ChunkOffsets.Count);
+        yield return PropertyRow.Of("Vertices", geometry.Positions.Length / 3);
+        yield return PropertyRow.Of("Triangles", geometry.Indices.Length / 3);
+        yield return PropertyRow.Of("Draw sections", geometry.Sections.Length);
+        foreach (PropertyRow row in EntryRows())
+        {
+            yield return row;
+        }
+    }
+}
+internal sealed class CollisionNode : EntryNode, ISceneAsset, IDescribable, ICommandSource
+{
+    private SceneGeometry? _scene;
+    private int _revision = -1;
+    public CollisionNode(TrackContext context, string name, string path, DwkEntry entry)
+        : base(context, name, path, entry, AssetKinds.Mesh)
+    {
+    }
+    [AllowNull]
+    private ColModel Model { get => field ??= ColModel.Parse(Entry.Span); set; }
+    public SceneGeometry? GetScene()
+    {
+        DropStaleCache();
+        _scene ??= Model.ToScene(Entry.Name);
+        return _scene.TriangleCount > 0 ? _scene : null;
+    }
+    protected override void Write(byte[] payload)
+    {
+        ColModel parsed = ColModel.Parse(payload);
+        base.Write(payload);
+        Invalidate();
+        Model = parsed;
+    }
+    public IEnumerable<AssetCommand> GetCommands()
+    {
+        yield return new AssetCommand
+        {
+            Title = "Replace collision from glTF",
+            Kind = AssetCommandKind.OpenFile,
+            Role = AssetCommandRole.Replace,
+            Filters = [new FileFilter("glTF model", "*.glb", "*.gltf")],
+            Execute = Import,
+        };
+    }
+    private void Import(AssetCommandContext context)
+    {
+        using Omega.Plugins.Gltf.IGltfSource source = context.Host.Gltf.Open(context.Path!);
+        List<TrkImportPrimitive> primitives = TrkGltfReader.Read(source, [], context.Log);
+        List<float> positions = [];
+        List<float> normals = [];
+        List<int> indices = [];
+        foreach (TrkImportPrimitive primitive in primitives)
+        {
+            int first = positions.Count / 3;
+            positions.AddRange(primitive.Positions);
+            normals.AddRange(primitive.Normals.Length == primitive.Positions.Length
+                ? primitive.Normals
+                : new float[primitive.Positions.Length]);
+            foreach (int index in primitive.Indices)
+            {
+                indices.Add(first + index);
+            }
+        }
+        ColModel rebuilt = ColModel.Parse(Entry.Span);
+        rebuilt.ApplyMesh(positions, normals, indices, context.Log);
+        byte[] bytes = rebuilt.Serialize();
+        Entry.Replace(bytes);
+        Invalidate();
+        Detail = Sizes.Describe(Entry.Size);
+        context.Log(
+            $"Rebuilt {Entry.Name} from {Path.GetFileName(context.Path!)} " +
+            $"({rebuilt.Sectors.Count} sectors, {positions.Count / 3} vertices). " +
+            "Use File ▸ Save to write it back.");
+        context.Changed = AssetChange.Bytes | AssetChange.Scene
+            | AssetChange.Properties | AssetChange.Dirty;
+    }
+    private void Invalidate()
+    {
+        Model = null;
+        _scene = null;
+        _revision = Context.Archive.Revision;
+    }
+    private void DropStaleCache()
+    {
+        if (_revision != Context.Archive.Revision)
+        {
+            Invalidate();
+        }
+    }
+    public IEnumerable<PropertyRow> Describe()
+    {
+        DropStaleCache();
+        ColModel model = Model;
+        int vertices = 0;
+        foreach (ColSection section in model.Sections)
+        {
+            vertices += section.VertexCount;
+        }
+        yield return PropertyRow.Of("Sectors", model.Sectors.Count);
+        yield return PropertyRow.Of("Cross sections", model.Sections.Count);
+        yield return PropertyRow.Of("Section vertices", vertices);
+        yield return PropertyRow.Of(
+            "Surface triangles",
+            model.SceneVertexCount == 0 ? 0 : model.ToScene("collision").TriangleCount);
+        foreach (PropertyRow row in EntryRows())
+        {
+            yield return row;
+        }
+    }
+}
+internal sealed class VisibilityNode : EntryNode, IDescribable
+{
+    private BpvsModel? _model;
+    private int _revision = -1;
+    public VisibilityNode(TrackContext context, string name, string path, DwkEntry entry)
+        : base(context, name, path, entry)
+    {
+    }
+    protected override void Write(byte[] payload)
+    {
+        base.Write(payload);
+        _model = null;
+        _revision = Context.Archive.Revision;
+    }
+    public IEnumerable<PropertyRow> Describe()
+    {
+        if (_revision != Context.Archive.Revision)
+        {
+            _model = null;
+            _revision = Context.Archive.Revision;
+        }
+        int chunks = Context.ChunkCountFor(Entry);
+        if (chunks == 0)
+        {
+            yield return PropertyRow.Of("Track", "not found in this archive");
+            foreach (PropertyRow row in EntryRows())
+            {
+                yield return row;
+            }
+            yield break;
+        }
+        _model ??= BpvsModel.Parse(Entry.Span, chunks);
+        BpvsModel model = _model;
+        int visible = 0;
+        int least = int.MaxValue;
+        int most = 0;
+        foreach (BpvsSector sector in model.Sectors)
+        {
+            int drawn = sector.VisibleChunks;
+            visible += drawn;
+            least = Math.Min(least, drawn);
+            most = Math.Max(most, drawn);
+        }
+        yield return PropertyRow.Of("Sectors", model.Sectors.Count);
+        yield return PropertyRow.Of("Track chunks", chunks);
+        yield return PropertyRow.Of(
+            "Chunks drawn", model.Sectors.Count == 0
+                ? "0"
+                : $"{visible / model.Sectors.Count} on average, {least} to {most}");
+        yield return PropertyRow.Of("Shared lists", model.SharedLists);
+        foreach (PropertyRow row in EntryRows())
+        {
+            yield return row;
+        }
+    }
+}

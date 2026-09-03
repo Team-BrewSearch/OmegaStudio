@@ -16,17 +16,52 @@ public sealed class TrackTextureTable
         ArgumentNullException.ThrowIfNull(trackEntry);
         ArgumentNullException.ThrowIfNull(track);
         IReadOnlyList<int[]>? slots = _resources?.TextureSlots(trackEntry.Index);
-        if (slots is null)
-        {
-            return [];
-        }
-        int count = SMath.Max(slots.Count - 1, track.ReferencedSlotCount);
+        int count = SMath.Max((slots?.Count ?? 1) - 1, track.ReferencedSlotCount);
         List<DwkEntry?> table = new(count);
+        bool resolved = false;
         for (int slot = 1; slot <= count; slot++)
         {
-            table.Add(slot < slots.Count ? Texture(slots[slot]) : null);
+            DwkEntry? found = slots is not null && slot < slots.Count ? Texture(slots[slot]) : null;
+            resolved |= found is not null;
+            table.Add(found);
+        }
+        if (resolved || Sibling(trackEntry) is not { } beside)
+        {
+            return table;
+        }
+        for (int slot = 0; slot < table.Count; slot++)
+        {
+            table[slot] = beside;
         }
         return table;
+    }
+    private DwkEntry? Sibling(DwkEntry model)
+    {
+        string path = model.NormalizedPath;
+        int cut = path.LastIndexOf('/');
+        if (cut < 0)
+        {
+            return null;
+        }
+        string folder = path[..(cut + 1)] + "Textures/";
+        string stem = Path.GetFileNameWithoutExtension(path);
+        DwkEntry? only = null;
+        int candidates = 0;
+        foreach (DwkEntry entry in _archive.Entries)
+        {
+            if (!entry.NormalizedPath.StartsWith(folder, StringComparison.OrdinalIgnoreCase)
+                || !SskTexture.IsTexture(entry.Span))
+            {
+                continue;
+            }
+            candidates++;
+            only ??= entry;
+            if (Path.GetFileNameWithoutExtension(entry.Name).Equals(stem, StringComparison.OrdinalIgnoreCase))
+            {
+                return entry;
+            }
+        }
+        return candidates == 1 ? only : null;
     }
     private DwkEntry? Texture(int[] ids)
     {

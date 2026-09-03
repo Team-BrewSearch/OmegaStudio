@@ -5,6 +5,9 @@ public enum AssetKind
     Unknown,
     Texture,
     Track,
+    Zone,
+    Collision,
+    Visibility,
 }
 public static class AssetTypes
 {
@@ -12,6 +15,9 @@ public static class AssetTypes
     {
         return SskTexture.IsTexture(blob) ? AssetKind.Texture
             : SskTrack.IsTrack(blob) ? AssetKind.Track
+            : ZonModel.IsZone(blob) ? AssetKind.Zone
+            : ColModel.IsCollision(blob) ? AssetKind.Collision
+            : BpvsModel.IsVisibility(blob) ? AssetKind.Visibility
             : AssetKind.Unknown;
     }
 }

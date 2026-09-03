@@ -90,6 +90,17 @@ public sealed class KartzResourceIndex
         {
             return;
         }
+        if (ids.Length > 1 && ids.Length == table.Length)
+        {
+            for (int i = 0; i < ids.Length; i++)
+            {
+                if (ids[i] >= 0 && ids[i] < archiveEntryCount)
+                {
+                    slots[ids[i]] = [[], table[i]];
+                }
+            }
+            return;
+        }
         foreach (int id in ids)
         {
             if (id >= 0 && id < archiveEntryCount)
@@ -113,8 +124,33 @@ public sealed class KartzResourceIndex
         int[][] table = new int[entries.Count][];
         for (int i = 0; i < entries.Count; i++)
         {
-            table[i] = entries[i].Find("name")?.Ids ?? [];
+            List<int> ids = [];
+            Gather(entries[i], ids, 0);
+            table[i] = [.. ids];
         }
         return table;
+    }
+    private static void Gather(RdfRecord record, List<int> ids, int depth)
+    {
+        if (record.Find("name") is { Ids: { Length: > 0 } named })
+        {
+            ids.AddRange(named);
+        }
+        if (depth >= 3 || record.Find("texture") is not { } nested)
+        {
+            return;
+        }
+        if (nested.Record is { } single)
+        {
+            Gather(single, ids, depth + 1);
+        }
+        if (nested.Records is not { } children)
+        {
+            return;
+        }
+        foreach (RdfRecord child in children)
+        {
+            Gather(child, ids, depth + 1);
+        }
     }
 }

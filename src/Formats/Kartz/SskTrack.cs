@@ -1,4 +1,5 @@
 using Kartz.Formats.Binary;
+using Kartz.Formats.Gx;
 using System.Buffers.Binary;
 namespace Kartz.Formats;
 
@@ -71,62 +72,6 @@ public sealed class SskTrack
         }
         return textures;
     }
-    private static readonly Dictionary<byte, int> CmdParams = new()
-    {
-        [0x00] = 0,
-        [0x10] = 1,
-        [0x11] = 0,
-        [0x12] = 1,
-        [0x13] = 12,
-        [0x14] = 16,
-        [0x15] = 12,
-        [0x16] = 9,
-        [0x17] = 3,
-        [0x18] = 1,
-        [0x19] = 1,
-        [0x1A] = 1,
-        [0x1B] = 3,
-        [0x1C] = 3,
-        [0x20] = 1,
-        [0x21] = 1,
-        [0x22] = 1,
-        [0x23] = 2,
-        [0x24] = 1,
-        [0x25] = 1,
-        [0x26] = 1,
-        [0x27] = 1,
-        [0x28] = 1,
-        [0x29] = 1,
-        [0x2A] = 1,
-        [0x2B] = 1,
-        [0x30] = 1,
-        [0x31] = 1,
-        [0x32] = 1,
-        [0x33] = 1,
-        [0x34] = 32,
-        [0x40] = 1,
-        [0x41] = 0,
-        [0x50] = 1,
-        [0x60] = 1,
-        [0x70] = 3,
-        [0x71] = 2,
-        [0x72] = 1,
-    };
-    private const byte CmdMtxIdentity = 0x11;
-    private const byte CmdMtxScale = 0x1B;
-    private const byte CmdMtxTrans = 0x1C;
-    private const byte CmdColor = 0x20;
-    private const byte CmdNormal = 0x21;
-    private const byte CmdTexcoord = 0x22;
-    private const byte CmdVtx16 = 0x23;
-    private const byte CmdVtx10 = 0x24;
-    private const byte CmdVtxXy = 0x25;
-    private const byte CmdVtxXz = 0x26;
-    private const byte CmdVtxYz = 0x27;
-    private const byte CmdVtxDiff = 0x28;
-    private const byte CmdTeximageParam = 0x2A;
-    private const byte CmdBeginVtxs = 0x40;
-    private const byte CmdEndVtxs = 0x41;
     public static SskTrack Parse(ReadOnlySpan<byte> blob, IReadOnlyList<DwkEntry> texEntries)
     {
         return ParseInternal(blob, DecodeTextures(texEntries));
@@ -139,6 +84,13 @@ public sealed class SskTrack
     {
         return blob.Length >= 56 && BinaryRead.U32(blob, 0x0C) == 0x38;
     }
+    public static SskTrack ParseChunks(
+        ReadOnlySpan<byte> blob, IReadOnlyList<int> chunkOffsets, IReadOnlyList<SskTexture> textures)
+    {
+        ArgumentNullException.ThrowIfNull(chunkOffsets);
+        ArgumentNullException.ThrowIfNull(textures);
+        return Assemble(blob, chunkOffsets, [.. textures]);
+    }
     private static SskTrack ParseInternal(ReadOnlySpan<byte> blob, List<SskTexture> textures)
     {
         int numTotal = BinaryRead.U16(blob, 0x02);
@@ -147,6 +99,16 @@ public sealed class SskTrack
         {
             numTotal = 0;
         }
+        List<int> offsets = new(numTotal);
+        for (int ci = 0; ci < numTotal; ci++)
+        {
+            offsets.Add((int)BinaryRead.U32(blob, chunkTableStart + (ci * 4)));
+        }
+        return Assemble(blob, offsets, textures);
+    }
+    private static SskTrack Assemble(
+        ReadOnlySpan<byte> blob, IReadOnlyList<int> chunkOffsets, List<SskTexture> textures)
+    {
         List<float> allPos = [];
         List<float> allNrm = [];
         List<float> allUv = [];
@@ -162,9 +124,9 @@ public sealed class SskTrack
         Dictionary<(int, int), List<bool>> texEmit = [];
         int blockCounter = 0;
         int groupCounter = 0;
-        for (int ci = 0; ci < numTotal; ci++)
+        for (int ci = 0; ci < chunkOffsets.Count; ci++)
         {
-            int chunkOff = (int)BinaryRead.U32(blob, chunkTableStart + (ci * 4));
+            int chunkOff = chunkOffsets[ci];
             if (chunkOff < 0 || chunkOff + 24L > blob.Length)
             {
                 continue;
@@ -173,7 +135,7 @@ public sealed class SskTrack
                 triBlock, triBlockMode, triGroup, texEmit, ref blockCounter, ref groupCounter);
         }
         SskTrack track = BuildTrack(allPos, allNrm, allUv, allCol, triA, triB, triC, triTex, triChunk,
-            triBlock, triBlockMode, triGroup, numTotal, textures);
+            triBlock, triBlockMode, triGroup, chunkOffsets.Count, textures);
         track.VertexTexcoordEmitted = texEmit.ToDictionary(kv => kv.Key, kv => kv.Value.ToArray());
         return track;
     }
@@ -267,168 +229,106 @@ public sealed class SskTrack
             int idx1 = (int)BinaryRead.U32(blob, entBase + 8);
             texMap[dlByteOff] = idx1 - 1;
         }
-        byte[] dlArr = blob.Slice((int)dlOff, (int)dlSize).ToArray();
-        int dlWords = dlArr.Length / 4;
-        float cx = 0, cy = 0, cz = 0;
-        float nx = 0, ny = 0, nz = 0;
-        float tu = 0, tv = 0;
-        byte cr = 255, cg = 255, cb = 255;
-        float sx = 1, sy = 1, sz = 1;
-        float tx = 0, ty = 0, tz = 0;
-        int curTex = -1;
-        int mode = 0;
-        List<int> strip = new(64);
-        int word = 0;
-        int curBlock = -1;
-        int curGroup = -1;
         blockCounter++;
         groupCounter++;
-        uint ReadW()
+        TrackSink sink = new(
+            chunkIndex, texMap, allPos, allNrm, allUv, allCol,
+            triA, triB, triC, triTex, triChunk, triBlock, triBlockMode, triGroup, texEmit,
+            blockCounter, groupCounter);
+        GxRunner.Run(blob.Slice((int)dlOff, (int)dlSize), sink);
+        blockCounter = sink.BlockCounter;
+        groupCounter = sink.GroupCounter;
+    }
+    private sealed class TrackSink : IGxSink
+    {
+        private readonly int _chunkIndex;
+        private readonly Dictionary<int, int> _texMap;
+        private readonly List<float> _pos;
+        private readonly List<float> _nrm;
+        private readonly List<float> _uv;
+        private readonly List<byte> _col;
+        private readonly List<int> _triA;
+        private readonly List<int> _triB;
+        private readonly List<int> _triC;
+        private readonly List<int> _triTex;
+        private readonly List<int> _triChunk;
+        private readonly List<int> _triBlock;
+        private readonly List<int> _triBlockMode;
+        private readonly List<int> _triGroup;
+        private readonly Dictionary<(int, int), List<bool>> _texEmit;
+        private int _texture = -1;
+        private int _block = -1;
+        private int _group = -1;
+        public TrackSink(
+            int chunkIndex, Dictionary<int, int> texMap,
+            List<float> pos, List<float> nrm, List<float> uv, List<byte> col,
+            List<int> triA, List<int> triB, List<int> triC, List<int> triTex, List<int> triChunk,
+            List<int> triBlock, List<int> triBlockMode, List<int> triGroup,
+            Dictionary<(int, int), List<bool>> texEmit, int blockCounter, int groupCounter)
         {
-            return word < dlWords
-            ? BinaryPrimitives.ReadUInt32LittleEndian(dlArr.AsSpan(word++ * 4))
-            : 0u;
+            _chunkIndex = chunkIndex;
+            _texMap = texMap;
+            _pos = pos;
+            _nrm = nrm;
+            _uv = uv;
+            _col = col;
+            _triA = triA;
+            _triB = triB;
+            _triC = triC;
+            _triTex = triTex;
+            _triChunk = triChunk;
+            _triBlock = triBlock;
+            _triBlockMode = triBlockMode;
+            _triGroup = triGroup;
+            _texEmit = texEmit;
+            BlockCounter = blockCounter;
+            GroupCounter = groupCounter;
         }
-        bool pendingTexcoord = false;
-        void EmitVtx()
+        public int BlockCounter { get; private set; }
+        public int GroupCounter { get; private set; }
+        public void Begin(int mode)
         {
-            allPos.Add((cx * sx) + tx); allPos.Add((cy * sy) + ty); allPos.Add((cz * sz) + tz);
-            allNrm.Add(nx); allNrm.Add(ny); allNrm.Add(nz);
-            allUv.Add(tu); allUv.Add(tv);
-            allCol.Add(cr); allCol.Add(cg); allCol.Add(cb); allCol.Add(255);
-            strip.Add((allPos.Count / 3) - 1);
-            if (!texEmit.TryGetValue((chunkIndex, curTex), out List<bool>? flags))
+            _block = ++BlockCounter;
+        }
+        public void TextureParam(uint param, int byteOffset)
+        {
+            _group = ++GroupCounter;
+            if (_texMap.TryGetValue(byteOffset, out int slot))
             {
-                texEmit[(chunkIndex, curTex)] = flags = [];
-            }
-            flags.Add(pendingTexcoord);
-            pendingTexcoord = false;
-        }
-        void Tri(int a, int b, int c)
-        {
-            triA.Add(a); triB.Add(b); triC.Add(c);
-            triTex.Add(curTex); triChunk.Add(chunkIndex);
-            triBlock.Add(curBlock); triBlockMode.Add(mode); triGroup.Add(curGroup);
-        }
-        while (word < dlWords)
-        {
-            uint pack = ReadW();
-            for (int packed = 0; packed < 4; packed++)
-            {
-                byte cmd = (byte)((pack >> (packed * 8)) & 0xFF);
-                int paramByteOff = word * 4;
-                int np = CmdParams.TryGetValue(cmd, out int n) ? n : 0;
-                uint p0 = np >= 1 ? ReadW() : 0u;
-                uint p1 = np >= 2 ? ReadW() : 0u;
-                uint p2 = np >= 3 ? ReadW() : 0u;
-                for (int pi = 3; pi < np; pi++) { _ = ReadW(); }
-                switch (cmd)
-                {
-                    case CmdMtxIdentity:
-                        sx = sy = sz = 1; tx = ty = tz = 0; break;
-                    case CmdMtxTrans:
-                        tx = (int)p0 / 4096f; ty = (int)p1 / 4096f; tz = (int)p2 / 4096f;
-                        break;
-                    case CmdMtxScale:
-                        sx = (int)p0 / 4096f; sy = (int)p1 / 4096f; sz = (int)p2 / 4096f;
-                        break;
-                    case CmdColor:
-                        {
-                            uint c = p0 & 0x7FFF;
-                            cr = Exp5(c & 0x1F); cg = Exp5((c >> 5) & 0x1F); cb = Exp5((c >> 10) & 0x1F);
-                            break;
-                        }
-                    case CmdNormal:
-                        nx = S10(p0 & 0x3FF) / 512f;
-                        ny = S10((p0 >> 10) & 0x3FF) / 512f;
-                        nz = S10((p0 >> 20) & 0x3FF) / 512f;
-                        break;
-                    case CmdTexcoord:
-                        tu = (short)(p0 & 0xFFFF) / 16f;
-                        tv = (short)((p0 >> 16) & 0xFFFF) / 16f;
-                        pendingTexcoord = true;
-                        break;
-                    case CmdVtx16:
-                        cx = (short)(p0 & 0xFFFF) / 4096f;
-                        cy = (short)((p0 >> 16) & 0xFFFF) / 4096f;
-                        cz = (short)(p1 & 0xFFFF) / 4096f;
-                        EmitVtx(); break;
-                    case CmdVtx10:
-                        cx = S10(p0 & 0x3FF) / 64f;
-                        cy = S10((p0 >> 10) & 0x3FF) / 64f;
-                        cz = S10((p0 >> 20) & 0x3FF) / 64f;
-                        EmitVtx(); break;
-                    case CmdVtxXy:
-                        cx = (short)(p0 & 0xFFFF) / 4096f;
-                        cy = (short)((p0 >> 16) & 0xFFFF) / 4096f;
-                        EmitVtx(); break;
-                    case CmdVtxXz:
-                        cx = (short)(p0 & 0xFFFF) / 4096f;
-                        cz = (short)((p0 >> 16) & 0xFFFF) / 4096f;
-                        EmitVtx(); break;
-                    case CmdVtxYz:
-                        cy = (short)(p0 & 0xFFFF) / 4096f;
-                        cz = (short)((p0 >> 16) & 0xFFFF) / 4096f;
-                        EmitVtx(); break;
-                    case CmdVtxDiff:
-                        cx += S10(p0 & 0x3FF) / 4096f;
-                        cy += S10((p0 >> 10) & 0x3FF) / 4096f;
-                        cz += S10((p0 >> 20) & 0x3FF) / 4096f;
-                        EmitVtx(); break;
-                    case CmdTeximageParam:
-                        curGroup = ++groupCounter;
-                        if (texMap.TryGetValue(paramByteOff, out int slot)) { curTex = slot; }
-                        break;
-                    case CmdBeginVtxs:
-                        mode = (int)(p0 & 0x3); strip.Clear(); curBlock = ++blockCounter; break;
-                    case CmdEndVtxs: break;
-                }
-                if (cmd is CmdVtx16 or CmdVtx10 or CmdVtxXy or CmdVtxXz or CmdVtxYz or CmdVtxDiff)
-                {
-                    int n2 = strip.Count;
-                    switch (mode)
-                    {
-                        case 0:
-                            if (n2 % 3 == 0 && n2 >= 3)
-                            {
-                                Tri(strip[n2 - 3], strip[n2 - 2], strip[n2 - 1]);
-                            }
-                            break;
-                        case 1:
-                            if (n2 % 4 == 0 && n2 >= 4)
-                            {
-                                Tri(strip[n2 - 4], strip[n2 - 3], strip[n2 - 2]);
-                                Tri(strip[n2 - 4], strip[n2 - 2], strip[n2 - 1]);
-                            }
-                            break;
-                        case 2:
-                            if (n2 >= 3)
-                            {
-                                if ((n2 - 1) % 2 == 0)
-                                { Tri(strip[n2 - 3], strip[n2 - 2], strip[n2 - 1]); }
-                                else
-                                { Tri(strip[n2 - 2], strip[n2 - 3], strip[n2 - 1]); }
-                            }
-                            break;
-                        case 3:
-                            if (n2 >= 4 && n2 % 2 == 0)
-                            {
-                                Tri(strip[n2 - 4], strip[n2 - 3], strip[n2 - 1]);
-                                Tri(strip[n2 - 4], strip[n2 - 1], strip[n2 - 2]);
-                            }
-                            break;
-                    }
-                }
+                _texture = slot;
             }
         }
-    }
-    private static int S10(uint v)
-    {
-        return (v & 0x200) != 0 ? (int)v | unchecked((int)0xFFFFFC00) : (int)v;
-    }
-    private static byte Exp5(uint v)
-    {
-        byte b = (byte)(v << 3);
-        return (byte)(b | (b >> 5));
+        public int Vertex(GxVertex vertex)
+        {
+            _pos.Add(vertex.X);
+            _pos.Add(vertex.Y);
+            _pos.Add(vertex.Z);
+            _nrm.Add(vertex.Nx);
+            _nrm.Add(vertex.Ny);
+            _nrm.Add(vertex.Nz);
+            _uv.Add(vertex.U);
+            _uv.Add(vertex.V);
+            _col.Add(vertex.R);
+            _col.Add(vertex.G);
+            _col.Add(vertex.B);
+            _col.Add(255);
+            if (!_texEmit.TryGetValue((_chunkIndex, _texture), out List<bool>? flags))
+            {
+                _texEmit[(_chunkIndex, _texture)] = flags = [];
+            }
+            flags.Add(vertex.Textured);
+            return (_pos.Count / 3) - 1;
+        }
+        public void Triangle(int a, int b, int c, int mode)
+        {
+            _triA.Add(a);
+            _triB.Add(b);
+            _triC.Add(c);
+            _triTex.Add(_texture);
+            _triChunk.Add(_chunkIndex);
+            _triBlock.Add(_block);
+            _triBlockMode.Add(mode);
+            _triGroup.Add(_group);
+        }
     }
 }
