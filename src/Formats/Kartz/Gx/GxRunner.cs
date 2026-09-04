@@ -11,6 +11,7 @@ public interface IGxSink
 {
     void Begin(int mode);
     void TextureParam(uint param, int byteOffset);
+    void MatrixRestore(int slot);
     int Vertex(GxVertex vertex);
     void Triangle(int a, int b, int c, int mode);
 }
@@ -22,14 +23,14 @@ public static class GxRunner
         [0x10] = 1,
         [0x11] = 0,
         [0x12] = 1,
-        [0x13] = 12,
-        [0x14] = 16,
-        [0x15] = 12,
-        [0x16] = 9,
-        [0x17] = 3,
-        [0x18] = 1,
-        [0x19] = 1,
-        [0x1A] = 1,
+        [0x13] = 1,
+        [0x14] = 1,
+        [0x15] = 0,
+        [0x16] = 16,
+        [0x17] = 12,
+        [0x18] = 16,
+        [0x19] = 12,
+        [0x1A] = 9,
         [0x1B] = 3,
         [0x1C] = 3,
         [0x20] = 1,
@@ -57,7 +58,12 @@ public static class GxRunner
         [0x71] = 2,
         [0x72] = 1,
     };
-    private const byte CmdMtxIdentity = 0x11;
+    public static int ParameterCount(byte command)
+    {
+        return s_params.TryGetValue(command, out int found) ? found : 0;
+    }
+    private const byte CmdMtxRestore = 0x14;
+    private const byte CmdMtxPush = 0x11;
     private const byte CmdMtxScale = 0x1B;
     private const byte CmdMtxTrans = 0x1C;
     private const byte CmdColor = 0x20;
@@ -118,7 +124,10 @@ public static class GxRunner
                 }
                 switch (cmd)
                 {
-                    case CmdMtxIdentity:
+                    case CmdMtxRestore:
+                        sink.MatrixRestore((int)(p0 & 0x1F));
+                        break;
+                    case CmdMtxPush:
                         sx = sy = sz = 1;
                         tx = ty = tz = 0;
                         break;

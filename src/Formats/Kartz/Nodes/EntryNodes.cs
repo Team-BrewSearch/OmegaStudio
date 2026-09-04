@@ -206,7 +206,7 @@ internal sealed class ZoneNode : EntryNode, ISceneAsset, IDescribable, ICommandS
     [AllowNull]
     private ZonModel Model { get => field ??= ZonModel.Parse(Entry.Span); set; }
     [AllowNull]
-    private SskTrack Geometry { get => field ??= Context.ParseZone(Entry, Model); set; }
+    private SskTrack Geometry { get => field ??= Context.ParseModel(Entry, Model.Build([])); set; }
     public SceneGeometry? GetScene()
     {
         DropStaleCache();

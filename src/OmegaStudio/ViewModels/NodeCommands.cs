@@ -15,7 +15,7 @@ internal static class NodeCommands
         new FileFilter("BMP image", "*.bmp"),
     ];
     private static readonly FileFilter s_imageRead = new("Image", "*.png", "*.jpg", "*.jpeg", "*.bmp");
-    public static IReadOnlyList<AssetCommand> For(IAssetNode node)
+    public static IReadOnlyList<AssetCommand> For(IAssetNode node, AnimationClip? clip, float fps)
     {
         List<AssetCommand> own = [], exports = [], replacements = [], extra = [];
         if (node is IBinaryAsset binary)
@@ -40,7 +40,7 @@ internal static class NodeCommands
         }
         if (node is ISceneAsset)
         {
-            exports.Add(ExportScene(node));
+            exports.Add(ExportScene(node, clip, fps));
         }
         if (node is ICommandSource source)
         {
@@ -187,7 +187,7 @@ internal static class NodeCommands
             },
         };
     }
-    private static AssetCommand ExportScene(IAssetNode node)
+    private static AssetCommand ExportScene(IAssetNode node, AnimationClip? clip, float fps)
     {
         return new AssetCommand
         {
@@ -200,11 +200,47 @@ internal static class NodeCommands
             {
                 SceneGeometry scene = ((ISceneAsset)context.Node).GetScene()
                     ?? throw new InvalidOperationException("this asset has no geometry to export");
+                scene = WithClip(scene, clip, fps);
                 context.Host.Gltf.Write(scene, context.Path!);
                 context.Log($"Exported {node.Name} to {Path.GetFileName(context.Path!)} " +
-                    $"({scene.TriangleCount:N0} triangles, {scene.Textures.Count} texture(s)).");
+                    $"({scene.TriangleCount:N0} triangles, {scene.Textures.Count} texture(s), " +
+                    $"{scene.Clips.Count} animation(s)).");
             },
         };
+    }
+    private static SceneGeometry WithClip(SceneGeometry scene, AnimationClip? clip, float fps)
+    {
+        if (scene.Clips.Count == 0)
+        {
+            return scene;
+        }
+        List<AnimationClip> wanted = clip is null
+            ? []
+            : [.. scene.Clips
+                .Where(candidate => ReferenceEquals(candidate, clip)
+                    || string.Equals(candidate.Name, clip.Name, StringComparison.Ordinal))
+                .Select(candidate => AtRate(candidate, fps))];
+        return new SceneGeometry
+        {
+            Meshes = scene.Meshes,
+            Textures = scene.Textures,
+            Lighting = scene.Lighting,
+            Filtering = scene.Filtering,
+            Joints = scene.Joints,
+            Clips = wanted,
+        };
+    }
+    private static AnimationClip AtRate(AnimationClip clip, float fps)
+    {
+        return fps <= 0f || Math.Abs(clip.Fps - fps) < 0.001f
+            ? clip
+            : new AnimationClip
+            {
+                Name = clip.Name,
+                Frames = clip.Frames,
+                Fps = fps,
+                Tracks = clip.Tracks,
+            };
     }
     private static AssetCommand Merge(
         string title, AssetCommandKind kind, List<AssetCommand> alternatives)

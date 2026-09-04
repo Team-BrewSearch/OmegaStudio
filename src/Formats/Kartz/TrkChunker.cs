@@ -7,7 +7,8 @@ public static class TrkChunker
         IReadOnlyList<TrkImportPrimitive> primitives, IReadOnlyList<Vector3> anchors,
         IReadOnlyList<ushort>? anchorTypes = null,
         IReadOnlyList<(uint CoordScale, uint PackedParams)>? anchorExtraFields = null,
-        IReadOnlyList<float?>? anchorScales = null)
+        IReadOnlyList<float?>? anchorScales = null,
+        IReadOnlyList<byte[]>? anchorPrefixes = null)
     {
         ArgumentNullException.ThrowIfNull(primitives);
         ArgumentNullException.ThrowIfNull(anchors);
@@ -36,7 +37,7 @@ public static class TrkChunker
         if (unassigned.Count > 0)
         {
             IReadOnlyList<TrkChunk> viaAnchors =
-                ChunkToAnchors(unassigned, anchors, anchorTypes, anchorExtraFields, anchorScales);
+                ChunkToAnchors(unassigned, anchors, anchorTypes, anchorExtraFields, anchorScales, anchorPrefixes);
             for (int i = 0; i < anchors.Count; i++)
             {
                 buckets[i].AddRange(viaAnchors[i].Triangles);
@@ -54,6 +55,7 @@ public static class TrkChunker
                 CoordScale = coordScale,
                 PackedParams = packedParams,
                 TemplateScale = anchorScales?[i],
+                TemplatePrefix = anchorPrefixes?[i] ?? [],
             });
         }
         return chunks;
@@ -62,7 +64,8 @@ public static class TrkChunker
         IReadOnlyList<TrkImportPrimitive> primitives, IReadOnlyList<Vector3> anchors,
         IReadOnlyList<ushort>? anchorTypes = null,
         IReadOnlyList<(uint CoordScale, uint PackedParams)>? anchorExtraFields = null,
-        IReadOnlyList<float?>? anchorScales = null)
+        IReadOnlyList<float?>? anchorScales = null,
+        IReadOnlyList<byte[]>? anchorPrefixes = null)
     {
         ArgumentNullException.ThrowIfNull(primitives);
         ArgumentNullException.ThrowIfNull(anchors);
@@ -120,6 +123,7 @@ public static class TrkChunker
                 CoordScale = coordScale,
                 PackedParams = packedParams,
                 TemplateScale = anchorScales?[i],
+                TemplatePrefix = anchorPrefixes?[i] ?? [],
             });
         }
         return chunks;

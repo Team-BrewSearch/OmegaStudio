@@ -88,6 +88,8 @@ public sealed class SceneGeometry
     public TextureFiltering Filtering { get; init; } = TextureFiltering.Smooth;
     /// <summary>The skeleton, parents before children. Empty for an unskinned scene.</summary>
     public IReadOnlyList<SceneJoint> Joints { get; init; } = [];
+    /// <summary>Clips that drive <see cref="Joints"/>, written out beside the geometry. Empty when the scene holds no animation.</summary>
+    public IReadOnlyList<AnimationClip> Clips { get; init; } = [];
     /// <summary>Vertices across every mesh.</summary>
     public int VertexCount
     {

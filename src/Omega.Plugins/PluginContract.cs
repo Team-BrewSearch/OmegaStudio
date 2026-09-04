@@ -3,5 +3,5 @@ namespace Omega.Plugins;
 public static class PluginContract
 {
     /// <summary>Generation the host and the plugins shipped beside it currently speak.</summary>
-    public const int Version = 5;
+    public const int Version = 6;
 }

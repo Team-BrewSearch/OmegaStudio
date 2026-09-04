@@ -77,6 +77,7 @@ public static class TrkGltfReader
         float[] uv = ReadOrDefault(source, attributes, "TEXCOORD_0", 2, count, 0f);
         float[] col = ReadOrDefault(source, attributes, "COLOR_0", 4, count, 1f);
         bool hasNormals = attributes.TryGetProperty("NORMAL", out _);
+        int[]? bones = ReadBones(source, attributes, count);
         int materialIndex = primitive.TryGetProperty("material", out JsonElement m) ? m.GetInt32() : -1;
         int textureIndex = materialIndex >= 0 && materialIndex < materialToTexture.Length
             ? materialToTexture[materialIndex]
@@ -121,6 +122,7 @@ public static class TrkGltfReader
                 Uvs = uvs,
                 Colors = colors,
                 Indices = indices,
+                Bones = bones,
                 TextureIndex = textureIndex,
                 ChunkIndex = chunkIndex,
                 Blocks = TryReadBlocks(primitive, indices.Length / 3),
@@ -187,6 +189,24 @@ public static class TrkGltfReader
             total += count;
         }
         return total == triangleCount ? blocks : null;
+    }
+    private static int[]? ReadBones(IGltfSource source, JsonElement attributes, int count)
+    {
+        if (!attributes.TryGetProperty("JOINTS_0", out JsonElement reference))
+        {
+            return null;
+        }
+        float[] values = source.ReadAccessor(reference.GetInt32(), 4);
+        if (values.Length < count * 4)
+        {
+            return null;
+        }
+        int[] bones = new int[count];
+        for (int i = 0; i < count; i++)
+        {
+            bones[i] = (int)values[i * 4];
+        }
+        return bones;
     }
     private static float[] ReadOrDefault(
         IGltfSource source, JsonElement attributes, string name, int components,

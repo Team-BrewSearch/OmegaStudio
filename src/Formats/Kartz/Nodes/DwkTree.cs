@@ -26,12 +26,45 @@ internal sealed class TrackContext(DwkArchive archive, KartzResourceIndex? resou
         AttachTextures(entry, track);
         return track;
     }
-    public SskTrack ParseZone(DwkEntry entry, ZonModel model)
+    public SskTrack ParseModel(DwkEntry entry, SskTrack geometry)
     {
-        ArgumentNullException.ThrowIfNull(model);
-        SskTrack zone = model.Build([]);
-        AttachTextures(entry, zone);
-        return zone;
+        ArgumentNullException.ThrowIfNull(geometry);
+        AttachTextures(entry, geometry);
+        return geometry;
+    }
+    public DwkEntry? Sibling(DwkEntry entry, string extension)
+    {
+        ArgumentNullException.ThrowIfNull(entry);
+        int dot = entry.GdfPath.LastIndexOf('.');
+        string stem = dot >= 0 ? entry.GdfPath[..dot] : entry.GdfPath;
+        string path = stem + extension;
+        DwkEntry? exact = Archive.Entries.FirstOrDefault(
+            candidate => string.Equals(candidate.GdfPath, path, StringComparison.OrdinalIgnoreCase));
+        if (exact is not null)
+        {
+            return exact;
+        }
+        int cut = entry.NormalizedPath.LastIndexOf('/');
+        if (cut < 0)
+        {
+            return null;
+        }
+        string folder = entry.NormalizedPath[..(cut + 1)];
+        DwkEntry? only = null;
+        foreach (DwkEntry candidate in Archive.Entries)
+        {
+            if (!candidate.NormalizedPath.StartsWith(folder, StringComparison.OrdinalIgnoreCase)
+                || !candidate.Name.EndsWith(extension, StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+            if (only is not null)
+            {
+                return null;
+            }
+            only = candidate;
+        }
+        return only;
     }
     private void AttachTextures(DwkEntry entry, SskTrack geometry)
     {
@@ -59,6 +92,10 @@ internal static class DwkTree
             AssetKind.Zone => new ZoneNode(context, name, path, entry),
             AssetKind.Collision => new CollisionNode(context, name, path, entry),
             AssetKind.Visibility => new VisibilityNode(context, name, path, entry),
+            AssetKind.Car => new CarNode(context, name, path, entry),
+            AssetKind.SkinnedModel => new SkinnedModelNode(context, name, path, entry),
+            AssetKind.Skeleton => new SkeletonNode(context, name, path, entry),
+            AssetKind.Animation => new AnimationNode(context, name, path, entry),
             _ => new RawNode(context, name, path, entry),
         };
     }

@@ -6,11 +6,16 @@ internal static class TrackScene
 {
     public static SceneGeometry Build(SskTrack track)
     {
+        return Build(track, null);
+    }
+    public static SceneGeometry Build(SskTrack track, SkeModel? skeleton)
+    {
         ArgumentNullException.ThrowIfNull(track);
+        bool skinned = skeleton is not null && track.VertexSlots.Length == track.Positions.Length / 3;
         List<SceneMesh> meshes = [];
         foreach ((int chunk, int texture, List<int> triangles) in Bucket(track))
         {
-            meshes.Add(BuildMesh(track, chunk, texture, triangles));
+            meshes.Add(BuildMesh(track, chunk, texture, triangles, skinned ? skeleton : null));
         }
         return new SceneGeometry
         {
@@ -18,7 +23,18 @@ internal static class TrackScene
             Textures = [.. track.Textures.Select(ToImage)],
             Lighting = SceneLighting.VertexBaked,
             Filtering = TextureFiltering.Nearest,
+            Joints = skinned ? Skeleton(skeleton!) : [],
         };
+    }
+    public static IReadOnlyList<SceneJoint> Skeleton(SkeModel skeleton)
+    {
+        ArgumentNullException.ThrowIfNull(skeleton);
+        List<SceneJoint> joints = new(skeleton.Bones.Count);
+        for (int bone = 0; bone < skeleton.Bones.Count; bone++)
+        {
+            joints.Add(new SceneJoint($"bone{bone}", skeleton.Bones[bone].Parent, skeleton.RestMatrix(bone)));
+        }
+        return joints;
     }
     public static ImageData ToImage(SskTexture texture)
     {
@@ -68,13 +84,17 @@ internal static class TrackScene
             }
         }
     }
-    private static SceneMesh BuildMesh(SskTrack track, int chunk, int texture, List<int> triangles)
+    private static SceneMesh BuildMesh(
+        SskTrack track, int chunk, int texture, List<int> triangles, SkeModel? skeleton)
     {
         (float width, float height) = TextureSize(track, texture);
+        float[][]? rests = skeleton is null ? null : Rests(skeleton);
         List<float> positions = [], normals = [], uvs = [];
         List<byte> colors = [];
         List<int> indices = [];
-        Dictionary<VertexKey, int> shared = [];
+        List<int> joints = [];
+        List<float> weights = [];
+        Dictionary<(VertexKey Key, int Joint), int> shared = [];
         foreach (int triangle in triangles)
         {
             for (int corner = 0; corner < 3; corner++)
@@ -92,11 +112,23 @@ internal static class TrackScene
                 byte g = track.Colors[(vertex * 4) + 1];
                 byte b = track.Colors[(vertex * 4) + 2];
                 byte a = track.Colors[(vertex * 4) + 3];
-                VertexKey key = VertexKey.Of(px, py, pz, nx, ny, nz, u, v, r, g, b, a);
+                int joint = skeleton is null ? -1 : Joint(track, vertex, skeleton.Bones.Count);
+                if (joint >= 0)
+                {
+                    float[] rest = rests![joint];
+                    (px, py, pz) = Place(rest, px, py, pz, true);
+                    (nx, ny, nz) = Place(rest, nx, ny, nz, false);
+                }
+                (VertexKey, int) key = (VertexKey.Of(px, py, pz, nx, ny, nz, u, v, r, g, b, a), joint);
                 if (!shared.TryGetValue(key, out int index))
                 {
                     index = positions.Count / 3;
                     shared[key] = index;
+                    if (skeleton is not null)
+                    {
+                        joints.AddRange([Math.Max(joint, 0), 0, 0, 0]);
+                        weights.AddRange([1f, 0f, 0f, 0f]);
+                    }
                     positions.Add(px);
                     positions.Add(py);
                     positions.Add(pz);
@@ -123,6 +155,8 @@ internal static class TrackScene
             Uvs = [.. uvs],
             Colors = [.. colors],
             Indices = [.. indices],
+            Joints = skeleton is null ? null : [.. joints],
+            Weights = skeleton is null ? null : [.. weights],
             Submeshes =
             [
                 new SceneSubmesh(
@@ -136,6 +170,29 @@ internal static class TrackScene
                 },
             ],
         };
+    }
+    private static float[][] Rests(SkeModel skeleton)
+    {
+        float[][] rests = new float[skeleton.Bones.Count][];
+        for (int bone = 0; bone < rests.Length; bone++)
+        {
+            rests[bone] = skeleton.RestMatrix(bone);
+        }
+        return rests;
+    }
+    private static (float X, float Y, float Z) Place(
+        float[] matrix, float x, float y, float z, bool translate)
+    {
+        float px = (x * matrix[0]) + (y * matrix[4]) + (z * matrix[8]);
+        float py = (x * matrix[1]) + (y * matrix[5]) + (z * matrix[9]);
+        float pz = (x * matrix[2]) + (y * matrix[6]) + (z * matrix[10]);
+        return translate ? (px + matrix[12], py + matrix[13], pz + matrix[14]) : (px, py, pz);
+    }
+    private static int Joint(SskTrack track, int vertex, int bones)
+    {
+        int slot = vertex < track.VertexSlots.Length ? track.VertexSlots[vertex] : -1;
+        int bone = slot - AmdModel.SlotBase;
+        return bone >= 0 && bone < bones ? bone : -1;
     }
     private static (float Width, float Height) TextureSize(SskTrack track, int texture)
     {

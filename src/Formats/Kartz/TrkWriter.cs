@@ -4,7 +4,7 @@ namespace Kartz.Formats;
 
 public static class TrkWriter
 {
-    private const int HeaderSize = 0x38;
+    public const int HeaderSize = 0x38;
     private const int ChunkHeaderSize = 24;
     private const int TexRefEntrySize = 12;
     private const float VtxRange = 7.5f;
@@ -21,6 +21,10 @@ public static class TrkWriter
     private const byte CmdBeginVtxs = 0x40;
     private const byte CmdEndVtxs = 0x41;
     private const uint BaselineColor555 = 0x7FFF;
+    public static bool CanWrite(ReadOnlySpan<byte> template)
+    {
+        return TrkHeader.Of(template) is not null;
+    }
     public static byte[] Build(ReadOnlySpan<byte> originalTemplate, IReadOnlyList<TrkChunk> chunks)
     {
         ArgumentNullException.ThrowIfNull(chunks);
@@ -32,6 +36,10 @@ public static class TrkWriter
         {
             throw new ArgumentException("Template is too small to hold a .trk header.", nameof(originalTemplate));
         }
+        TrkHeader header = TrkHeader.Of(originalTemplate)
+            ?? throw new InvalidDataException(
+                "this game lays its track header out differently, and writing one back is not "
+                + "worked out yet; the track still draws and exports");
         int chunkCount = chunks.Count;
         byte[][] chunkBlobs = new byte[chunkCount][];
         for (int i = 0; i < chunkCount; i++)
@@ -39,19 +47,26 @@ public static class TrkWriter
             chunkBlobs[i] = chunks[i].Triangles.Count == 0
                     && TryCopyTemplateChunk(originalTemplate, i, out byte[]? copied)
                 ? copied
-                : BuildChunk(chunks[i], i);
+                : InTemplateHeader(originalTemplate, header, i, BuildChunk(chunks[i], i));
         }
-        byte[] header = originalTemplate[..HeaderSize].ToArray();
-        WriteU16(header, 0x02, (ushort)chunkCount);
-        WriteU32(header, 0x0C, HeaderSize);
-        int[] tailFieldOffsets = [0x14, 0x1C, 0x24, 0x2C, 0x34];
-        uint originalTailStart = ReadU32(header, 0x14);
+        byte[] head = originalTemplate[..header.Table].ToArray();
+        if (header.WideCount)
+        {
+            WriteU32(head, 0x00, (uint)chunkCount);
+        }
+        else
+        {
+            WriteU16(head, 0x02, (ushort)chunkCount);
+        }
+        WriteU32(head, header.TableField, (uint)header.Table);
+        uint originalTailStart = header.TailStart;
         byte[] tail = originalTailStart > 0 && originalTailStart < originalTemplate.Length
             ? originalTemplate[(int)originalTailStart..].ToArray()
             : [];
         int offsetTableSize = chunkCount * 4;
         int positionTableSize = chunkCount * 12;
-        int bodyStart = HeaderSize + offsetTableSize + positionTableSize;
+        int bodyStart = header.Table + offsetTableSize + positionTableSize;
+        WriteU32(head, header.PositionsField, (uint)(header.Table + offsetTableSize));
         int[] chunkOffsets = new int[chunkCount];
         int cursor = bodyStart;
         for (int i = 0; i < chunkCount; i++)
@@ -63,22 +78,25 @@ public static class TrkWriter
         if (tail.Length > 0)
         {
             long delta = newTailStart - originalTailStart;
-            RelocateOffsetTable(tail, originalTemplate, originalTailStart, 0x34, 0x30, delta);
-            foreach (int fieldOff in tailFieldOffsets)
+            if (header.Table == HeaderSize)
             {
-                uint orig = ReadU32(header, fieldOff);
-                if (orig != 0)
+                RelocateOffsetTable(tail, originalTemplate, originalTailStart, 0x34, 0x30, delta);
+            }
+            for (int fieldOff = 0; fieldOff + 4 <= head.Length; fieldOff += 4)
+            {
+                uint orig = ReadU32(head, fieldOff);
+                if (orig >= originalTailStart && orig <= originalTemplate.Length)
                 {
-                    WriteU32(header, fieldOff, (uint)(orig + delta));
+                    WriteU32(head, fieldOff, (uint)(orig + delta));
                 }
             }
         }
         byte[] result = new byte[newTailStart + tail.Length];
-        header.CopyTo(result, 0);
+        head.CopyTo(result, 0);
         for (int i = 0; i < chunkCount; i++)
         {
-            WriteU32(result, HeaderSize + (i * 4), (uint)chunkOffsets[i]);
-            int posOff = HeaderSize + offsetTableSize + (i * 12);
+            WriteU32(result, header.Table + (i * 4), (uint)chunkOffsets[i]);
+            int posOff = header.Table + offsetTableSize + (i * 12);
             Vector3 p = chunks[i].Position;
             WriteI32(result, posOff, (int)MathF.Round(p.X * 4096f));
             WriteI32(result, posOff + 4, (int)MathF.Round(p.Y * 4096f));
@@ -91,18 +109,107 @@ public static class TrkWriter
         tail.CopyTo(result, newTailStart);
         return result;
     }
+    private static byte[] InTemplateHeader(
+        ReadOnlySpan<byte> template, TrkHeader header, int index, byte[] built)
+    {
+        int entry = header.Table + (index * 4);
+        if (entry + 4 > template.Length)
+        {
+            return built;
+        }
+        int start = (int)ReadU32(template, entry);
+        if (ChunkLayout.Of(template, start) is not { } layout || layout == ChunkLayout.Narrow)
+        {
+            return built;
+        }
+        int head = layout.ListStart(template, start) - start;
+        int list = (int)ReadU32(built, 4);
+        byte[] output = new byte[head + list];
+        template.Slice(start, head).CopyTo(output);
+        WriteU32(output, 4, (uint)list);
+        built.AsSpan(built.Length - list, list).CopyTo(output.AsSpan(head));
+        return output;
+    }
+    private sealed class TrkHeader
+    {
+        public required int TableField { get; init; }
+        public required int Table { get; init; }
+        public required int PositionsField { get; init; }
+        public required uint TailStart { get; init; }
+        public required bool WideCount { get; init; }
+        public static TrkHeader? Of(ReadOnlySpan<byte> template)
+        {
+            (int table, int count) = SskTrack.ChunkTable(template);
+            if (table < 0 || count == 0 || table + (count * 4) > template.Length)
+            {
+                return null;
+            }
+            bool wideCount = (template[0x02] | (template[0x03] << 8)) != count;
+            int tableField = -1;
+            int positionsField = -1;
+            long positions = table + ((long)count * 4);
+            for (int field = 0; field + 4 <= table; field += 4)
+            {
+                uint value = ReadU32(template, field);
+                if (value == table && tableField < 0)
+                {
+                    tableField = field;
+                }
+                if (value == positions && positionsField < 0)
+                {
+                    positionsField = field;
+                }
+            }
+            long first = positions + ((long)count * 12);
+            if (tableField < 0 || positionsField < 0
+                || first > template.Length
+                || ReadU32(template, table) != first)
+            {
+                return null;
+            }
+            long end = first;
+            for (int chunk = 0; chunk < count; chunk++)
+            {
+                long at = ReadU32(template, table + (chunk * 4));
+                if (at == 0)
+                {
+                    continue;
+                }
+                ChunkLayout? layout = ChunkLayout.Of(template, at);
+                if (layout is null || layout != ChunkLayout.Narrow)
+                {
+                    return null;
+                }
+                long chunkEnd = layout.End(template, at);
+                if (chunkEnd < 0)
+                {
+                    return null;
+                }
+                end = Math.Max(end, chunkEnd);
+            }
+            return new TrkHeader
+            {
+                TableField = tableField,
+                Table = table,
+                PositionsField = positionsField,
+                TailStart = (uint)end,
+                WideCount = wideCount,
+            };
+        }
+    }
     private static uint ReadU32(ReadOnlySpan<byte> buf, int off)
     {
         return (uint)(buf[off] | (buf[off + 1] << 8) | (buf[off + 2] << 16) | (buf[off + 3] << 24));
     }
     public static Vector3[] ReadChunkPositions(ReadOnlySpan<byte> template)
     {
-        if (template.Length < HeaderSize)
+        int table = SskTrack.ChunkTableOffset(template);
+        if (table < 0)
         {
             return [];
         }
         int numTotal = template[0x02] | (template[0x03] << 8);
-        int posTableStart = HeaderSize + (numTotal * 4);
+        int posTableStart = table + (numTotal * 4);
         if (numTotal <= 0 || posTableStart + (numTotal * 12) > template.Length)
         {
             return [];
@@ -145,6 +252,42 @@ public static class TrkWriter
         }
         return fields;
     }
+    public static byte[][] ReadChunkPrefixes(ReadOnlySpan<byte> template, IReadOnlyList<int> chunkOffsets)
+    {
+        ArgumentNullException.ThrowIfNull(chunkOffsets);
+        byte[][] prefixes = new byte[chunkOffsets.Count][];
+        for (int i = 0; i < chunkOffsets.Count; i++)
+        {
+            prefixes[i] = ReadPrefix(template, chunkOffsets[i]);
+        }
+        return prefixes;
+    }
+    public static byte[][] ReadChunkPrefixes(ReadOnlySpan<byte> template)
+    {
+        (int table, int count) = SskTrack.ChunkTable(template);
+        if (table < 0)
+        {
+            return [];
+        }
+        byte[][] prefixes = new byte[count][];
+        for (int i = 0; i < count; i++)
+        {
+            prefixes[i] = ReadPrefix(template, (int)ReadU32(template, table + (i * 4)));
+        }
+        return prefixes;
+    }
+    private static byte[] ReadPrefix(ReadOnlySpan<byte> template, int chunkOff)
+    {
+        if (ChunkLayout.Of(template, chunkOff) is not { } layout)
+        {
+            return [];
+        }
+        int bytes = layout.PrefixBytes(template, chunkOff);
+        int start = layout.ListStart(template, chunkOff) - bytes;
+        return bytes > 0 && start + bytes <= template.Length
+            ? template.Slice(start, bytes).ToArray()
+            : [];
+    }
     public static float?[] ReadChunkVtxScales(ReadOnlySpan<byte> template, IReadOnlyList<int> chunkOffsets)
     {
         ArgumentNullException.ThrowIfNull(chunkOffsets);
@@ -152,13 +295,12 @@ public static class TrkWriter
         for (int i = 0; i < chunkOffsets.Count; i++)
         {
             int chunkOff = chunkOffsets[i];
-            if (chunkOff + 24 > template.Length)
+            if (ChunkLayout.Of(template, chunkOff) is not { } layout)
             {
                 continue;
             }
-            uint texCount = ReadU32(template, chunkOff + 0x10);
             uint dlSize = ReadU32(template, chunkOff + 0x04);
-            int dlOff = chunkOff + 24 + ((int)texCount * 12);
+            int dlOff = layout.ListStart(template, chunkOff);
             if (dlSize < 28 || dlOff + 28 > template.Length)
             {
                 continue;
@@ -174,19 +316,16 @@ public static class TrkWriter
     }
     public static ushort[] ReadChunkTypes(ReadOnlySpan<byte> template)
     {
-        if (template.Length < HeaderSize)
-        {
-            return [];
-        }
+        int table = SskTrack.ChunkTableOffset(template);
         int numTotal = template[0x02] | (template[0x03] << 8);
-        if (numTotal <= 0 || HeaderSize + (numTotal * 4) > template.Length)
+        if (table < 0 || numTotal <= 0 || table + (numTotal * 4) > template.Length)
         {
             return [];
         }
         ushort[] types = new ushort[numTotal];
         for (int i = 0; i < numTotal; i++)
         {
-            int chunkOff = (int)ReadU32(template, HeaderSize + (i * 4));
+            int chunkOff = (int)ReadU32(template, table + (i * 4));
             types[i] = chunkOff + 4 <= template.Length
                 ? (ushort)(template[chunkOff + 2] | (template[chunkOff + 3] << 8))
                 : (ushort)0x000E;
@@ -195,19 +334,16 @@ public static class TrkWriter
     }
     public static (uint CoordScale, uint PackedParams)[] ReadChunkExtraFields(ReadOnlySpan<byte> template)
     {
-        if (template.Length < HeaderSize)
-        {
-            return [];
-        }
+        int table = SskTrack.ChunkTableOffset(template);
         int numTotal = template[0x02] | (template[0x03] << 8);
-        if (numTotal <= 0 || HeaderSize + (numTotal * 4) > template.Length)
+        if (table < 0 || numTotal <= 0 || table + (numTotal * 4) > template.Length)
         {
             return [];
         }
         (uint, uint)[] fields = new (uint, uint)[numTotal];
         for (int i = 0; i < numTotal; i++)
         {
-            int chunkOff = (int)ReadU32(template, HeaderSize + (i * 4));
+            int chunkOff = (int)ReadU32(template, table + (i * 4));
             fields[i] = chunkOff + 0x10 <= template.Length
                 ? (ReadU32(template, chunkOff + 0x08), ReadU32(template, chunkOff + 0x0C))
                 : (0u, 0u);
@@ -216,19 +352,16 @@ public static class TrkWriter
     }
     public static float?[] ReadChunkVtxScales(ReadOnlySpan<byte> template)
     {
-        if (template.Length < HeaderSize)
-        {
-            return [];
-        }
+        int table = SskTrack.ChunkTableOffset(template);
         int numTotal = template[0x02] | (template[0x03] << 8);
-        if (numTotal <= 0 || HeaderSize + (numTotal * 4) > template.Length)
+        if (table < 0 || numTotal <= 0 || table + (numTotal * 4) > template.Length)
         {
             return [];
         }
         float?[] scales = new float?[numTotal];
         for (int i = 0; i < numTotal; i++)
         {
-            int chunkOff = (int)ReadU32(template, HeaderSize + (i * 4));
+            int chunkOff = (int)ReadU32(template, table + (i * 4));
             if (chunkOff + 24 > template.Length)
             {
                 continue;
@@ -252,7 +385,12 @@ public static class TrkWriter
     private static bool TryCopyTemplateChunk(ReadOnlySpan<byte> template, int chunkIndex, out byte[] copy)
     {
         copy = [];
-        int tableEntry = HeaderSize + (chunkIndex * 4);
+        int table = SskTrack.ChunkTableOffset(template);
+        if (table < 0)
+        {
+            return false;
+        }
+        int tableEntry = table + (chunkIndex * 4);
         if (tableEntry + 4 > template.Length)
         {
             return false;
@@ -334,19 +472,22 @@ public static class TrkWriter
             WriteU32(empty, 0x14, 0);
             return empty;
         }
-        (Vector3 translate, float scale) = FitTransform(chunk);
+        bool ownMatrix = chunk.TemplateScale.HasValue;
+        (Vector3 translate, float scale) = ownMatrix ? FitTransform(chunk) : (Vector3.Zero, 1f);
         List<IGrouping<int, (TrkImportPrimitive Prim, int A, int B, int C)>> groups = chunk.Triangles
             .GroupBy(t => t.Prim.TextureIndex)
             .ToList();
-        List<Op> ops = [
-            new Op(CmdMtxPush),
-            new Op(
-                CmdMtxTrans,
-                EncodeFixed20_12(translate.X),
-                EncodeFixed20_12(translate.Y),
-                EncodeFixed20_12(translate.Z),
-                3),
-            new Op(CmdMtxScale, EncodeFixed20_12(scale), EncodeFixed20_12(scale), EncodeFixed20_12(scale), 3)];
+        List<Op> ops = ownMatrix
+            ? [
+                new Op(CmdMtxPush),
+                new Op(
+                    CmdMtxTrans,
+                    EncodeFixed20_12(translate.X),
+                    EncodeFixed20_12(translate.Y),
+                    EncodeFixed20_12(translate.Z),
+                    3),
+                new Op(CmdMtxScale, EncodeFixed20_12(scale), EncodeFixed20_12(scale), EncodeFixed20_12(scale), 3)]
+            : [];
         List<int> texImageOpIndex = [];
         List<int> plttBaseOpIndex = [];
         List<int> textureSlot1Based = [];
@@ -369,7 +510,10 @@ public static class TrkWriter
                     plttBaseOpIndex.Add(ops.Count);
                     ops.Add(new Op(CmdPlttBase, 0, 0, 0, 1));
                 }
-                ops.Add(new Op(CmdColor, BaselineColor555, 0, 0, 1));
+                if (ownMatrix)
+                {
+                    ops.Add(new Op(CmdColor, BaselineColor555, 0, 0, 1));
+                }
             }
             EmitGroupHeader();
             uint lastColor555 = BaselineColor555;
@@ -436,25 +580,31 @@ public static class TrkWriter
                 EmitEndVtxs(ops);
             }
         }
-        ops.Add(new Op(CmdMtxPop, 1, 0, 0, 1));
+        if (ownMatrix)
+        {
+            ops.Add(new Op(CmdMtxPop, 1, 0, 0, 1));
+        }
         byte[] dl = SerializeOps(ops, out Dictionary<int, int> byteOffsets);
+        byte[] prefix = chunk.TemplatePrefix;
         int texCount = texImageOpIndex.Count;
-        byte[] result = new byte[ChunkHeaderSize + (texCount * TexRefEntrySize) + dl.Length];
+        byte[] result =
+            new byte[ChunkHeaderSize + (texCount * TexRefEntrySize) + prefix.Length + dl.Length];
         WriteU16(result, 0x00, (ushort)chunkIndex);
         WriteU16(result, 0x02, chunk.ChunkType);
-        WriteU32(result, 0x04, (uint)dl.Length);
+        WriteU32(result, 0x04, (uint)(prefix.Length + dl.Length));
         WriteU32(result, 0x08, EncodeFixed20_12(scale));
         WriteU32(result, 0x0C, chunk.PackedParams);
         WriteU32(result, 0x10, (uint)texCount);
-        WriteU32(result, 0x14, 0);
+        WriteU32(result, 0x14, (uint)(prefix.Length / 4));
         for (int g = 0; g < texCount; g++)
         {
             int entOff = ChunkHeaderSize + (g * TexRefEntrySize);
-            WriteU32(result, entOff, (uint)byteOffsets[texImageOpIndex[g]]);
-            WriteU32(result, entOff + 4, (uint)byteOffsets[plttBaseOpIndex[g]]);
+            WriteU32(result, entOff, (uint)(byteOffsets[texImageOpIndex[g]] + prefix.Length));
+            WriteU32(result, entOff + 4, (uint)(byteOffsets[plttBaseOpIndex[g]] + prefix.Length));
             WriteU32(result, entOff + 8, (uint)textureSlot1Based[g]);
         }
-        dl.CopyTo(result, ChunkHeaderSize + (texCount * TexRefEntrySize));
+        prefix.CopyTo(result, ChunkHeaderSize + (texCount * TexRefEntrySize));
+        dl.CopyTo(result, ChunkHeaderSize + (texCount * TexRefEntrySize) + prefix.Length);
         return result;
     }
     private static (Vector3 Translate, float Scale) FitTransform(TrkChunk chunk)

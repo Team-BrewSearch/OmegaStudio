@@ -43,10 +43,11 @@ public sealed class TrackTextureTable
         {
             return null;
         }
-        string folder = path[..(cut + 1)] + "Textures/";
+        string folder = path[..(cut + 1)];
         string stem = Path.GetFileNameWithoutExtension(path);
-        DwkEntry? only = null;
-        int candidates = 0;
+        DwkEntry? best = null;
+        int bestScore = -1;
+        bool tied = false;
         foreach (DwkEntry entry in _archive.Entries)
         {
             if (!entry.NormalizedPath.StartsWith(folder, StringComparison.OrdinalIgnoreCase)
@@ -54,14 +55,35 @@ public sealed class TrackTextureTable
             {
                 continue;
             }
-            candidates++;
-            only ??= entry;
-            if (Path.GetFileNameWithoutExtension(entry.Name).Equals(stem, StringComparison.OrdinalIgnoreCase))
+            int score = Shared(stem, Path.GetFileNameWithoutExtension(entry.Name));
+            if (score > bestScore)
             {
-                return entry;
+                bestScore = score;
+                best = entry;
+                tied = false;
+            }
+            else if (score == bestScore)
+            {
+                tied = true;
             }
         }
-        return candidates == 1 ? only : null;
+        return tied ? null : best;
+    }
+    private static int Shared(string stem, string candidate)
+    {
+        int tail = 0;
+        while (tail < stem.Length && tail < candidate.Length
+            && char.ToLowerInvariant(stem[^(tail + 1)]) == char.ToLowerInvariant(candidate[^(tail + 1)]))
+        {
+            tail++;
+        }
+        int head = 0;
+        while (head < stem.Length && head < candidate.Length
+            && char.ToLowerInvariant(stem[head]) == char.ToLowerInvariant(candidate[head]))
+        {
+            head++;
+        }
+        return head + tail;
     }
     private DwkEntry? Texture(int[] ids)
     {

@@ -165,7 +165,7 @@ public sealed class BpvsModel
             return false;
         }
         uint count = BinaryRead.U32(blob, 0);
-        long tableEnd = TableOffset + ((long)count + 1) * 4;
+        long tableEnd = TableOffset + (((long)count + 1) * 4);
         if (count == 0 || count > 8192 || tableEnd > blob.Length)
         {
             return false;

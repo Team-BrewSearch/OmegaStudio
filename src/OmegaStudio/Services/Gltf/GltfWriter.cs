@@ -103,6 +103,10 @@ internal static class GltfWriter
             {
                 gltf["skins"] = BuildSkins();
             }
+            if (BuildAnimations() is { Count: > 0 } animations)
+            {
+                gltf["animations"] = animations;
+            }
             return gltf;
         }
         private int View(byte[] bytes)
@@ -217,6 +221,90 @@ internal static class GltfWriter
                 ((JsonObject)_nodes[_jointNodes[i]]!)["matrix"] = MatrixArray(local);
             }
             _skin = 0;
+        }
+        private JsonArray BuildAnimations()
+        {
+            JsonArray animations = [];
+            if (_jointNodes.Length == 0)
+            {
+                return animations;
+            }
+            Dictionary<string, int> byName = [];
+            for (int i = 0; i < _scene.Joints.Count && i < _jointNodes.Length; i++)
+            {
+                byName[_scene.Joints[i].Name] = _jointNodes[i];
+            }
+            foreach (AnimationClip clip in _scene.Clips)
+            {
+                JsonArray samplers = [];
+                JsonArray channels = [];
+                foreach (AnimationTrack track in clip.Tracks)
+                {
+                    if (!byName.TryGetValue(track.Name, out int node)
+                        || track.KeyCount == 0
+                        || track.Matrices.Length != track.KeyCount)
+                    {
+                        continue;
+                    }
+                    float fps = clip.Fps > 0f ? clip.Fps : 30f;
+                    float[] times = new float[track.KeyCount];
+                    float[] translation = new float[track.KeyCount * 3];
+                    float[] rotation = new float[track.KeyCount * 4];
+                    float[] scale = new float[track.KeyCount * 3];
+                    for (int key = 0; key < track.KeyCount; key++)
+                    {
+                        times[key] = track.Times[key] / fps;
+                        Matrix4x4 matrix = MatrixOps.ToMatrix(track.Matrices[key]);
+                        if (!Matrix4x4.Decompose(
+                            matrix, out Vector3 parts, out Quaternion turn, out Vector3 move))
+                        {
+                            parts = Vector3.One;
+                            turn = Quaternion.Identity;
+                            move = matrix.Translation;
+                        }
+                        translation[key * 3] = move.X;
+                        translation[(key * 3) + 1] = move.Y;
+                        translation[(key * 3) + 2] = move.Z;
+                        rotation[key * 4] = turn.X;
+                        rotation[(key * 4) + 1] = turn.Y;
+                        rotation[(key * 4) + 2] = turn.Z;
+                        rotation[(key * 4) + 3] = turn.W;
+                        scale[key * 3] = parts.X;
+                        scale[(key * 3) + 1] = parts.Y;
+                        scale[(key * 3) + 2] = parts.Z;
+                    }
+                    int input = Accessor(times, 1, Float, minMax: true);
+                    AddChannel(samplers, channels, input, Accessor(translation, 3, Float), node, "translation");
+                    AddChannel(samplers, channels, input, Accessor(rotation, 4, Float), node, "rotation");
+                    AddChannel(samplers, channels, input, Accessor(scale, 3, Float), node, "scale");
+                }
+                if (channels.Count == 0)
+                {
+                    continue;
+                }
+                animations.Add(new JsonObject
+                {
+                    ["name"] = clip.Name,
+                    ["samplers"] = samplers,
+                    ["channels"] = channels,
+                });
+            }
+            return animations;
+        }
+        private static void AddChannel(
+            JsonArray samplers, JsonArray channels, int input, int output, int node, string path)
+        {
+            samplers.Add(new JsonObject
+            {
+                ["input"] = input,
+                ["interpolation"] = "LINEAR",
+                ["output"] = output,
+            });
+            channels.Add(new JsonObject
+            {
+                ["sampler"] = samplers.Count - 1,
+                ["target"] = new JsonObject { ["node"] = node, ["path"] = path },
+            });
         }
         private JsonArray BuildSkins()
         {

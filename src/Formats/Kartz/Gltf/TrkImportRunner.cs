@@ -11,18 +11,25 @@ public static class TrkImportRunner
         Action<string> warn)
     {
         ArgumentNullException.ThrowIfNull(warn);
+        if (!TrkWriter.CanWrite(template))
+        {
+            throw new InvalidDataException(
+                "this game lays its track header out differently, and writing one back is not "
+                + "worked out yet; the track still draws and exports");
+        }
         List<TrkImportPrimitive> primitives = TrkGltfReader.Read(source, textures, warn);
         Vector3[] anchors = TrkWriter.ReadChunkPositions(template);
         ushort[] anchorTypes = TrkWriter.ReadChunkTypes(template);
         (uint CoordScale, uint PackedParams)[] anchorExtras = TrkWriter.ReadChunkExtraFields(template);
         float?[] anchorScales = TrkWriter.ReadChunkVtxScales(template);
+        byte[][] anchorPrefixes = TrkWriter.ReadChunkPrefixes(template);
         IReadOnlyList<TrkChunk> chunks;
         bool matchedLayout;
         if (anchors.Length > 0 && anchorTypes.Length == anchors.Length
             && anchorExtras.Length == anchors.Length && anchorScales.Length == anchors.Length)
         {
-            chunks = TrkChunker.ChunkByExplicitIndex(primitives, anchors, anchorTypes, anchorExtras, anchorScales)
-                ?? TrkChunker.ChunkToAnchors(primitives, anchors, anchorTypes, anchorExtras, anchorScales);
+            chunks = TrkChunker.ChunkByExplicitIndex(primitives, anchors, anchorTypes, anchorExtras, anchorScales, anchorPrefixes)
+                ?? TrkChunker.ChunkToAnchors(primitives, anchors, anchorTypes, anchorExtras, anchorScales, anchorPrefixes);
             matchedLayout = true;
         }
         else

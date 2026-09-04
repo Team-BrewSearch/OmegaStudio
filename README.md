@@ -66,7 +66,7 @@ Four plugins are built from this repository.
 **Harugeki** - *Suzumiya Haruhi no Chourantou / Gekitou* (PC).
 Reads the `data/*.bin` containers: models, embedded `ringtex2` textures, materials, skeletons and animation. Textures and raw payloads can be replaced and written back.
 
-**Kartz** - *Madagascar Kartz* and *DreamWorks Super Star Kartz* (Nintendo DS).
+**Kartz** - *Hot Wheels: Battle Force 5*, *Pimp My Ride: Street Racing*, *Monster Jam: Path of Destruction*, *Madagascar Kartz*, and *DreamWorks Super Star Kartz* (Nintendo DS).
 Reads the GDA/GDF/GDT archive triple: track geometry and textures, with the resource database picked up automatically when it sits beside the archive. The triple is recognised wherever it turns up, so the archive opens and edits in place inside a DS ROM as well as from a folder on disk.
 
 **Nintendo DS** - any DS ROM image (`.nds`, `.srl`).

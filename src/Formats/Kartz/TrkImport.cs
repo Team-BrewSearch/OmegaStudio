@@ -8,6 +8,7 @@ public sealed class TrkImportPrimitive
     public required float[] Uvs { get; init; }
     public required byte[] Colors { get; init; }
     public required int[] Indices { get; init; }
+    public int[]? Bones { get; init; }
     public required int TextureIndex { get; init; }
     public int? ChunkIndex { get; init; }
     public IReadOnlyList<(int Mode, int TriangleCount)>? Blocks { get; init; }
@@ -22,4 +23,5 @@ public sealed class TrkChunk
     public uint CoordScale { get; init; }
     public uint PackedParams { get; init; }
     public float? TemplateScale { get; init; }
+    public byte[] TemplatePrefix { get; init; } = [];
 }

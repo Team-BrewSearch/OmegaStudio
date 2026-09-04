@@ -9,7 +9,7 @@ public sealed class KartzPlugin : IFormatPlugin
     public FormatPluginInfo Info { get; } = new()
     {
         Id = "kartz",
-        DisplayName = "Madagascar Kartz / Super Star Kartz",
+        DisplayName = "Hot Wheels: Battle Force 5, Pimp My Ride: Street Racing, Monster Jam: Path of Destruction, Madagascar Kartz, and Dreamworks Super Star Kartz",
         Version = "1.1.0",
         Author = "Omega Studio",
         Description = "Tracks and textures from the Nintendo DS GDA/GDF/GDT archives, on disk or inside a DS ROM.",

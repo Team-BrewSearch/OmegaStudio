@@ -9,6 +9,9 @@ namespace OmegaStudio.ViewModels;
 public sealed partial class AnimationPlayer : ObservableObject, IDisposable
 {
     private const double TargetFps = 60.0;
+    private const decimal DefaultFps = 30m;
+    private const decimal SlowestFps = 1m;
+    private const decimal FastestFps = 240m;
     private readonly DispatcherTimer _timer;
     private readonly Stopwatch _clock = new();
     private IAnimatedAsset? _asset;
@@ -24,12 +27,16 @@ public sealed partial class AnimationPlayer : ObservableObject, IDisposable
     public ObservableCollection<AnimationClip> Clips { get; } = [];
     [ObservableProperty]
     public partial AnimationClip? SelectedClip { get; set; }
+    [ObservableProperty]
+    public partial decimal Fps { get; set; } = DefaultFps;
     public bool IsPlaying { get; private set; }
     public double Time { get; private set; }
-    public double Duration => SelectedClip?.Duration ?? 0;
+    public double Duration => SelectedClip is { Frames: > 0 } clip && Fps > 0 ? clip.Frames / (double)Fps : 0;
     public bool IsAvailable => _asset is not null && Clips.Count > 1;
     public bool CanSelect => _asset is not null && Clips.Count > 0;
     public bool CanPlay => _asset is not null && SelectedClip is { } clip && !IsNone(clip);
+    public AnimationClip? ExportClip => SelectedClip is { } clip && !IsNone(clip) ? clip : null;
+    public float ExportFps => (float)Fps;
     private static bool IsNone(AnimationClip? clip)
     {
         return ReferenceEquals(clip, None);
@@ -46,6 +53,9 @@ public sealed partial class AnimationPlayer : ObservableObject, IDisposable
         {
             Clips.Add(clip);
         }
+        Fps = Clips.FirstOrDefault(clip => !IsNone(clip) && clip.Fps > 0f) is { } rated
+            ? Math.Clamp((decimal)rated.Fps, SlowestFps, FastestFps)
+            : DefaultFps;
         SelectedClip = None;
         NotifyAvailability();
     }
@@ -114,10 +124,24 @@ public sealed partial class AnimationPlayer : ObservableObject, IDisposable
         {
             return;
         }
-        double duration = clip.Duration;
+        double duration = Duration;
         Time = duration > 0 ? _clock.Elapsed.TotalSeconds % duration : 0;
         OnPropertyChanged(nameof(Time));
         Pose(clip, Time);
+    }
+    partial void OnFpsChanged(decimal value)
+    {
+        decimal held = Math.Clamp(value, SlowestFps, FastestFps);
+        if (held != value)
+        {
+            Fps = held;
+            return;
+        }
+        OnPropertyChanged(nameof(Duration));
+        if (!IsPlaying && SelectedClip is { } clip && !IsNone(clip))
+        {
+            Pose(clip, Time);
+        }
     }
     private void Pose(AnimationClip clip, double seconds)
     {
@@ -125,9 +149,10 @@ public sealed partial class AnimationPlayer : ObservableObject, IDisposable
         {
             return;
         }
+        double own = clip.Fps > 0f ? seconds * (double)Fps / clip.Fps : seconds;
         (float[] Positions, float[] Normals)? posed = PluginGuard.Try<(float[], float[])?>(
             $"Posing '{clip.Name}'",
-            () => asset.TryPose(clip, seconds, out float[] positions, out float[] normals)
+            () => asset.TryPose(clip, own, out float[] positions, out float[] normals)
                 ? (positions, normals)
                 : null,
             null);

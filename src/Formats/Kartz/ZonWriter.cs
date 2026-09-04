@@ -18,9 +18,9 @@ public static class ZonWriter
         {
             blobs[i] = chunks[i].Triangles.Count == 0 && i < model.ChunkOffsets.Count
                 ? CopyChunk(template, model, i)
-                : TrkWriter.BuildChunk(chunks[i], i);
+                : Rebuild(template, model, chunks[i], i);
         }
-        return ZonModel.Assemble(blobs, template[model.TrailerStart..]);
+        return ZonModel.Assemble(blobs, template[model.TrailerStart..], model.Header);
     }
     public static (byte[] Bytes, int Triangles) Convert(
         IGltfSource source, ReadOnlySpan<byte> template, IReadOnlyList<SskTexture> textures, Action<string> warn)
@@ -34,9 +34,10 @@ public static class ZonWriter
         (uint CoordScale, uint PackedParams)[] extras =
             TrkWriter.ReadChunkExtraFields(template, model.ChunkOffsets);
         float?[] scales = TrkWriter.ReadChunkVtxScales(template, model.ChunkOffsets);
+        byte[][] prefixes = TrkWriter.ReadChunkPrefixes(template, model.ChunkOffsets);
         IReadOnlyList<TrkChunk> chunks =
-            TrkChunker.ChunkByExplicitIndex(primitives, anchors, types, extras, scales)
-            ?? TrkChunker.ChunkToAnchors(primitives, anchors, types, extras, scales);
+            TrkChunker.ChunkByExplicitIndex(primitives, anchors, types, extras, scales, prefixes)
+            ?? TrkChunker.ChunkToAnchors(primitives, anchors, types, extras, scales, prefixes);
         int triangles = 0;
         foreach (TrkChunk chunk in chunks)
         {
@@ -44,6 +45,29 @@ public static class ZonWriter
         }
         byte[] rebuilt = Build(template, chunks);
         return (Unchanged(template, rebuilt) ? template.ToArray() : rebuilt, triangles);
+    }
+    private static byte[] Rebuild(
+        ReadOnlySpan<byte> template, ZonModel model, TrkChunk chunk, int index)
+    {
+        byte[] built = TrkWriter.BuildChunk(chunk, index);
+        if (index >= model.ChunkOffsets.Count)
+        {
+            return built;
+        }
+        int start = model.ChunkOffsets[index];
+        ChunkLayout layout = ChunkLayout.Of(template, start) ?? ChunkLayout.Narrow;
+        if (layout == ChunkLayout.Narrow)
+        {
+            return built;
+        }
+        int head = layout.ListStart(template, start) - start;
+        int builtList = (int)Binary.BinaryRead.U32(built, 4);
+        int builtHead = built.Length - builtList;
+        byte[] output = new byte[head + builtList];
+        template.Slice(start, head).CopyTo(output);
+        System.Buffers.Binary.BinaryPrimitives.WriteUInt32LittleEndian(output.AsSpan(4), (uint)builtList);
+        built.AsSpan(builtHead, builtList).CopyTo(output.AsSpan(head));
+        return output;
     }
     private static bool Unchanged(ReadOnlySpan<byte> template, ReadOnlySpan<byte> rebuilt)
     {

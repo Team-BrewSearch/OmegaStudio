@@ -32,6 +32,14 @@ public partial class MainViewModel : ObservableObject, IDisposable
         Animation = new AnimationPlayer();
         Animation.FrameReady += (positions, normals) => Viewport?.SetAnimatedFrame(positions, normals);
         Animation.FrameCleared += () => Viewport?.ClearAnimatedFrame();
+        Animation.PropertyChanged += (_, changed) =>
+        {
+            if (changed.PropertyName is (nameof(AnimationPlayer.SelectedClip))
+                or (nameof(AnimationPlayer.Fps)))
+            {
+                RebuildCommands(_commandNode);
+            }
+        };
         PluginGuard.Log = Log;
         LoadPlugins();
     }
@@ -229,14 +237,16 @@ public partial class MainViewModel : ObservableObject, IDisposable
             }
         });
     }
+    private IAssetNode? _commandNode;
     private void RebuildCommands(IAssetNode? node)
     {
+        _commandNode = node;
         Commands.Clear();
         if (node is null)
         {
             return;
         }
-        foreach (AssetCommand command in NodeCommands.For(node))
+        foreach (AssetCommand command in NodeCommands.For(node, Animation.ExportClip, Animation.ExportFps))
         {
             Commands.Add(new AssetCommandViewModel(command, this));
         }

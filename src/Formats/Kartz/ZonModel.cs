@@ -5,17 +5,20 @@ namespace Kartz.Formats;
 public sealed class ZonModel
 {
     public const int HeaderSize = 0x0C;
+    public const int WideHeaderSize = 0x10;
     public const int ChunkHeaderSize = 24;
     public const int TexRefEntrySize = 12;
     private readonly byte[] _blob;
-    private ZonModel(byte[] blob, int[] offsets, int trailerStart)
+    private ZonModel(byte[] blob, int[] offsets, int trailerStart, int header)
     {
         _blob = blob;
         ChunkOffsets = offsets;
         TrailerStart = trailerStart;
+        Header = header;
     }
     public IReadOnlyList<int> ChunkOffsets { get; }
     public int TrailerStart { get; }
+    public int Header { get; }
     public ReadOnlySpan<byte> Blob => _blob;
     public static bool IsZone(ReadOnlySpan<byte> blob)
     {
@@ -24,7 +27,7 @@ public sealed class ZonModel
     public static ZonModel Parse(ReadOnlySpan<byte> blob)
     {
         return TryRead(blob, out int[] offsets, out int trailerStart)
-            ? new ZonModel(blob.ToArray(), offsets, trailerStart)
+            ? new ZonModel(blob.ToArray(), offsets, trailerStart, (int)BinaryRead.U32(blob, 4))
             : throw new InvalidDataException("not a Kartz .zon model bundle");
     }
     public SskTrack Build(IReadOnlyList<SskTexture> textures)
@@ -37,21 +40,25 @@ public sealed class ZonModel
     }
     public static byte[] Assemble(IReadOnlyList<byte[]> chunks, ReadOnlySpan<byte> trailer)
     {
+        return Assemble(chunks, trailer, HeaderSize);
+    }
+    public static byte[] Assemble(IReadOnlyList<byte[]> chunks, ReadOnlySpan<byte> trailer, int header)
+    {
         ArgumentNullException.ThrowIfNull(chunks);
         int tableSize = chunks.Count * 4;
-        int body = HeaderSize + tableSize;
+        int body = header + tableSize;
         foreach (byte[] chunk in chunks)
         {
             body += chunk.Length;
         }
         byte[] output = new byte[body + trailer.Length];
         BinaryPrimitives.WriteUInt32LittleEndian(output, (uint)chunks.Count);
-        BinaryPrimitives.WriteUInt32LittleEndian(output.AsSpan(4), HeaderSize);
-        BinaryPrimitives.WriteUInt32LittleEndian(output.AsSpan(8), (uint)(output.Length - HeaderSize));
-        int at = HeaderSize + tableSize;
+        BinaryPrimitives.WriteUInt32LittleEndian(output.AsSpan(4), (uint)header);
+        BinaryPrimitives.WriteUInt32LittleEndian(output.AsSpan(8), (uint)(output.Length - header));
+        int at = header + tableSize;
         for (int i = 0; i < chunks.Count; i++)
         {
-            BinaryPrimitives.WriteUInt32LittleEndian(output.AsSpan(HeaderSize + (i * 4)), (uint)at);
+            BinaryPrimitives.WriteUInt32LittleEndian(output.AsSpan(header + (i * 4)), (uint)at);
             chunks[i].CopyTo(output.AsSpan(at));
             at += chunks[i].Length;
         }
@@ -69,12 +76,17 @@ public sealed class ZonModel
         uint count = BinaryRead.U32(blob, 0);
         uint headerSize = BinaryRead.U32(blob, 4);
         uint payload = BinaryRead.U32(blob, 8);
-        if (count == 0 || count > 4096 || headerSize != HeaderSize
+        if (count == 0 || count > 4096
+            || (headerSize != HeaderSize && headerSize != WideHeaderSize)
             || payload < 4 || payload > blob.Length - HeaderSize)
         {
             return false;
         }
-        long tableEnd = HeaderSize + ((long)count * 4);
+        if (headerSize == WideHeaderSize && BinaryRead.U32(blob, 12) != 0)
+        {
+            return false;
+        }
+        long tableEnd = headerSize + ((long)count * 4);
         if (tableEnd > blob.Length)
         {
             return false;
@@ -83,19 +95,13 @@ public sealed class ZonModel
         long end = tableEnd;
         for (int i = 0; i < count; i++)
         {
-            long at = BinaryRead.U32(blob, HeaderSize + (i * 4));
-            if (at < tableEnd || at + ChunkHeaderSize > blob.Length)
+            long at = BinaryRead.U32(blob, (int)headerSize + (i * 4));
+            if (at < tableEnd || ChunkLayout.Of(blob, at) is not { } layout)
             {
                 return false;
             }
-            long listSize = BinaryRead.U32(blob, (int)at + 4);
-            long texCount = BinaryRead.U32(blob, (int)at + 0x10);
-            if (texCount > 4096 || listSize % 4 != 0)
-            {
-                return false;
-            }
-            long chunkEnd = at + ChunkHeaderSize + (texCount * TexRefEntrySize) + listSize;
-            if (chunkEnd > blob.Length)
+            long chunkEnd = layout.End(blob, at);
+            if (chunkEnd < 0)
             {
                 return false;
             }

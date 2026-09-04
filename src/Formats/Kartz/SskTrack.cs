@@ -1,6 +1,5 @@
 using Kartz.Formats.Binary;
 using Kartz.Formats.Gx;
-using System.Buffers.Binary;
 namespace Kartz.Formats;
 
 public sealed class SskDrawSection
@@ -15,6 +14,8 @@ public sealed class SskTrack
     public float[] Positions { get; private set; } = [];
     public float[] Normals { get; private set; } = [];
     public float[] Uvs { get; private set; } = [];
+    public int[] VertexSlots { get; private set; } = [];
+    public int[] VertexChunks { get; private set; } = [];
     public byte[] Colors { get; private set; } = [];
     public int[] Indices { get; private set; } = [];
     public SskDrawSection[] Sections { get; private set; } = [];
@@ -80,9 +81,88 @@ public sealed class SskTrack
     {
         return ParseInternal(blob, [.. textures]);
     }
+    private const int CountField = 0x02;
+    private static readonly int[] TableFields = [0x0C, 0x1C];
+    public void BindVerticesToChunkBones(int[] chunkBones, int slotBase)
+    {
+        ArgumentNullException.ThrowIfNull(chunkBones);
+        int[] slots = new int[VertexChunks.Length];
+        for (int vertex = 0; vertex < slots.Length; vertex++)
+        {
+            int chunk = VertexChunks[vertex];
+            slots[vertex] = chunk >= 0 && chunk < chunkBones.Length ? chunkBones[chunk] + slotBase : -1;
+        }
+        VertexSlots = slots;
+    }
     public static bool IsTrack(ReadOnlySpan<byte> blob)
     {
-        return blob.Length >= 56 && BinaryRead.U32(blob, 0x0C) == 0x38;
+        return TableOf(blob).Table >= 0;
+    }
+    public static int ChunkTableOffset(ReadOnlySpan<byte> blob)
+    {
+        return TableOf(blob).Table;
+    }
+    public static (int Table, int Count) ChunkTable(ReadOnlySpan<byte> blob)
+    {
+        return TableOf(blob);
+    }
+    private static (int Table, int Count) TableOf(ReadOnlySpan<byte> blob)
+    {
+        if (blob.Length < 0x20)
+        {
+            return (-1, 0);
+        }
+        int count = BinaryRead.U16(blob, CountField);
+        if (count > 0)
+        {
+            foreach (int field in TableFields)
+            {
+                if (field + 4 > blob.Length)
+                {
+                    continue;
+                }
+                long table = BinaryRead.U32(blob, field);
+                if (Fits(blob, table, count))
+                {
+                    return ((int)table, count);
+                }
+            }
+        }
+        long wide = BinaryRead.U32(blob, 0);
+        long wideTable = BinaryRead.U32(blob, 4);
+        if (wide is > 0 and <= 8192
+            && BinaryRead.U32(blob, 8) == wideTable + (wide * 4)
+            && Fits(blob, wideTable, (int)wide))
+        {
+            return ((int)wideTable, (int)wide);
+        }
+        return (-1, 0);
+    }
+    private static bool Fits(ReadOnlySpan<byte> blob, long table, int count)
+    {
+        long tableEnd = table + ((long)count * 4);
+        if (table < 0x20 || tableEnd > blob.Length)
+        {
+            return false;
+        }
+        long first = tableEnd + ((long)count * 12);
+        if (first > blob.Length || BinaryRead.U32(blob, (int)table) != first)
+        {
+            return false;
+        }
+        for (int chunk = 0; chunk < count; chunk++)
+        {
+            long at = BinaryRead.U32(blob, (int)table + (chunk * 4));
+            if (at == 0)
+            {
+                continue;
+            }
+            if (at < tableEnd || ChunkLayout.Of(blob, at) is null)
+            {
+                return false;
+            }
+        }
+        return true;
     }
     public static SskTrack ParseChunks(
         ReadOnlySpan<byte> blob, IReadOnlyList<int> chunkOffsets, IReadOnlyList<SskTexture> textures)
@@ -93,11 +173,11 @@ public sealed class SskTrack
     }
     private static SskTrack ParseInternal(ReadOnlySpan<byte> blob, List<SskTexture> textures)
     {
-        int numTotal = BinaryRead.U16(blob, 0x02);
-        int chunkTableStart = (int)BinaryRead.U32(blob, 0x0C);
-        if (chunkTableStart < 0 || chunkTableStart + ((long)numTotal * 4) > blob.Length)
+        (int chunkTableStart, int numTotal) = TableOf(blob);
+        if (chunkTableStart < 0)
         {
             numTotal = 0;
+            chunkTableStart = 0;
         }
         List<int> offsets = new(numTotal);
         for (int ci = 0; ci < numTotal; ci++)
@@ -112,6 +192,8 @@ public sealed class SskTrack
         List<float> allPos = [];
         List<float> allNrm = [];
         List<float> allUv = [];
+        List<int> allSlot = [];
+        List<int> allVertexChunk = [];
         List<byte> allCol = [];
         List<int> triA = [];
         List<int> triB = [];
@@ -131,11 +213,19 @@ public sealed class SskTrack
             {
                 continue;
             }
-            DecodeChunk(blob, chunkOff, ci, allPos, allNrm, allUv, allCol, triA, triB, triC, triTex, triChunk,
+            int before = allPos.Count / 3;
+            DecodeChunk(blob, chunkOff, ci, Shapes(blob, chunkOffsets, ci),
+                allPos, allNrm, allUv, allCol, allSlot, triA, triB, triC, triTex, triChunk,
                 triBlock, triBlockMode, triGroup, texEmit, ref blockCounter, ref groupCounter);
+            for (int added = before; added < allPos.Count / 3; added++)
+            {
+                allVertexChunk.Add(ci);
+            }
         }
         SskTrack track = BuildTrack(allPos, allNrm, allUv, allCol, triA, triB, triC, triTex, triChunk,
             triBlock, triBlockMode, triGroup, chunkOffsets.Count, textures);
+        track.VertexSlots = [.. allSlot];
+        track.VertexChunks = [.. allVertexChunk];
         track.VertexTexcoordEmitted = texEmit.ToDictionary(kv => kv.Key, kv => kv.Value.ToArray());
         return track;
     }
@@ -205,34 +295,49 @@ public sealed class SskTrack
             ChunkCount = chunkCount,
         };
     }
+    private static ChunkLayout? Shapes(ReadOnlySpan<byte> blob, IReadOnlyList<int> offsets, int index)
+    {
+        long wanted = -1;
+        foreach (int candidate in offsets)
+        {
+            if (candidate > offsets[index] && (wanted < 0 || candidate < wanted))
+            {
+                wanted = candidate;
+            }
+        }
+        return ChunkLayout.Of(blob, offsets[index], wanted) ?? ChunkLayout.Of(blob, offsets[index]);
+    }
     private static void DecodeChunk(
-        ReadOnlySpan<byte> blob, int chunkOff, int chunkIndex,
-        List<float> allPos, List<float> allNrm, List<float> allUv, List<byte> allCol,
+        ReadOnlySpan<byte> blob, int chunkOff, int chunkIndex, ChunkLayout? shape,
+        List<float> allPos, List<float> allNrm, List<float> allUv, List<byte> allCol, List<int> allSlot,
         List<int> triA, List<int> triB, List<int> triC, List<int> triTex, List<int> triChunk,
         List<int> triBlock, List<int> triBlockMode, List<int> triGroup,
         Dictionary<(int, int), List<bool>> texEmit,
         ref int blockCounter, ref int groupCounter)
     {
-        uint texCount = BinaryRead.U32(blob, chunkOff + 0x10);
-        uint dlSize = BinaryRead.U32(blob, chunkOff + 0x04);
-        long headerSize = 24 + ((long)texCount * 12);
-        long dlOff = chunkOff + headerSize;
-        if (dlSize == 0 || dlOff + dlSize > blob.Length)
+        if (shape is not { } layout)
+        {
+            return;
+        }
+        uint texCount = BinaryRead.U32(blob, chunkOff + layout.TextureCountField);
+        long dlSize = BinaryRead.U32(blob, chunkOff + 0x04) - layout.PrefixBytes(blob, chunkOff);
+        long dlOff = layout.ListStart(blob, chunkOff);
+        if (dlSize <= 0 || dlOff + dlSize > blob.Length)
         {
             return;
         }
         Dictionary<int, int> texMap = [];
         for (int ti = 0; ti < (int)texCount; ti++)
         {
-            int entBase = chunkOff + 24 + (ti * 12);
+            int entBase = chunkOff + layout.HeaderSize + (ti * layout.TextureRefSize);
             int dlByteOff = (int)BinaryRead.U32(blob, entBase + 0);
             int idx1 = (int)BinaryRead.U32(blob, entBase + 8);
-            texMap[dlByteOff] = idx1 - 1;
+            texMap[dlByteOff] = idx1 > 0 ? idx1 - 1 : 0;
         }
         blockCounter++;
         groupCounter++;
         TrackSink sink = new(
-            chunkIndex, texMap, allPos, allNrm, allUv, allCol,
+            chunkIndex, texMap, allPos, allNrm, allUv, allCol, allSlot,
             triA, triB, triC, triTex, triChunk, triBlock, triBlockMode, triGroup, texEmit,
             blockCounter, groupCounter);
         GxRunner.Run(blob.Slice((int)dlOff, (int)dlSize), sink);
@@ -246,6 +351,7 @@ public sealed class SskTrack
         private readonly List<float> _pos;
         private readonly List<float> _nrm;
         private readonly List<float> _uv;
+        private readonly List<int> _slots;
         private readonly List<byte> _col;
         private readonly List<int> _triA;
         private readonly List<int> _triB;
@@ -257,11 +363,12 @@ public sealed class SskTrack
         private readonly List<int> _triGroup;
         private readonly Dictionary<(int, int), List<bool>> _texEmit;
         private int _texture = -1;
+        private int _slot = -1;
         private int _block = -1;
         private int _group = -1;
         public TrackSink(
             int chunkIndex, Dictionary<int, int> texMap,
-            List<float> pos, List<float> nrm, List<float> uv, List<byte> col,
+            List<float> pos, List<float> nrm, List<float> uv, List<byte> col, List<int> slots,
             List<int> triA, List<int> triB, List<int> triC, List<int> triTex, List<int> triChunk,
             List<int> triBlock, List<int> triBlockMode, List<int> triGroup,
             Dictionary<(int, int), List<bool>> texEmit, int blockCounter, int groupCounter)
@@ -272,6 +379,7 @@ public sealed class SskTrack
             _nrm = nrm;
             _uv = uv;
             _col = col;
+            _slots = slots;
             _triA = triA;
             _triB = triB;
             _triC = triC;
@@ -289,6 +397,10 @@ public sealed class SskTrack
         public void Begin(int mode)
         {
             _block = ++BlockCounter;
+        }
+        public void MatrixRestore(int slot)
+        {
+            _slot = slot;
         }
         public void TextureParam(uint param, int byteOffset)
         {
@@ -308,6 +420,7 @@ public sealed class SskTrack
             _nrm.Add(vertex.Nz);
             _uv.Add(vertex.U);
             _uv.Add(vertex.V);
+            _slots.Add(_slot);
             _col.Add(vertex.R);
             _col.Add(vertex.G);
             _col.Add(vertex.B);

@@ -35,24 +35,34 @@ public sealed class ColSector
     public required ColSection End { get; init; }
     public int Index => BinaryPrimitives.ReadUInt16LittleEndian(Record);
 }
+public sealed class ColLayout
+{
+    public required int StartField { get; init; }
+    public required int EndField { get; init; }
+    public required IReadOnlyList<int> LinkFields { get; init; }
+}
 public sealed class ColModel
 {
-    public const int RecordSize = 112;
-    private const int RecordStartField = 0x60;
-    private const int RecordEndField = 0x64;
     private const int RecordLengthField = 0x04;
     private const int RecordForwardField = 0x08;
     private const int RecordShapeField = 0x44;
     private const int ShapeTolerance = 205;
     private const double CollapseDistance = 0.1;
-    private static readonly int[] LinkFields = [0x30, 0x34, 0x38, 0x3C];
+    private static readonly int[][] SectionFieldPairs =
+    [
+        [0x60, 0x64],
+        [0x58, 0x5C],
+        [0x7C, 0x80],
+    ];
     private readonly List<ColSector> _sectors;
     private readonly List<ColSection> _sections;
-    private ColModel(List<ColSector> sectors, List<ColSection> sections)
+    private ColModel(List<ColSector> sectors, List<ColSection> sections, ColLayout layout)
     {
         _sectors = sectors;
         _sections = sections;
+        Layout = layout;
     }
+    public ColLayout Layout { get; }
     public IReadOnlyList<ColSector> Sectors => _sectors;
     public IReadOnlyList<ColSection> Sections => _sections;
     public static bool IsCollision(ReadOnlySpan<byte> blob)
@@ -93,9 +103,9 @@ public sealed class ColModel
             ColSector sector = Sectors[i];
             BinaryPrimitives.WriteUInt32LittleEndian(output.AsSpan(i * 4), (uint)spot[i]);
             sector.Record.CopyTo(output.AsSpan(spot[i]));
-            Write(output, spot[i] + RecordStartField, (uint)placed[sector.Start], sector.Record.Length);
-            Write(output, spot[i] + RecordEndField, (uint)placed[sector.End], sector.Record.Length);
-            foreach (int field in LinkFields)
+            Write(output, spot[i], Layout.StartField, (uint)placed[sector.Start], sector.Record.Length);
+            Write(output, spot[i], Layout.EndField, (uint)placed[sector.End], sector.Record.Length);
+            foreach (int field in Layout.LinkFields)
             {
                 if (field + 4 > sector.Record.Length)
                 {
@@ -173,7 +183,7 @@ public sealed class ColModel
             Reshape(sector, probe);
             if (Describes(sector.Record, probe))
             {
-                describable.Add(sector);
+                _ = describable.Add(sector);
             }
         }
         Dictionary<ColSection, int[]> before = [];
@@ -222,7 +232,7 @@ public sealed class ColModel
                 facing[section].CopyTo(section.Normals.AsSpan());
                 continue;
             }
-            moved.Add(section);
+            _ = moved.Add(section);
             Rewidth(section);
         }
         int rebuilt = 0;
@@ -344,7 +354,7 @@ public sealed class ColModel
                 Fixed(positions[vertex * 3]),
                 Fixed(positions[(vertex * 3) + 1]),
                 Fixed(positions[(vertex * 3) + 2]));
-            byPosition.TryAdd(grid[vertex], vertex);
+            _ = byPosition.TryAdd(grid[vertex], vertex);
         }
         int[] points = new int[surface.PointCount];
         Array.Fill(points, -1);
@@ -358,7 +368,7 @@ public sealed class ColModel
             if (byPosition.TryGetValue(key, out int found))
             {
                 points[point] = found;
-                claimed.Add(key);
+                _ = claimed.Add(key);
             }
         }
         Dictionary<(int, int), List<int>> opposite = [];
@@ -752,11 +762,11 @@ public sealed class ColModel
         colors.Add(255);
         colors.Add(255);
     }
-    private static void Write(byte[] output, int at, uint value, int recordLength)
+    private static void Write(byte[] output, int record, int field, uint value, int recordLength)
     {
-        if (at + 4 <= output.Length && recordLength >= RecordEndField + 4)
+        if (field + 4 <= recordLength && record + field + 4 <= output.Length)
         {
-            BinaryPrimitives.WriteUInt32LittleEndian(output.AsSpan(at), value);
+            BinaryPrimitives.WriteUInt32LittleEndian(output.AsSpan(record + field), value);
         }
     }
     private static void WriteSection(byte[] output, int at, ColSection section)
@@ -805,7 +815,7 @@ public sealed class ColModel
             {
                 break;
             }
-            if (value + RecordStartField + 8 > blob.Length || table.Count > 8192)
+            if (value + 8 > blob.Length || table.Count > 8192)
             {
                 return false;
             }
@@ -815,22 +825,27 @@ public sealed class ColModel
         {
             return false;
         }
+        int[] lengths = RecordLengths(blob, table);
+        if (SectionFields(blob, table, lengths) is not { } fields)
+        {
+            return false;
+        }
         Dictionary<int, ColSection> sections = [];
         List<ColSector> sectors = new(table.Count);
         int recordsStart = table[0];
-        foreach (int record in table)
+        for (int i = 0; i < table.Count; i++)
         {
-            ColSection? start = ReadSection(blob, (int)BinaryRead.U32(blob, record + RecordStartField), sections);
-            ColSection? end = ReadSection(blob, (int)BinaryRead.U32(blob, record + RecordEndField), sections);
+            int record = table[i];
+            ColSection? start = ReadSection(blob, (int)BinaryRead.U32(blob, record + fields[0]), sections);
+            ColSection? end = ReadSection(blob, (int)BinaryRead.U32(blob, record + fields[1]), sections);
             if (start is null || end is null)
             {
                 return false;
             }
-            int length = Math.Min(RecordSize, blob.Length - record);
             sectors.Add(new ColSector
             {
                 Offset = record,
-                Record = blob.Slice(record, length).ToArray(),
+                Record = blob.Slice(record, lengths[i]).ToArray(),
                 Start = start,
                 End = end,
             });
@@ -849,8 +864,79 @@ public sealed class ColModel
         {
             return false;
         }
-        model = new ColModel(sectors, ordered);
+        model = new ColModel(
+            sectors,
+            ordered,
+            new ColLayout
+            {
+                StartField = fields[0],
+                EndField = fields[1],
+                LinkFields = LinkFields(sectors),
+            });
         return true;
+    }
+    private static int[] RecordLengths(ReadOnlySpan<byte> blob, List<int> table)
+    {
+        int[] sorted = [.. table.Order()];
+        Dictionary<int, int> length = [];
+        for (int i = 0; i < sorted.Length; i++)
+        {
+            length[sorted[i]] = (i + 1 < sorted.Length ? sorted[i + 1] : blob.Length) - sorted[i];
+        }
+        int[] lengths = new int[table.Count];
+        for (int i = 0; i < table.Count; i++)
+        {
+            lengths[i] = length[table[i]];
+        }
+        return lengths;
+    }
+    private static int[]? SectionFields(ReadOnlySpan<byte> blob, List<int> table, int[] lengths)
+    {
+        foreach (int[] pair in SectionFieldPairs)
+        {
+            bool all = true;
+            for (int i = 0; i < table.Count && all; i++)
+            {
+                Dictionary<int, ColSection> probe = [];
+                all = pair[1] + 4 <= lengths[i]
+                    && ReadSection(blob, (int)BinaryRead.U32(blob, table[i] + pair[0]), probe) is not null
+                    && ReadSection(blob, (int)BinaryRead.U32(blob, table[i] + pair[1]), probe) is not null;
+            }
+            if (all)
+            {
+                return pair;
+            }
+        }
+        return null;
+    }
+    private static int[] LinkFields(List<ColSector> sectors)
+    {
+        HashSet<int> offsets = [.. sectors.Select(sector => sector.Offset)];
+        int shortest = sectors.Min(sector => sector.Record.Length);
+        List<int> fields = [];
+        for (int field = 0; field + 4 <= shortest; field += 4)
+        {
+            bool named = false;
+            bool all = true;
+            foreach (ColSector sector in sectors)
+            {
+                uint value = BinaryPrimitives.ReadUInt32LittleEndian(sector.Record.AsSpan(field));
+                if (offsets.Contains((int)value))
+                {
+                    named = true;
+                }
+                else if (value is not (0 or uint.MaxValue))
+                {
+                    all = false;
+                    break;
+                }
+            }
+            if (all && named)
+            {
+                fields.Add(field);
+            }
+        }
+        return [.. fields];
     }
     private static ColSection? ReadSection(
         ReadOnlySpan<byte> blob, int at, Dictionary<int, ColSection> sections)
