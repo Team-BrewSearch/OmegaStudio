@@ -61,16 +61,21 @@ dotnet run --project src/OmegaStudio/OmegaStudio.csproj -- path/to/archive.bin
 
 ## Formats it ships with
 
-Four plugins are built from this repository.
+Five plugins are built from this repository.
 
 **Harugeki** - *Suzumiya Haruhi no Chourantou / Gekitou* (PC).
 Reads the `data/*.bin` containers: models, embedded `ringtex2` textures, materials, skeletons and animation. Textures and raw payloads can be replaced and written back.
 
-**Kartz** - *Hot Wheels: Battle Force 5*, *Pimp My Ride: Street Racing*, *Monster Jam: Path of Destruction*, *Madagascar Kartz*, and *DreamWorks Super Star Kartz* (Nintendo DS).
+**Virtuos** - *Hot Wheels: Battle Force 5*, *Pimp My Ride: Street Racing*, *Monster Jam: Path of Destruction*, *Madagascar Kartz*, and *DreamWorks Super Star Kartz* (Nintendo DS).
 Reads the GDA/GDF/GDT archive triple: track geometry and textures, with the resource database picked up automatically when it sits beside the archive. The triple is recognised wherever it turns up, so the archive opens and edits in place inside a DS ROM as well as from a folder on disk.
 
 **Nintendo DS** - any DS ROM image (`.nds`, `.srl`).
 Reads the ROM's file system, its header and its banner through [SceneGate Ekona](https://github.com/SceneGate/Ekona): every file can be extracted or replaced, the banner icon shows in the Texture pane and can be replaced from a PNG, and the header and the banner text, in every language the banner holds, are edited in the Properties pane. Saving rebuilds the whole image.
+
+**Polarbit** - *Crash Bandicoot Nitro Kart 2*, *Crash Bandicoot Nitro Kart 3D*, *Krazy Kart Racing*, *Reckless Getaway* and *Raging Thunder 2* (iOS).
+Reads the `.vfs` archives. The older games store only name hashes, so the plugin recovers names from the paths the data mentions, which names about half their files.
+PVR textures in all seven pixel formats (PVRTC included) and PFNT fonts show in the Texture pane and can be replaced from a PNG; PSND sounds and the samples inside PMOD music modules play and can be replaced from a WAV; LANG and FCOL string tables are edited in the Properties pane.
+PIFF models play their animation clips; PIFF tracks and PXC cars, tracks and props render with their textures. Models and PXC meshes can be replaced from glTF files of any shape, and a skinned model is re-bound to its skeleton by bone name.
 
 **Standard Formats** - no archives of its own.
 It recognises OGG, WAV, PNG, JPEG, GIF and BMP payloads wherever they turn up, so a sound buried inside another container still gets an Audio pane and an extract command.
@@ -83,8 +88,9 @@ src/
   OmegaStudio/         The application: UI, rendering, audio, plugin host.
   Formats/
     Harugeki/          Suzumiya Haruhi no Chourantou / Gekitou
-    Kartz/             Madagascar Kartz / Super Star Kartz
+    Virtuos/           Virtuos racing engine (Nintendo DS)
     Nintendo/          Nintendo DS ROM images
+    Polarbit/          Polarbit racing engine (iOS)
     Generic/           OGG, WAV, PNG, JPEG, GIF, BMP recognisers
 docs/
   ARCHITECTURE.md      How the pieces fit together

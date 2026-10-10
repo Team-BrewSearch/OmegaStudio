@@ -20,7 +20,7 @@ This document describes how the host uses that boundary. For the other side of i
                  └────────────────────┬─────────────────────┘
                                       │ references
       ┌───────────┬───────────┬───────┴───┬───────────┐
-      │ Harugeki  │ Kartz     │ Nintendo  │ Generic   │  …loaded at runtime
+      │ Harugeki  │ Virtuos   │ Nintendo  │ Generic   │  …loaded at runtime
       │ .Formats  │ .Formats  │ .Formats  │ .Formats  │
       └───────────┴───────────┴───────────┴───────────┘
 ```
@@ -57,7 +57,7 @@ The result is a `PluginCatalog` of what loaded and a list of `PluginFailure` for
 
 `CanOpen` gets the head and the path, because not every container can be identified from its opening bytes.
 Harugeki's `.bin` has no magic number at all; it starts with a count and a table of offsets, so it validates that table against the file's real length.
-Kartz checks that the `.gdf` and `.gdt` siblings exist beside the `.gda`.
+Virtuos checks that the `.gdf` and `.gdt` siblings exist beside the `.gda`.
 A DS ROM carries no magic number either, so the Nintendo plugin validates the header's section table, offsets and sizes, against the real length of the file it is in.
 
 ## The asset tree
@@ -90,7 +90,7 @@ Recognizers are pooled across every loaded plugin, so the Generic plugin's OGG r
 A node that already carries content of its own is left alone.
 The same pool answers `IHostServices.IsKnownPayload`, which lets a container walk stop descending when a blob turns out to be a standalone file rather than another table.
 
-Some containers are not one blob at all. A Kartz archive is three files — data, name table and entry table — so no single row can be recognised as one. `IContainerRecognizer` is offered every folder's rows instead, after each row has been recognised on its own, and returns the rows to show in their place: the three collapse into one archive row whose children are the tracks and textures inside. Because the pool spans plugins, the same recogniser opens a `.gda` sitting in a folder on disk and one sitting in `data/Publish.NDS` of a DS ROM.
+Some containers are not one blob at all. A Virtuos archive is three files — data, name table and entry table — so no single row can be recognised as one. `IContainerRecognizer` is offered every folder's rows instead, after each row has been recognised on its own, and returns the rows to show in their place: the three collapse into one archive row whose children are the tracks and textures inside. Because the pool spans plugins, the same recogniser opens a `.gda` sitting in a folder on disk and one sitting in `data/Publish.NDS` of a DS ROM.
 
 A nested container has no `Save` of its own; only the archive the host opened has one. It writes each edit straight back into the rows it was read from, through `IBinaryAsset.ReplaceBytes`, which leaves the outer archive dirty and lets the one Save rebuild everything from the outside in.
 

@@ -224,18 +224,18 @@ Use that while walking a container to decide whether a blob is a standalone file
 
 ## Containers split across files
 
-Some archives are not one file. A Kartz archive is three — the data, the name table and the entry table — and none of them can be recognised alone, so `IArchiveFormat` only covers the case where the user picks one off disk.
+Some archives are not one file. A Virtuos archive is three — the data, the name table and the entry table — and none of them can be recognised alone, so `IArchiveFormat` only covers the case where the user picks one off disk.
 `IContainerRecognizer` covers the rest. The host offers it the rows of every folder in every open archive, once those rows have each been recognised on their own:
 
 ```csharp
 public sealed class DwkContainerRecognizer : IContainerRecognizer
 {
-    public string Id => "kartz.gda.container";
+    public string Id => "virtuos.gda.container";
 
     public IReadOnlyList<IAssetNode>? Claim(IReadOnlyList<IAssetNode> children, IHostServices host)
     {
         // Return null to leave the folder alone, or the rows to show in place of the ones given.
-        // Kartz replaces the three rows of each triple with the archive row they make up.
+        // Virtuos replaces the three rows of each triple with the archive row they make up.
     }
 }
 ```
