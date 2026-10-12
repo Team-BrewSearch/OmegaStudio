@@ -1,5 +1,4 @@
 namespace Harugeki.Formats;
-
 public sealed class RingMaterial
 {
     public const uint NoTexture = 0xFFFFFFFF;

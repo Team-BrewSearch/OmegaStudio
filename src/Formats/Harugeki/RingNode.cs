@@ -1,6 +1,5 @@
 using System.Globalization;
 namespace Harugeki.Formats;
-
 public sealed class RingNode
 {
     private readonly Lock _probeLock = new();

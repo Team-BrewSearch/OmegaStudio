@@ -1,10 +1,9 @@
-using Avalonia.OpenGL;
-using Omega.Plugins;
 using System.Numerics;
 using System.Reflection;
 using System.Runtime.InteropServices;
+using Avalonia.OpenGL;
+using Omega.Plugins;
 namespace OmegaStudio.Rendering;
-
 internal sealed class GlUniforms : IDisposable
 {
     private readonly GlInterface _gl;

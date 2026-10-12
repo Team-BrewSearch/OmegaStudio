@@ -1,8 +1,7 @@
+using System.Globalization;
 using Omega.Plugins;
 using SceneGate.Ekona.Containers.Rom;
-using System.Globalization;
 namespace Nintendo.Formats.Nodes;
-
 internal sealed class ProgramInfoNode : AssetNode, IDescribable
 {
     private const byte AutoStartMask = 0x04;

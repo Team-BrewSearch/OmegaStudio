@@ -1,11 +1,10 @@
+using System.Diagnostics;
 using Avalonia.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Omega.Plugins;
 using OmegaStudio.Plugins;
-using System.Diagnostics;
 namespace OmegaStudio.ViewModels;
-
 public sealed partial class AnimationPlayer : ObservableObject, IDisposable
 {
     private const double TargetFps = 60.0;

@@ -1,8 +1,6 @@
 using System.Text;
 using Omega.Plugins;
 namespace Polarbit.Formats;
-
-/// <summary>One vertex block of a PXC mesh: fixed position and UV, optionally a normal (0x10) and an RGBA colour (0x100).</summary>
 internal readonly record struct PxcVertexBlock(int Offset, int Format, int Count)
 {
     public int Stride => 20 + ((Format & 0x10) != 0 ? 12 : 0) + ((Format & 0x100) != 0 ? 4 : 0);
@@ -10,11 +8,7 @@ internal readonly record struct PxcVertexBlock(int Offset, int Format, int Count
     public bool HasColour => (Format & 0x100) != 0;
     public int ColourAt => 12 + (HasNormal ? 12 : 0);
 }
-
-/// <summary>A draw range: material, which index and vertex block, and the run of indices.</summary>
 internal readonly record struct PxcDraw(int Material, int IndexBlock, int VertexBlock, int First, int Count);
-
-/// <summary>A MESH or LICM chunk inside an SGPS object (REPORT 9.5).</summary>
 internal sealed class PxcMesh
 {
     public required string Chunk { get; init; }
@@ -27,8 +21,6 @@ internal sealed class PxcMesh
     public int MaterialsOffset { get; set; }
     public int RangesOffset { get; set; }
 }
-
-/// <summary>One object of the scene graph, with its placement relative to its parent.</summary>
 internal sealed class PxcObject
 {
     public required string Tag { get; init; }
@@ -39,14 +31,11 @@ internal sealed class PxcObject
     public float[]? Translation { get; set; }
     public int PlacementOffset { get; set; } = -1;
     public PxcMesh? Mesh { get; set; }
-    /// <summary>Row-major 3x3 world matrix and translation: world = M * v + t.</summary>
     public float[] WorldMatrix { get; set; } = [1, 0, 0, 0, 1, 0, 0, 0, 1];
     public float[] WorldTranslation { get; set; } = [0, 0, 0];
     public string Label => $"{(Name.Length > 0 ? Name : Tag)}_{Index}";
     public int Index { get; init; }
 }
-
-/// <summary>PXC scene graph: a tree of typed objects, used for cars, tracks and props in the 2011 games (REPORT 9).</summary>
 internal sealed class PxcScene
 {
     private static readonly string[] s_rgContainers = ["SGGR", "SGNO", "SGAN", "SGG2"];
@@ -59,14 +48,15 @@ internal sealed class PxcScene
     public int Version { get; private init; }
     public bool Getaway => Version >= 50;
     public List<PxcObject> Objects { get; } = [];
-
     public static PxcScene Parse(byte[] b)
     {
         Le.Need(b.Length >= 8 && Le.U32(b, 0) == 0x1A2B3C4D && Le.U16(b, 6) == 1, "PXC header is missing.");
         int version = Le.U16(b, 4);
         Le.Need(version is 16 or 19 or 20 or 54 or 55, $"PXC version {version} is not supported.");
         PxcScene scene = new() { Version = version };
-        Le.Need(scene.ReadObject(b, 8, -1) == b.Length, "PXC has trailing bytes after its root object.");
+        Le.Need(
+            scene.ReadObject(b, 8, -1, 0) == b.Length,
+            "PXC has trailing bytes after its root object.");
         foreach (PxcObject o in scene.Objects)
         {
             float[] m = o.Matrix ?? [1, 0, 0, 0, 1, 0, 0, 0, 1], t = o.Translation ?? [0, 0, 0];
@@ -90,14 +80,12 @@ internal sealed class PxcScene
         }
         return scene;
     }
-
     private static (string Text, int Next) String(byte[] b, int p)
     {
         int n = Le.U16(b, p);
         Le.Need(n > 0 && p + 2 + n <= b.Length && b[p + 1 + n] == 0, $"PXC string at 0x{p:X} is not terminated.");
         return (Encoding.Latin1.GetString(b, p + 2, n - 1), p + 2 + n);
     }
-
     private static (string Tag, int Data, int End) Chunk(byte[] b, int p)
     {
         Le.Need(p + 8 <= b.Length, $"PXC chunk at 0x{p:X} is truncated.");
@@ -105,7 +93,6 @@ internal sealed class PxcScene
         Le.Need(end <= b.Length, $"PXC chunk at 0x{p:X} runs past the file.");
         return (Encoding.Latin1.GetString(b, p, 4), p + 8, (int)end);
     }
-
     private static int SkipProperties(byte[] b, int p)
     {
         int count = Le.Count(b, p, 10, "PXC property list");
@@ -117,9 +104,12 @@ internal sealed class PxcScene
         }
         return p;
     }
-
-    private int ReadObject(byte[] b, int p, int parent)
+    public const int MaxDepth = 64;
+    private int ReadObject(byte[] b, int p, int parent, int depth)
     {
+        Le.Need(
+            depth <= MaxDepth,
+            $"PXC object tree nests more than {MaxDepth} levels deep, which no real scene does.");
         (string tag, int body, int end) = Chunk(b, p);
         (string name, int q) = String(b, body);
         q += 4;
@@ -140,7 +130,7 @@ internal sealed class PxcScene
             q += 4;
             for (int i = 0; i < children; i++)
             {
-                q = ReadObject(b, q, o.Index);
+                q = ReadObject(b, q, o.Index, depth + 1);
             }
         }
         if ((Getaway ? s_rgPlaced : s_rtPlaced).Contains(tag))
@@ -160,7 +150,6 @@ internal sealed class PxcScene
         }
         return end;
     }
-
     private PxcMesh ReadMesh(byte[] b, string chunk, int offset, int d, int e)
     {
         PxcMesh mesh = new() { Chunk = chunk, ChunkOffset = offset, BoundsOffset = d };
@@ -243,19 +232,15 @@ internal sealed class PxcScene
         }
         return mesh;
     }
-
-    /// <summary>TEXT (flags + path), or an empty slot: #RES + 0 in RT2, eight zero bytes in Getaway.</summary>
     private static (int Next, string? Texture) Texture(byte[] b, int p)
     {
         (string tag, int data, int end) = Chunk(b, p);
         return tag == "TEXT" ? (end, String(b, data + 4).Text.Replace('\\', '/')) : (end, null);
     }
-
     public static (float X, float Y, float Z) Apply(float[] m, float[] t, float x, float y, float z)
     {
         return ((m[0] * x) + (m[1] * y) + (m[2] * z) + t[0], (m[3] * x) + (m[4] * y) + (m[5] * z) + t[1], (m[6] * x) + (m[7] * y) + (m[8] * z) + t[2]);
     }
-
     public static float[] Inverse(float[] m)
     {
         double a = m[0], b = m[1], c = m[2], d = m[3], e = m[4], f = m[5], g = m[6], h = m[7], i = m[8];
@@ -263,7 +248,6 @@ internal sealed class PxcScene
         Le.Need(System.Math.Abs(det) > 1e-12, "PXC object has a singular placement.");
         return [.. new[] { (e * i) - (f * h), (c * h) - (b * i), (b * f) - (c * e), (f * g) - (d * i), (a * i) - (c * g), (c * d) - (a * f), (d * h) - (e * g), (b * g) - (a * h), (a * e) - (b * d) }.Select(x => (float)(x / det))];
     }
-
     public SceneGeometry BuildScene(byte[] b, TextureSet textures)
     {
         List<SceneMesh> meshes = [];
@@ -285,12 +269,18 @@ internal sealed class PxcScene
                 foreach (PxcDraw draw in mesh.Draws.Where(x => x.VertexBlock == v))
                 {
                     int first = indices.Count;
+                    Le.Need(
+                        draw.IndexBlock >= 0 && draw.IndexBlock < mesh.IndexBlocks.Count,
+                        $"PXC draw names index block {draw.IndexBlock} of {mesh.IndexBlocks.Count}, which does not exist.");
                     int[] source = mesh.IndexBlocks[draw.IndexBlock];
                     for (int k = draw.First; k + 2 < draw.First + draw.Count; k += 3)
                     {
                         Le.Need(source[k] < block.Count && source[k + 1] < block.Count && source[k + 2] < block.Count, $"PXC mesh '{o.Label}' indexes past its vertices.");
                         indices.AddRange([source[k], source[k + 1], source[k + 2]]);
                     }
+                    Le.Need(
+                        draw.Material >= 0 && draw.Material < mesh.Textures.Count,
+                        $"PXC draw names material {draw.Material} of {mesh.Textures.Count}, which does not exist.");
                     string? texture = mesh.Textures[draw.Material];
                     submeshes.Add(new SceneSubmesh(texture is null ? "untextured" : Path.GetFileNameWithoutExtension(texture), first, indices.Count - first, textures.Add(texture)));
                 }

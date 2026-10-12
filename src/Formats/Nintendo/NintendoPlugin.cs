@@ -1,21 +1,22 @@
+using System.Buffers.Binary;
 using Nintendo.Formats;
 using Nintendo.Formats.Nodes;
 using Omega.Plugins;
-using System.Buffers.Binary;
 [assembly: OmegaPlugin(typeof(NintendoPlugin))]
 namespace Nintendo.Formats;
-
 public sealed class NintendoPlugin : IFormatPlugin
 {
     public FormatPluginInfo Info { get; } = new()
     {
         Id = "nintendo",
-        DisplayName = "Nintendo DS",
+        DisplayName = "Nintendo",
         Version = "1.0.0",
         Author = "Omega Studio",
-        Description = "Files, header and banner of Nintendo DS ROM images, read and written with SceneGate Ekona.",
+        Description = "Nintendo DS ROM images, WBFS Wii disc containers, 3DS cart images: files, headers "
+            + "and banner, with SceneGate Ekona and the disc decryption that goes with them.",
     };
-    public IEnumerable<IArchiveFormat> Archives { get; } = [new NdsRomFormat()];
+    public IEnumerable<IArchiveFormat> Archives { get; } =
+        [new NdsRomFormat(), new WbfsArchiveFormat(), new Nintendo3DSArchiveFormat()];
 }
 public sealed class NdsRomFormat : IArchiveFormat
 {
@@ -36,19 +37,25 @@ public sealed class NdsRomFormat : IArchiveFormat
     public FileFilter Filter { get; } = new("Nintendo DS ROM", "*.nds", "*.srl");
     public bool CanOpen(string path, ReadOnlySpan<byte> head)
     {
+        return LooksLike(path, head);
+    }
+    public static bool LooksLike(string path, ReadOnlySpan<byte> head)
+    {
         string extension = Path.GetExtension(path);
-        if (head.Length < MinimumHead
-            || (!extension.Equals(".nds", StringComparison.OrdinalIgnoreCase)
-                && !extension.Equals(".srl", StringComparison.OrdinalIgnoreCase)))
+        bool named = extension.Equals(".nds", StringComparison.OrdinalIgnoreCase)
+            || extension.Equals(".srl", StringComparison.OrdinalIgnoreCase);
+        try
+        {
+            return named && HeaderLooksLike(head, new FileInfo(path).Length);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
             return false;
         }
-        long length;
-        try
-        {
-            length = new FileInfo(path).Length;
-        }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+    }
+    public static bool HeaderLooksLike(ReadOnlySpan<byte> head, long length)
+    {
+        if (head.Length < MinimumHead)
         {
             return false;
         }
@@ -99,7 +106,19 @@ internal sealed class NdsRomArchive : IArchive
     public IReadOnlyList<string> BackupPaths => [_path];
     public void Save()
     {
-        _rom.Save(_path);
+        WriteGuard.CommitStreaming(
+            DisplayName,
+            _path,
+            stream => _rom.WriteTo(stream),
+            temporary => NdsRomFormat.HeaderLooksLike(HeadOf(temporary), new FileInfo(temporary).Length));
+        _rom.MarkSaved();
+    }
+    private static byte[] HeadOf(string path)
+    {
+        byte[] head = new byte[0x200];
+        using FileStream file = System.IO.File.OpenRead(path);
+        int read = file.Read(head);
+        return read == head.Length ? head : head[..read];
     }
     public void Dispose()
     {

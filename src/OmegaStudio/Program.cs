@@ -1,6 +1,5 @@
 using Avalonia;
 namespace OmegaStudio;
-
 internal static class Program
 {
     [STAThread]

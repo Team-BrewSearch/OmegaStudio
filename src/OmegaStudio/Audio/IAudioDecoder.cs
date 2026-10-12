@@ -1,5 +1,4 @@
 namespace OmegaStudio.Audio;
-
 public interface IAudioDecoder : IDisposable
 {
     int SampleRate { get; }

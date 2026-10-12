@@ -1,18 +1,13 @@
 using System.Text;
 using Omega.Plugins;
 namespace Polarbit.Formats;
-
-/// <summary>One PIFF chunk. FORM groups are listed with their type ("FORM:SKIN") and their children follow one level deeper.</summary>
 internal readonly record struct PiffChunk(string Id, int Header, int Data, int Size, int Depth, int Parent);
-
-/// <summary>PIFF: an IFF-style chunk container holding a model ("3DOB") or a track ("SCEN") (REPORT 8).</summary>
 internal static class Piff
 {
     public static string FileType(ReadOnlySpan<byte> b)
     {
         return Encoding.Latin1.GetString(b.Slice(8, 4));
     }
-
     public static List<PiffChunk> Walk(ReadOnlySpan<byte> b)
     {
         Le.Need(b.Length >= 12 && b.StartsWith("PIFF"u8) && Le.U32(b, 4) == b.Length - 8, "PIFF header does not match the file size.");
@@ -20,7 +15,6 @@ internal static class Piff
         Walk(b, 12, b.Length, 0, -1, chunks);
         return chunks;
     }
-
     private static void Walk(ReadOnlySpan<byte> b, int p, int end, int depth, int parent, List<PiffChunk> chunks)
     {
         while (p < end)
@@ -43,8 +37,6 @@ internal static class Piff
         }
         Le.Need(p == end, "PIFF chunk list is misaligned.");
     }
-
-    /// <summary>The direct children of a FORM (or of the file, for -1) with a given id.</summary>
     public static IEnumerable<PiffChunk> Children(List<PiffChunk> chunks, int parent, string id)
     {
         for (int i = 0; i < chunks.Count; i++)
@@ -55,7 +47,6 @@ internal static class Piff
             }
         }
     }
-
     public static PiffChunk? Child(List<PiffChunk> chunks, int parent, string id)
     {
         foreach (PiffChunk chunk in Children(chunks, parent, id))
@@ -64,7 +55,6 @@ internal static class Piff
         }
         return null;
     }
-
     public static int IndexOf(List<PiffChunk> chunks, int parent, string id)
     {
         for (int i = 0; i < chunks.Count; i++)
@@ -77,8 +67,6 @@ internal static class Piff
         return -1;
     }
 }
-
-/// <summary>Collects the textures a scene's runs point at, each decoded once.</summary>
 internal sealed class TextureSet(Func<string, ImageData?> resolve)
 {
     private readonly Dictionary<string, int> _indices = new(StringComparer.OrdinalIgnoreCase);
@@ -102,15 +90,11 @@ internal sealed class TextureSet(Func<string, ImageData?> resolve)
         return index;
     }
 }
-
-/// <summary>One bone of a 3DOB skin: what it moves and where its pivot sits in model space.</summary>
 internal sealed record PiffBone(uint Id, uint Parent, int Rigid, int Weighted, int RigidStart, int WeightedStart, int WeightStart, float[] Pivot)
 {
     public string Name => Id < 0x01000000 ? $"bone{Id}"
         : BitConverter.GetBytes(Id) is { } c && c.All(x => x is >= 0x20 and < 0x7F) ? Encoding.ASCII.GetString(c).Trim() : $"bone{Id:X8}";
 }
-
-/// <summary>A 3DOB model: the main mesh with its primitive groups, and optionally its skin, animation and levels of detail (REPORT 8.1).</summary>
 internal sealed class PiffModel
 {
     private PiffModel()
@@ -118,7 +102,6 @@ internal sealed class PiffModel
     }
     public int[] Head { get; private init; } = [];
     public List<string> Textures { get; } = [];
-    /// <summary>Texture index (0-based, or -1) for each appearance number minus one.</summary>
     public List<int> Appearances { get; } = [];
     public float[] Positions { get; private set; } = [];
     public float[] Normals { get; private set; } = [];
@@ -127,7 +110,6 @@ internal sealed class PiffModel
     public int ColorBytes { get; private init; }
     public List<(int Mode, int Appearance, int[] Indices)> Polys { get; } = [];
     public List<PiffBone> Bones { get; } = [];
-    /// <summary>Per vertex, the bone indices and weights that move it, the UV-seam copies included.</summary>
     public List<(int Bone, float Weight)>[] Influences { get; private set; } = [];
     public int[] KeyTimes { get; private set; } = [];
     public List<(string Name, int First, int Last)> Clips { get; } = [];
@@ -139,7 +121,6 @@ internal sealed class PiffModel
     public int VertexCount => Positions.Length / 3;
     public bool IsSkinned => Bones.Count > 0;
     public bool IsAnimated => KeyTimes.Length > 0 && Clips.Count > 0 && ((IsSkinned && Rotations is not null) || Scales is not null);
-
     public static PiffModel Parse(byte[] b)
     {
         List<PiffChunk> chunks = Piff.Walk(b);
@@ -199,7 +180,6 @@ internal sealed class PiffModel
         model.LodLevels = lod < 0 ? 0 : Piff.Children(chunks, lod, "FORM:MESH").Count();
         return model;
     }
-
     private static float[] Vectors(byte[] b, PiffChunk chunk, int count, int components)
     {
         float[] values = new float[count * components];
@@ -209,7 +189,6 @@ internal sealed class PiffModel
         }
         return values;
     }
-
     public static (int Mode, int Appearance, int[] Indices) Poly(byte[] b, PiffChunk chunk, int vertices)
     {
         Le.Need(chunk.Size >= 16, "POLY header is truncated.");
@@ -225,8 +204,6 @@ internal sealed class PiffModel
         }
         return (mode, appearance, indices);
     }
-
-    /// <summary>Triangle-list corners of a POLY, strips unrolled with alternating winding and degenerate triangles dropped.</summary>
     public static IEnumerable<int> Triangles(int mode, int[] ix)
     {
         if (mode == 4)
@@ -250,7 +227,6 @@ internal sealed class PiffModel
             }
         }
     }
-
     private void ReadTextures(byte[] b, List<PiffChunk> chunks)
     {
         if (Piff.Child(chunks, -1, "TEXL") is not { } texl)
@@ -266,7 +242,6 @@ internal sealed class PiffModel
             p = nul + 1;
         }
     }
-
     private void ReadAppearances(byte[] b, List<PiffChunk> chunks)
     {
         if (Piff.Child(chunks, -1, "APPR") is { } appr)
@@ -293,14 +268,11 @@ internal sealed class PiffModel
             }
         }
     }
-
-    /// <summary>Texture index for a POLY's appearance number, falling back to the only texture when the tables say nothing usable.</summary>
     public int TextureOf(int appearance)
     {
         int texture = appearance >= 1 && appearance <= Appearances.Count ? Appearances[appearance - 1] : -1;
         return texture >= 0 && texture < Textures.Count ? texture : Textures.Count == 1 && appearance >= 1 ? 0 : -1;
     }
-
     private void ReadSkin(byte[] b, List<PiffChunk> chunks, int skin, int vertices)
     {
         PiffChunk jnts = Piff.Child(chunks, skin, "JNTS") ?? throw new InvalidDataException("FORM:SKIN has no JNTS.");
@@ -351,7 +323,6 @@ internal sealed class PiffModel
             Le.Need(bone.Parent == uint.MaxValue || Bones.Exists(x => x.Id == bone.Parent), $"Bone {bone.Name} names a parent that is not in the skeleton.");
         }
     }
-
     private void ReadAnimation(byte[] b, List<PiffChunk> chunks, int anim)
     {
         if (Piff.Child(chunks, anim, "KEYF") is not { } keyf)
@@ -415,7 +386,6 @@ internal sealed class PiffModel
             }
         }
     }
-
     public SceneGeometry BuildScene(TextureSet textures, string name)
     {
         int count = VertexCount;
@@ -466,8 +436,6 @@ internal sealed class PiffModel
             Clips = IsSkinned && IsAnimated ? PiffAnimation.ClipsOf(this) : [],
         };
     }
-
-    /// <summary>Up to four influences per vertex, strongest first, renormalised.</summary>
     private (int[] Joints, float[] Weights) SkinArrays()
     {
         int count = VertexCount;
@@ -490,11 +458,7 @@ internal sealed class PiffModel
         return (joints, weights);
     }
 }
-
-/// <summary>A CHNK record: the material, the bases the chunk's local indices add to, and where its indices sit in INDS.</summary>
 internal readonly record struct TrackChunk(int Material, int VertexBase, int TexBase, int ColourBase, int IndexSize, int Count, int IndexOffset);
-
-/// <summary>The vertices and indices of one texture's share of a track, while it is being gathered.</summary>
 internal sealed class TrackMesh
 {
     public List<float> P { get; } = [];
@@ -503,8 +467,6 @@ internal sealed class TrackMesh
     public List<int> I { get; } = [];
     public Dictionary<(int, int, int), int> Seen { get; } = [];
 }
-
-/// <summary>A SCEN track's render data: grid-relative vertices, per-chunk index runs and materials (REPORT 8.2).</summary>
 internal sealed class PiffTrack
 {
     private PiffTrack()
@@ -521,7 +483,6 @@ internal sealed class PiffTrack
     private float[] _positions = [];
     private byte[] _payload = [];
     private PiffChunk _tcor, _colr, _inds;
-
     public static PiffTrack Parse(byte[] b)
     {
         List<PiffChunk> chunks = Piff.Walk(b);
@@ -613,8 +574,6 @@ internal sealed class PiffTrack
         track.Counts["QUAD"] = chunks.Count(c => c.Id == "FORM:QUAD");
         return track;
     }
-
-    /// <summary>One mesh per texture; a vertex is a (position, texcoord, colour) triple, since each chunk offsets the three arrays separately.</summary>
     public SceneGeometry BuildScene(TextureSet textures)
     {
         byte[] b = _payload;

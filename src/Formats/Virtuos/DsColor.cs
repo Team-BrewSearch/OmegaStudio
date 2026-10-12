@@ -1,5 +1,4 @@
 namespace Virtuos.Formats;
-
 internal static class DsColor
 {
     private static readonly byte[] Lookup5To8 =

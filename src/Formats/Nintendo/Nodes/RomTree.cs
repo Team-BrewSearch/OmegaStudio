@@ -4,7 +4,6 @@ using Texim.Images;
 using Yarhl.FileSystem;
 using Yarhl.IO;
 namespace Nintendo.Formats.Nodes;
-
 internal static class RomTree
 {
     public static IAssetNode Build(NdsRom rom, string displayName)
@@ -63,40 +62,59 @@ internal sealed class RomFolderNode : AssetNode
         ChildFactory = () => RomTree.Children(rom, node, path);
     }
 }
-internal sealed class RomFileNode : BinaryAssetNode
+internal sealed class RomFileNode : StreamingAssetNode
 {
     private readonly NdsRom _rom;
     private readonly Node _node;
-    private byte[]? _data;
+    private byte[]? _edited;
     public RomFileNode(NdsRom rom, Node node, string path)
-        : base(node.Name, path, AssetKinds.Auto, Sizes.Describe(node.Stream?.Length ?? 0))
+        : base(node.Name, path, new FileWindow(node), AssetKinds.Auto, Sizes.Describe(node.Stream?.Length ?? 0))
     {
         _rom = rom;
         _node = node;
     }
-    public override ReadOnlySpan<byte> Data => _data ??= Read();
+    public override ReadOnlySpan<byte> Data
+    {
+        get
+        {
+            return _edited ?? Source.ReadAll();
+        }
+    }
     public override string Extension =>
         Path.GetExtension(Name) is { Length: > 1 } found ? found : ".bin";
     public override string FileStem => Path.GetFileNameWithoutExtension(Name);
     protected override void Write(byte[] payload)
     {
         _ = _node.ChangeFormat(new BinaryFormat(DataStreamFactory.FromArray(payload, 0, payload.Length)));
-        _data = payload;
+        _edited = payload;
         _rom.MarkChanged();
     }
-    private byte[] Read()
+    private sealed class FileWindow(Node node) : IPayloadSource
     {
-        DataStream stream = _node.Stream
-            ?? throw new InvalidDataException($"'{Name}' holds no data to read.");
-        if (stream.Length > int.MaxValue)
+        public long Length => node.Stream?.Length ?? 0;
+        public int Head(Span<byte> destination)
         {
-            throw new InvalidDataException(
-                $"'{Name}' claims {stream.Length} bytes, more than this host can hold in one node.");
+            if (node.Stream is not { } stream)
+            {
+                return 0;
+            }
+            stream.Position = 0;
+            return stream.Read(destination);
         }
-        byte[] buffer = new byte[stream.Length];
-        stream.Position = 0;
-        stream.ReadExactly(buffer);
-        return buffer;
+        public byte[] ReadAll()
+        {
+            DataStream stream = node.Stream
+                ?? throw new InvalidDataException($"'{node.Name}' holds no data to read.");
+            if (stream.Length > int.MaxValue)
+            {
+                throw new InvalidDataException(
+                    $"'{node.Name}' claims {stream.Length} bytes, more than this host can hold in one node.");
+            }
+            byte[] buffer = new byte[stream.Length];
+            stream.Position = 0;
+            stream.ReadExactly(buffer);
+            return buffer;
+        }
     }
 }
 internal sealed class RomPartNode : AssetNode

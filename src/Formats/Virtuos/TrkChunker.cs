@@ -1,6 +1,5 @@
 using System.Numerics;
 namespace Virtuos.Formats;
-
 public static class TrkChunker
 {
     public static IReadOnlyList<TrkChunk>? ChunkByExplicitIndex(

@@ -1,5 +1,4 @@
 namespace OmegaStudio.Audio;
-
 public static class AudioFormats
 {
     private static ReadOnlySpan<byte> OggMagic => "OggS"u8;

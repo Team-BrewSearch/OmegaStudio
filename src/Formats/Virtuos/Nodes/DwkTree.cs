@@ -1,6 +1,5 @@
 using Omega.Plugins;
 namespace Virtuos.Formats.Nodes;
-
 internal sealed class TrackContext(DwkArchive archive, VirtuosResourceIndex? resources)
 {
     private TrackTextureTable? _textures;
@@ -15,7 +14,7 @@ internal sealed class TrackContext(DwkArchive archive, VirtuosResourceIndex? res
             if (string.Equals(candidate.GdfPath, trackPath, StringComparison.OrdinalIgnoreCase)
                 && SskTrack.IsTrack(candidate.Span))
             {
-                return Binary.BinaryRead.U16(candidate.Span, 0x02);
+                return BinaryRead.U16(candidate.Span, 0x02);
             }
         }
         return 0;

@@ -1,11 +1,10 @@
+using System.Buffers.Binary;
+using System.Runtime.InteropServices;
 using Avalonia;
 using Avalonia.Media.Imaging;
 using Avalonia.Platform;
 using Omega.Plugins;
-using System.Buffers.Binary;
-using System.Runtime.InteropServices;
 namespace OmegaStudio.Services;
-
 public sealed class ImageIO : IImageCodec
 {
     private const int BmpFileHeader = 14;
@@ -156,7 +155,13 @@ public sealed class ImageIO : IImageCodec
         }
         char[] invalid = Path.GetInvalidFileNameChars();
         char[] safe = [.. name.Select(c => Array.IndexOf(invalid, c) >= 0 ? '_' : c)];
-        string result = new string(safe).Trim();
-        return result.Length == 0 ? "asset" : result;
+        safe = [.. safe.Select(c => c is '/' or '\\' ? '_' : c)];
+        string result = new string(safe).Trim().TrimStart('.');
+        return result.Length == 0
+            || result is "." or ".."
+            || result.Contains("..", StringComparison.Ordinal)
+            || result.Contains(':', StringComparison.Ordinal)
+            ? "asset"
+            : result;
     }
 }

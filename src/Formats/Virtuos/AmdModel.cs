@@ -1,6 +1,5 @@
-using Virtuos.Formats.Binary;
+using Omega.Plugins;
 namespace Virtuos.Formats;
-
 public sealed class AmdModel
 {
     public const int HeaderSize = 0x1C;

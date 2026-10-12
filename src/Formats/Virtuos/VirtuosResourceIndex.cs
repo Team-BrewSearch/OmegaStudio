@@ -1,6 +1,5 @@
 using Virtuos.Formats.Rdf;
 namespace Virtuos.Formats;
-
 public sealed class VirtuosResourceIndex
 {
     private readonly Dictionary<int, int[][]> _slotsByModel;

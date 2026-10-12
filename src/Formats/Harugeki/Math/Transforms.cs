@@ -1,7 +1,6 @@
-using Omega.Plugins;
 using System.Numerics;
+using Omega.Plugins;
 namespace Harugeki.Formats.Math;
-
 public static class Transforms
 {
     private static ReadOnlySpan<int> MirroredElements => [1, 3, 4, 6, 9, 11, 12, 14];

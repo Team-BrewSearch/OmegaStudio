@@ -1,7 +1,6 @@
 using System.Numerics;
 using SMath = System.Math;
 namespace Virtuos.Formats;
-
 public static class TrkWriter
 {
     public const int HeaderSize = 0x38;
@@ -26,6 +25,17 @@ public static class TrkWriter
         return TrkHeader.Of(template) is not null;
     }
     public static byte[] Build(ReadOnlySpan<byte> originalTemplate, IReadOnlyList<TrkChunk> chunks)
+    {
+        ArgumentNullException.ThrowIfNull(chunks);
+        byte[] built = BuildCore(originalTemplate, chunks);
+        if (!SskTrack.IsTrack(built))
+        {
+            throw new InvalidDataException(
+                "the rebuilt track does not read back as a track, so it was not written");
+        }
+        return built;
+    }
+    private static byte[] BuildCore(ReadOnlySpan<byte> originalTemplate, IReadOnlyList<TrkChunk> chunks)
     {
         ArgumentNullException.ThrowIfNull(chunks);
         if (chunks.Count == 0)

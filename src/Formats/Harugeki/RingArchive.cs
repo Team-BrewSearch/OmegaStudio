@@ -1,13 +1,11 @@
-using Harugeki.Formats.Binary;
-using Omega.Plugins;
 using System.Buffers.Binary;
+using Omega.Plugins;
 namespace Harugeki.Formats;
-
 public sealed class RingArchive
 {
     public const byte Pad = 0xFE;
     public const int Align = 32;
-    private const long MaxArchiveSize = 4L * 1024 * 1024 * 1024;
+    public const long MaxArchiveSize = 4L * 1024 * 1024 * 1024;
     private const int MinArchiveSize = 8;
     private const int MaxTableCount = 8192;
     private readonly Lock _aliasLock = new();
@@ -40,8 +38,9 @@ public sealed class RingArchive
         FileInfo file = new(path);
         return file.Length > MaxArchiveSize
             ? throw new InvalidOperationException(
-                $"Archive file is too large ({file.Length / 1024 / 1024} MB). " +
-                $"Maximum supported: {MaxArchiveSize / 1024 / 1024} MB")
+                $"{System.IO.Path.GetFileName(path)} is {Sizes.Describe(file.Length)} and this reader holds the whole "
+                + $"image in memory, so {Sizes.Describe(MaxArchiveSize)} is as much as one open can be. Split it, or "
+                + "browse it with a tool that streams.")
             : file.Length < MinArchiveSize
             ? throw new InvalidOperationException("Archive file is too small to be valid")
             : new RingArchive(File.ReadAllBytes(path), path, host);

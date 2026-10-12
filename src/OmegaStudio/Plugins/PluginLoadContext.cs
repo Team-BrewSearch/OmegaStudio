@@ -1,7 +1,6 @@
 using System.Reflection;
 using System.Runtime.Loader;
 namespace OmegaStudio.Plugins;
-
 internal sealed class PluginLoadContext : AssemblyLoadContext
 {
     private const string EmbeddedPrefix = "omega/deps/";

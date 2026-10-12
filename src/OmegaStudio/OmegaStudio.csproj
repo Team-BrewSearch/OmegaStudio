@@ -49,8 +49,8 @@
     <ItemGroup>
       <_PublishedPlugins Include="$(OmegaFormatsPath)\*.Formats.dll" />
     </ItemGroup>
-    <Warning Condition="'@(_PublishedPlugins)' == ''"
-             Text="No plugins found in $(OmegaFormatsPath). The published app will not open anything — build the solution before publishing." />
+    <Error Condition="'@(_PublishedPlugins)' == ''"
+           Text="No plugins found in $(OmegaFormatsPath). A published build with no plugins opens nothing. Build the whole solution (dotnet build src/OmegaStudio.slnx) before publishing." />
     <Copy SourceFiles="@(_PublishedPlugins)" DestinationFolder="$(PublishDir)formats" />
     <Message Importance="high" Condition="'@(_PublishedPlugins)' != ''"
              Text="Published @(_PublishedPlugins->Count()) plugin(s) to $(PublishDir)formats" />

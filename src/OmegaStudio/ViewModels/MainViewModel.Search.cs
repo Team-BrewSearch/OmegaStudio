@@ -1,11 +1,12 @@
+using System.Diagnostics;
 using CommunityToolkit.Mvvm.ComponentModel;
 using Omega.Plugins;
-using System.Diagnostics;
+using OmegaStudio.Plugins;
 namespace OmegaStudio.ViewModels;
-
 public partial class MainViewModel
 {
     private static readonly TimeSpan s_searchDebounce = TimeSpan.FromMilliseconds(200);
+    private const int HitLimit = 5000;
     private CancellationTokenSource? _searchCts;
     [ObservableProperty]
     public partial string SearchFilter { get; set; } = "";
@@ -34,7 +35,6 @@ public partial class MainViewModel
     private void CancelSearch()
     {
         _searchCts?.Cancel();
-        _searchCts?.Dispose();
         _searchCts = null;
     }
     private async Task SearchAsync(string text, CancellationToken token)
@@ -44,13 +44,19 @@ public partial class MainViewModel
             await Task.Delay(s_searchDebounce, token);
             Status = "Searching...";
             Stopwatch elapsed = Stopwatch.StartNew();
-            (List<SearchHit> hits, int matches) = await Task.Run(() =>
+            (List<SearchHit> hits, int matches, bool truncated) = await Task.Run(() =>
             {
                 List<SearchHit> found = [];
+                bool capped = false;
                 int total = 0;
                 foreach (TreeItemViewModel root in Roots)
                 {
                     token.ThrowIfCancellationRequested();
+                    if (total >= HitLimit)
+                    {
+                        capped = true;
+                        break;
+                    }
                     int inRoot = 0;
                     if (Filter(root, ref inRoot, text, token) is { } hit)
                     {
@@ -58,7 +64,7 @@ public partial class MainViewModel
                         total += inRoot;
                     }
                 }
-                return (found, total);
+                return (found, total, capped);
             }, token);
             token.ThrowIfCancellationRequested();
             SearchResults.Clear();
@@ -69,7 +75,10 @@ public partial class MainViewModel
             }
             Status = matches == 0
                 ? "No matches found."
-                : $"Found {matches} match{(matches == 1 ? "" : "es")} in {elapsed.ElapsedMilliseconds}ms.";
+                : truncated
+                    ? $"Found {matches}+ match{(matches == 1 ? "" : "es")} in {elapsed.ElapsedMilliseconds}ms; "
+                      + $"showing the first {HitLimit}."
+                    : $"Found {matches} match{(matches == 1 ? "" : "es")} in {elapsed.ElapsedMilliseconds}ms.";
         }
         catch (OperationCanceledException)
         {
@@ -82,20 +91,24 @@ public partial class MainViewModel
         string Kind,
         IAssetNode? Node,
         List<SearchHit> Children);
-    private static SearchHit? Filter(
+    private SearchHit? Filter(
         TreeItemViewModel item, ref int matches, string text, CancellationToken token)
     {
         token.ThrowIfCancellationRequested();
         bool self = item.Header.Contains(text, StringComparison.OrdinalIgnoreCase);
         List<SearchHit> children = [];
-        foreach (TreeItemViewModel child in item.Build())
+        if (item.Node is { } node)
         {
-            token.ThrowIfCancellationRequested();
-            int inChild = 0;
-            if (Filter(child, ref inChild, text, token) is { } hit)
+            foreach (IAssetNode child in ChildrenOf(node, token))
             {
-                children.Add(hit);
-                matches += inChild;
+                token.ThrowIfCancellationRequested();
+                int inChild = 0;
+                TreeItemViewModel row = TreeRow(child);
+                if (Filter(row, ref inChild, text, token) is { } hit)
+                {
+                    children.Add(hit);
+                    matches += inChild;
+                }
             }
         }
         if (self)
@@ -105,6 +118,22 @@ public partial class MainViewModel
         return self || children.Count > 0
             ? new SearchHit(item, item.Header, item.Detail, item.Kind, item.Node, children)
             : null;
+    }
+    private static IReadOnlyList<IAssetNode> ChildrenOf(IAssetNode node, CancellationToken token)
+    {
+        token.ThrowIfCancellationRequested();
+        return PluginGuard.Try(
+            $"Reading the contents of '{NodeAccess.Name(node)}'",
+            () => (IReadOnlyList<IAssetNode>)[.. node.GetChildren()],
+            []);
+    }
+    private TreeItemViewModel TreeRow(IAssetNode node)
+    {
+        IAssetNode shown = _recognition.Enrich(node);
+        return new TreeItemViewModel(NodeAccess.Name(shown), NodeAccess.Detail(shown), NodeAccess.Resolve(shown))
+        {
+            Node = shown,
+        };
     }
     private static TreeItemViewModel ToViewModel(SearchHit hit, string text)
     {

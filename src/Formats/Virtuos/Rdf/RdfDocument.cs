@@ -1,6 +1,5 @@
-using Virtuos.Formats.Binary;
+using Omega.Plugins;
 namespace Virtuos.Formats.Rdf;
-
 internal sealed class RdfProperty
 {
     public required string Name { get; init; }

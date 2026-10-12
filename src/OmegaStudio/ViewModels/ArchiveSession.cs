@@ -1,7 +1,6 @@
 using Omega.Plugins;
 using OmegaStudio.Plugins;
 namespace OmegaStudio.ViewModels;
-
 internal sealed class ArchiveSession : IDisposable
 {
     private const int SniffBytes = 4096;
@@ -10,6 +9,7 @@ internal sealed class ArchiveSession : IDisposable
     public IArchive? Archive { get; private set; }
     public string? Path { get; private set; }
     public LoadedPlugin? Owner { get; private set; }
+    public string? DisplayName => Archive?.DisplayName;
     public bool HasChanges => Archive is { IsDirty: true };
     public async Task<IArchive?> OpenAsync(
         string path, PluginCatalog catalog, AssetRecognition recognition)
@@ -51,6 +51,7 @@ internal sealed class ArchiveSession : IDisposable
             Archive = archive;
             Path = path;
             Owner = chosen.Owner;
+            await BackUpAsync(archive);
             Logged?.Invoke($"Opened {name} as {chosen.Format.DisplayName}.");
             return archive;
         }
@@ -86,7 +87,11 @@ internal sealed class ArchiveSession : IDisposable
         }
         catch (Exception ex)
         {
-            Logged?.Invoke($"Save failed: {ex.Message}");
+            Logged?.Invoke($"Save failed: {ex.GetType().Name}: {ex.Message}");
+            Logged?.Invoke(ex.StackTrace is { Length: > 0 } trace ? $"  {trace}" : string.Empty);
+            Logged?.Invoke(
+                $"{System.IO.Path.GetFileName(Path ?? "The archive")} was not written. The copy beside it holds what "
+                + "the archive looked like when it was opened, so close this one and start again from that if needed.");
         }
     }
     private async Task BackUpAsync(IArchive archive)

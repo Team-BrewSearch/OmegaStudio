@@ -1,8 +1,7 @@
+using System.Globalization;
 using Harugeki.Formats.Scene;
 using Omega.Plugins;
-using System.Globalization;
 namespace Harugeki.Formats.Nodes;
-
 internal sealed class MeshNode : AssetNode, ISceneAsset, IDescribable
 {
     private readonly RingArchive _archive;

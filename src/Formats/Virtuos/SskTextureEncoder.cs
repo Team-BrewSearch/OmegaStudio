@@ -1,6 +1,5 @@
 using SMath = System.Math;
 namespace Virtuos.Formats;
-
 public static class SskTextureEncoder
 {
     private const ushort MagentaRgb555 = 0x7C1F;

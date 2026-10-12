@@ -1,7 +1,6 @@
 using Harugeki.Formats.Skinning;
 using Omega.Plugins;
 namespace Harugeki.Formats.Scene;
-
 internal static class ModelScene
 {
     public static SceneGeometry Build(RingModel model)

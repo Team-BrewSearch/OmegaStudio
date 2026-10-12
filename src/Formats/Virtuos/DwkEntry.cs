@@ -1,5 +1,4 @@
 namespace Virtuos.Formats;
-
 public sealed class DwkEntry
 {
     private readonly Memory<byte> _source;
@@ -24,7 +23,20 @@ public sealed class DwkEntry
     {
         return _replacement is not null ? [.. _replacement] : _source.ToArray();
     }
-    internal byte[] DataForSave => _replacement ?? _source.ToArray();
+    internal byte[] DataForSave => _replacement ?? AsArray();
+    public byte[] AsArray()
+    {
+        if (_replacement is not null)
+        {
+            return _replacement;
+        }
+        return System.Runtime.InteropServices.MemoryMarshal.TryGetArray(_source, out ArraySegment<byte> segment)
+            && segment.Array is not null
+            && segment.Offset == 0
+            && segment.Count == segment.Array.Length
+                ? segment.Array
+                : _source.ToArray();
+    }
     public void Replace(byte[] newData)
     {
         ArgumentNullException.ThrowIfNull(newData);

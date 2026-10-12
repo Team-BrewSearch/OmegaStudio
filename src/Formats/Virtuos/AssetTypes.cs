@@ -1,5 +1,4 @@
 namespace Virtuos.Formats;
-
 public enum AssetKind
 {
     Unknown,

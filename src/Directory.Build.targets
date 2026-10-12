@@ -3,7 +3,4 @@
     <OmegaHostOutputPath>$(MSBuildThisFileDirectory)OmegaStudio\bin\$(Configuration)\$(TargetFramework)</OmegaHostOutputPath>
     <OmegaFormatsPath>$(OmegaHostOutputPath)\formats</OmegaFormatsPath>
   </PropertyGroup>
-  <PropertyGroup Condition="'$(DocumentEveryMember)' != 'true'">
-    <NoWarn>$(NoWarn);CS1591</NoWarn>
-  </PropertyGroup>
 </Project>

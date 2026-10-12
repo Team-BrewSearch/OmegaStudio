@@ -2,7 +2,6 @@ using Generic.Formats;
 using Omega.Plugins;
 [assembly: OmegaPlugin(typeof(GenericPlugin))]
 namespace Generic.Formats;
-
 public sealed class GenericPlugin : IFormatPlugin
 {
     public FormatPluginInfo Info { get; } = new()

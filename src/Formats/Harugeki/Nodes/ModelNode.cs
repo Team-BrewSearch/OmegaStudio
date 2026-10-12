@@ -1,10 +1,9 @@
+using System.Diagnostics.CodeAnalysis;
 using Harugeki.Formats.Gltf;
 using Harugeki.Formats.Scene;
 using Harugeki.Formats.Skinning;
 using Omega.Plugins;
-using System.Diagnostics.CodeAnalysis;
 namespace Harugeki.Formats.Nodes;
-
 internal sealed class ModelNode : SlotNode, ISceneAsset, IAnimatedAsset, IDescribable, ICommandSource
 {
     private readonly string _header;

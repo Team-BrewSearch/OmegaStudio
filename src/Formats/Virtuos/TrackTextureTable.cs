@@ -1,6 +1,5 @@
 using SMath = System.Math;
 namespace Virtuos.Formats;
-
 public sealed class TrackTextureTable
 {
     private readonly DwkArchive _archive;

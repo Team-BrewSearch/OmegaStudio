@@ -5,7 +5,6 @@ using Texim.Palettes;
 using Texim.Pixels;
 using Yarhl.FileSystem;
 namespace Nintendo.Formats.Nodes;
-
 internal sealed class BannerIconNode : AssetNode, IImageAsset, IDescribable
 {
     private const int TransparentIndex = 0;

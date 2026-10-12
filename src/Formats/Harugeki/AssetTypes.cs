@@ -1,5 +1,4 @@
 namespace Harugeki.Formats;
-
 public enum AssetKind
 {
     Unknown,

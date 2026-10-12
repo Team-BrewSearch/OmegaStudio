@@ -1,7 +1,6 @@
-using Omega.Plugins;
 using System.Globalization;
+using Omega.Plugins;
 namespace Harugeki.Formats.Nodes;
-
 internal abstract class SlotNode : BinaryAssetNode
 {
     protected SlotNode(

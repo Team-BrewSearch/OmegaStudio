@@ -1,9 +1,8 @@
+using Omega.Plugins;
 using Virtuos.Formats;
 using Virtuos.Formats.Nodes;
-using Omega.Plugins;
 [assembly: OmegaPlugin(typeof(VirtuosPlugin))]
 namespace Virtuos.Formats;
-
 public sealed class VirtuosPlugin : IFormatPlugin
 {
     public FormatPluginInfo Info { get; } = new()
@@ -48,7 +47,7 @@ public sealed class DwkArchiveFormat : IArchiveFormat
             ? $"{Path.GetFileName(path)}: {archive.Entries.Count} entries, no resource database found."
             : $"{Path.GetFileName(path)}: {archive.Entries.Count} entries, " +
               $"{resources.DatabaseCount} resource database(s).");
-        return new DwkArchiveHandle(archive, resources, path, gdt);
+        return new DwkArchiveHandle(archive, resources, path, gdt, gdf);
     }
     private static (string Gdf, string Gdt) Siblings(string gdaPath)
     {
@@ -60,15 +59,18 @@ internal sealed class DwkArchiveHandle : IArchive
 {
     private readonly DwkArchive _archive;
     private readonly string _gdaPath;
+    private readonly string _gdfPath;
     private readonly string _gdtPath;
     public DwkArchiveHandle(
         DwkArchive archive,
         VirtuosResourceIndex? resources,
         string gdaPath,
-        string gdtPath)
+        string gdtPath,
+        string gdfPath)
     {
         _archive = archive;
         _gdaPath = gdaPath;
+        _gdfPath = gdfPath;
         _gdtPath = gdtPath;
         DisplayName = Path.GetFileName(gdaPath);
         Root = DwkTree.Build(new TrackContext(archive, resources), DisplayName);
@@ -79,7 +81,17 @@ internal sealed class DwkArchiveHandle : IArchive
     public IReadOnlyList<string> BackupPaths => [_gdaPath, _gdtPath];
     public void Save()
     {
-        _archive.SaveAsync(_gdaPath, _gdtPath).GetAwaiter().GetResult();
+        (byte[] gda, byte[] gdt) = _archive.Pack();
+        List<(string Path, byte[] Rebuilt)> files = [(_gdaPath, gda), (_gdtPath, gdt)];
+        WriteGuard.Commit($"the Virtuos archive {DisplayName}", files, temporaries =>
+        {
+            byte[] gdaWritten = File.ReadAllBytes(temporaries[0]);
+            byte[] gdtWritten = File.ReadAllBytes(temporaries[1]);
+            byte[] gdfData = File.ReadAllBytes(_gdfPath);
+            DwkArchive reread = DwkArchive.Load(gdaWritten, gdfData, gdtWritten);
+            reread.Pack();
+            return reread.Entries.Count == _archive.Entries.Count;
+        });
     }
     public void Dispose()
     {

@@ -1,6 +1,5 @@
 using System.Buffers.Binary;
 namespace OmegaStudio.Audio;
-
 public sealed class WavDecoder : IAudioDecoder
 {
     private const int MinHeaderSize = 44;

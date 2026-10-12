@@ -1,6 +1,4 @@
 namespace Polarbit.Formats;
-
-/// <summary>PFNT bitmap font: a glyph table over one horizontal atlas strip (REPORT 4.3).</summary>
 internal sealed class PfntFont
 {
     private PfntFont()
@@ -22,7 +20,6 @@ internal sealed class PfntFont
         : Flags == 0xDE ? "3-bit alpha over 5-bit palette index"
         : PaletteSize > 0 ? $"8-bit palette ({PaletteSize} colours)"
         : "8-bit coverage";
-
     public static PfntFont Parse(ReadOnlySpan<byte> b)
     {
         Le.Need(b.Length >= 18 && b.StartsWith("PFNT"u8) && Le.U16(b, 4) == 12, "PFNT header is truncated.");
@@ -59,8 +56,6 @@ internal sealed class PfntFont
             Characters = new string(characters),
         };
     }
-
-    /// <summary>256 RGBA entries for 8-bit fonts: palette colours with index 0 transparent, 3-bit alpha over a 5-bit index (flags 0xDE), or white with the byte as alpha.</summary>
     private byte[] Table(ReadOnlySpan<byte> b)
     {
         ReadOnlySpan<byte> palette = b.Slice(PixelOffset - (3 * PaletteSize), 3 * PaletteSize);
@@ -93,7 +88,6 @@ internal sealed class PfntFont
         }
         return table;
     }
-
     public byte[] Decode(ReadOnlySpan<byte> b)
     {
         ReadOnlySpan<byte> pixels = b[PixelOffset..];
@@ -109,8 +103,6 @@ internal sealed class PfntFont
         }
         return rgba;
     }
-
-    /// <summary>The same font with new pixels. Glyph positions are fixed, so the atlas keeps its size; palette fonts need colours from their palette, and a pixel whose colour is unchanged keeps its index.</summary>
     public byte[] Encode(ReadOnlySpan<byte> b, byte[] rgba, int width, int height)
     {
         Le.Need(width == Width && height == Height,

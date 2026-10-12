@@ -1,6 +1,6 @@
-using Virtuos.Formats.Binary;
+using System.Buffers.Binary;
+using Omega.Plugins;
 namespace Virtuos.Formats;
-
 public sealed class CarModel
 {
     private static readonly int[] TableFields = [0x10, 0x14];
@@ -41,11 +41,33 @@ public sealed class CarModel
     }
     public float Wheel(int index, int axis)
     {
+        Check(index, axis);
+        return HasWheels
+            ? BinaryRead.I32(_blob, WheelStart + (index * 12) + (axis * 4)) / 4096f
+            : 0f;
+    }
+    public void SetWheel(int index, int axis, float value)
+    {
+        Check(index, axis);
+        if (!HasWheels)
+        {
+            throw new InvalidDataException("this model carries no wheel block, so its wheels cannot be changed");
+        }
+        long fixedPoint = (long)MathF.Round(value * 4096f);
+        if (fixedPoint is < int.MinValue or > int.MaxValue)
+        {
+            throw new InvalidDataException(
+                $"a wheel value must stay between {int.MinValue / 4096f:0.###} and {int.MaxValue / 4096f:0.###}");
+        }
+        BinaryPrimitives.WriteInt32LittleEndian(
+            _blob.AsSpan(WheelStart + (index * 12) + (axis * 4)), (int)fixedPoint);
+    }
+    private static void Check(int index, int axis)
+    {
         ArgumentOutOfRangeException.ThrowIfNegative(index);
         ArgumentOutOfRangeException.ThrowIfGreaterThanOrEqual(index, WheelCount);
-        return HasWheels
-            ? (int)BinaryRead.U32(_blob, WheelStart + (index * 12) + (axis * 4)) / 4096f
-            : 0f;
+        ArgumentOutOfRangeException.ThrowIfNegative(axis);
+        ArgumentOutOfRangeException.ThrowIfGreaterThanOrEqual(axis, 3);
     }
     private static bool TryRead(
         ReadOnlySpan<byte> blob, out int table, out int[] offsets, out int tail, out int wheels)

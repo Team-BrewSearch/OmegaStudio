@@ -1,10 +1,9 @@
-using Omega.Plugins.Gltf;
 using System.Buffers.Binary;
 using System.Numerics;
 using System.Text;
 using System.Text.Json;
+using Omega.Plugins.Gltf;
 namespace OmegaStudio.Services.Gltf;
-
 internal static class GltfContainer
 {
     public const int Byte = 5120, UByte = 5121, Short = 5122, UShort = 5123, UInt = 5125, Float = 5126;
@@ -190,6 +189,21 @@ internal static class GltfContainer
             * Matrix4x4.CreateFromQuaternion(rotation)
             * Matrix4x4.CreateTranslation(translation);
     }
+    public static int[] ReadIntegers(JsonElement root, byte[][] buffers, int index, int expectedComponents)
+    {
+        float[] read = ReadAccessor(root, buffers, index, expectedComponents);
+        int[] into = new int[read.Length];
+        for (int i = 0; i < read.Length; i++)
+        {
+            if (read[i] is >= 16777216 or < 0)
+            {
+                throw new InvalidDataException(
+                    $"glTF accessor {index} holds {read[i]}, past the 2^24 a float represents exactly.");
+            }
+            into[i] = (int)read[i];
+        }
+        return into;
+    }
     public static float[] ReadAccessor(JsonElement root, byte[][] buffers, int index, int expectedComponents)
     {
         JsonElement[] accessors = GltfJson.Array(root, "accessors");
@@ -227,10 +241,9 @@ internal static class GltfContainer
             UInt or Float => 4,
             _ => throw new InvalidDataException($"glTF component type {componentType} is not supported."),
         };
-        float[] result = new float[count * expectedComponents];
         if (!accessor.TryGetProperty("bufferView", out JsonElement viewRef))
         {
-            return result;
+            return [];
         }
         JsonElement[] views = GltfJson.Array(root, "bufferViews");
         int viewIndex = viewRef.GetInt32();
@@ -261,6 +274,7 @@ internal static class GltfContainer
         {
             throw new InvalidDataException($"glTF accessor {index} reads past the end of its buffer.");
         }
+        float[] result = new float[checked((long)count * expectedComponents)];
         int copy = Math.Min(components, expectedComponents);
         for (int i = 0; i < count; i++)
         {

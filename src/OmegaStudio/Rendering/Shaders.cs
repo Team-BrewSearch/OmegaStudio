@@ -1,6 +1,5 @@
 using Avalonia.OpenGL;
 namespace OmegaStudio.Rendering;
-
 internal static class Shaders
 {
     public static string Header(GlVersion version)

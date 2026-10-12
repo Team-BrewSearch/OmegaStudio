@@ -1,6 +1,5 @@
-using Harugeki.Formats.Binary;
+using Omega.Plugins;
 namespace Harugeki.Formats;
-
 public sealed class RingAnimation
 {
     public const int KeyStride = 68;

@@ -2,7 +2,6 @@ using Avalonia.Controls;
 using Avalonia.Interactivity;
 using Avalonia.Markup.Xaml;
 namespace OmegaStudio.Views;
-
 public partial class AboutWindow : Window
 {
     public AboutWindow()

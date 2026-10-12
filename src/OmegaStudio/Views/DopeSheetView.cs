@@ -1,10 +1,9 @@
+using System.Globalization;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Media;
 using Omega.Plugins;
-using System.Globalization;
 namespace OmegaStudio.Views;
-
 public class DopeSheetView : Control
 {
     private const double TrackHeight = 20;

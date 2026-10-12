@@ -3,11 +3,12 @@ using Omega.Plugins;
 using OmegaStudio.Plugins;
 using OmegaStudio.Services;
 namespace OmegaStudio.ViewModels;
-
 public partial class MainViewModel
 {
     public event Action? ResetViewRequested;
     public event Action? RequestClose;
+    public Func<Task<bool>>? DiscardConfirmation { get; set; }
+    private bool _asking;
     [RelayCommand]
     private async Task OpenAsync()
     {
@@ -17,6 +18,7 @@ public partial class MainViewModel
             await OpenPathAsync(path);
         }
     }
+    private int _opening;
     private FileFilter OpenFilter()
     {
         string[] patterns = [.. _catalog.Formats
@@ -29,20 +31,73 @@ public partial class MainViewModel
     }
     public async Task OpenPathAsync(string path)
     {
+        if (Interlocked.CompareExchange(ref _opening, 1, 0) != 0)
+        {
+            Status = "Another archive is already opening.";
+            return;
+        }
+        try
+        {
+            await OpenNowAsync(path);
+        }
+        finally
+        {
+            Interlocked.Exchange(ref _opening, 0);
+        }
+    }
+    private async Task OpenNowAsync(string path)
+    {
+        if (!File.Exists(path))
+        {
+            Log($"{path} does not exist, so nothing was opened.");
+            Status = "Open an archive to begin.";
+            return;
+        }
+        if (!await CanDiscardAsync())
+        {
+            return;
+        }
         ResetWorkspace();
         Status = $"Opening {Path.GetFileName(path)}…";
+        System.Diagnostics.Stopwatch watch = System.Diagnostics.Stopwatch.StartNew();
         IArchive? archive = await _session.OpenAsync(path, _catalog, _recognition);
         if (archive is null)
         {
             return;
         }
+        watch.Stop();
+        Log($"Opened {Path.GetFileName(path)} as {archive.DisplayName} in {watch.ElapsedMilliseconds} ms.");
         TreeItemViewModel root = _tree.ForArchive(archive);
         Roots.Add(root);
         root.IsExpanded = true;
     }
-    [RelayCommand]
-    private void CloseAll()
+    public async Task<bool> CanDiscardAsync()
     {
+        if (!_session.HasChanges || DiscardConfirmation is not { } ask)
+        {
+            return true;
+        }
+        if (_asking)
+        {
+            return false;
+        }
+        _asking = true;
+        try
+        {
+            return await ask();
+        }
+        finally
+        {
+            _asking = false;
+        }
+    }
+    [RelayCommand]
+    private async Task CloseAllAsync()
+    {
+        if (!await CanDiscardAsync())
+        {
+            return;
+        }
         ResetWorkspace();
         Log("Closed archive.");
     }
@@ -63,12 +118,12 @@ public partial class MainViewModel
         _audioInfo = null;
     }
     [RelayCommand]
-    private Task SaveAsync()
+    public Task SaveAsync()
     {
         Status = "Saving…";
         return _session.SaveAsync();
     }
-    internal async Task RunCommandAsync(AssetCommand command)
+    public async Task RunCommandAsync(AssetCommand command)
     {
         if (SelectedItem is not { Node: { } node } row)
         {
@@ -125,7 +180,7 @@ public partial class MainViewModel
             node = _tree.Recognize(node);
             target.Node = node;
             target.Kind = AssetKinds.Resolve(node);
-            target.Detail = node.Detail;
+            target.Detail = NodeAccess.Detail(node);
             if (!ReferenceEquals(target, row))
             {
                 row.Node = target.Node;
@@ -133,17 +188,17 @@ public partial class MainViewModel
                 row.Detail = target.Detail;
             }
         }
-        if (changed.HasFlag(AssetChange.Children) && node.HasChildren)
+        if (changed.HasFlag(AssetChange.Children) && NodeAccess.HasChildren(node))
         {
             target.Reload(() => _tree.Children(node));
         }
         if (changed.HasFlag(AssetChange.Scene))
         {
-            ShowScene(node is ISceneAsset ? node : _sceneSource);
+            Present(node is ISceneAsset ? node : _sceneSource);
         }
         if (changed.HasFlag(AssetChange.Image))
         {
-            ShowImage(node);
+            Present(node);
             OnPropertyChanged(nameof(TextureStatus));
         }
         if (changed.HasFlag(AssetChange.Properties))
@@ -157,14 +212,16 @@ public partial class MainViewModel
         NotifyCapabilities();
     }
     public bool HasUnsavedChanges => _session.HasChanges;
+    public string OpenArchiveName => _session.DisplayName ?? "The archive";
     [RelayCommand]
     private void ResetView()
     {
         ResetViewRequested?.Invoke();
     }
     [RelayCommand]
-    private void Exit()
+    private Task ExitAsync()
     {
         RequestClose?.Invoke();
+        return Task.CompletedTask;
     }
 }

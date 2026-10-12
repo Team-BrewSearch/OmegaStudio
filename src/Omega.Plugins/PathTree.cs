@@ -1,14 +1,6 @@
 namespace Omega.Plugins;
-/// <summary>Turns a flat list of slash-separated paths into a folder tree of nodes.</summary>
 public static class PathTree
 {
-    /// <summary>Groups items by their path and returns the root row of the resulting tree. Folders are created as needed and their children are built only when expanded.</summary>
-    /// <param name="items">The entries to place.</param>
-    /// <param name="pathOf">Reads an entry&apos;s path. Either separator is accepted.</param>
-    /// <param name="leaf">Builds the row for one entry, given its file name, its full path and the entry itself.</param>
-    /// <param name="rootName">Label for the root row.</param>
-    /// <param name="rootDetail">Detail text for the root row, or null for an entry count.</param>
-    /// <returns>The root row.</returns>
     public static IAssetNode Build<T>(
         IEnumerable<T> items,
         Func<T, string> pathOf,
@@ -30,13 +22,17 @@ public static class PathTree
             rootDetail ?? $"{root.Count} entries",
             () => root.Children(string.Empty, leaf));
     }
-    private static string[] Split(string path)
+    public const string Unnamed = "(unnamed)";
+    private static string Tag(string stem, int suffix) =>
+        string.Concat(stem, suffix.ToString(System.Globalization.CultureInfo.InvariantCulture));
+    private static string[] Split(string? path)
     {
-        return path is null
+        string[] segments = path is null
             ? []
             : [.. path.Replace('\\', '/')
                 .Split('/', StringSplitOptions.RemoveEmptyEntries)
                 .Where(segment => segment != ".")];
+        return segments.Length == 0 ? [Unnamed] : segments;
     }
     private sealed class Folder<T>
     {
@@ -57,7 +53,11 @@ public static class PathTree
             {
                 _children[key] = child = new Folder<T>();
             }
-            if (depth == segments.Length - 1)
+            if (depth != segments.Length - 1)
+            {
+                child.Insert(segments, depth + 1, item);
+            }
+            else if (!child._hasEntry)
             {
                 child._entry = item;
                 child._hasEntry = true;
@@ -65,7 +65,20 @@ public static class PathTree
             }
             else
             {
-                child.Insert(segments, depth + 1, item);
+                string stem = $"{key}_";
+                int suffix = 1;
+                while (_children.TryGetValue(Tag(stem, suffix), out Folder<T>? taken) && taken._hasEntry)
+                {
+                    suffix++;
+                }
+                if (!_children.TryGetValue(Tag(stem, suffix), out Folder<T>? spare))
+                {
+                    spare = new Folder<T>();
+                    _children[Tag(stem, suffix)] = spare;
+                }
+                spare._entry = item;
+                spare._hasEntry = true;
+                spare.Count++;
             }
         }
         public IEnumerable<IAssetNode> Children(string path, Func<string, string, T, IAssetNode> leaf)
@@ -74,19 +87,32 @@ public static class PathTree
                      _children.OrderBy(pair => pair.Key, StringComparer.OrdinalIgnoreCase))
             {
                 string childPath = path.Length == 0 ? name : $"{path}/{name}";
-                if (child._hasEntry)
+                if (child._children.Count == 0)
                 {
-                    yield return leaf(name, childPath, child._entry!);
+                    if (child._hasEntry)
+                    {
+                        yield return leaf(name, childPath, child._entry!);
+                    }
+                    continue;
                 }
-                if (child._children.Count > 0)
-                {
-                    yield return new GroupNode(
-                        name,
-                        childPath,
-                        $"{child.Count} entries",
-                        () => child.Children(childPath, leaf));
-                }
+                yield return new GroupNode(
+                    name,
+                    childPath,
+                    $"{child.Count} entries",
+                    () => child.Rows(childPath, leaf));
             }
         }
+        private IEnumerable<IAssetNode> Rows(string path, Func<string, string, T, IAssetNode> leaf)
+        {
+            if (_hasEntry)
+            {
+                yield return leaf(NestedLeafName, path, _entry!);
+            }
+            foreach (IAssetNode row in Children(path, leaf))
+            {
+                yield return row;
+            }
+        }
+        private const string NestedLeafName = "(this folder)";
     }
 }

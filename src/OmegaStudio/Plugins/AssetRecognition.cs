@@ -1,6 +1,5 @@
 using Omega.Plugins;
 namespace OmegaStudio.Plugins;
-
 internal sealed class AssetRecognition
 {
     private readonly List<Entry> _entries = [];
@@ -44,14 +43,15 @@ internal sealed class AssetRecognition
         {
             return node;
         }
+        ReadOnlySpan<byte> head = Head(node);
         foreach (Entry entry in _entries)
         {
-            if (!Claims(entry.Recognizer, bytes.Data))
+            if (!Claims(entry.Recognizer, head))
             {
                 continue;
             }
             IAssetNode? wrapped = PluginGuard.Try<IAssetNode?>(
-                $"Recognising '{node.Name}' as {entry.Recognizer.Id}",
+                $"Recognising '{NodeAccess.Name(node)}' as {entry.Recognizer.Id}",
                 () => entry.Recognizer.Wrap(node, entry.Host),
                 null);
             if (wrapped is not null)
@@ -60,6 +60,23 @@ internal sealed class AssetRecognition
             }
         }
         return node;
+    }
+    private static ReadOnlySpan<byte> Head(IAssetNode node)
+    {
+        if (node is not IBinaryAsset bytes)
+        {
+            return [];
+        }
+        try
+        {
+            return bytes.Head;
+        }
+        catch (Exception ex) when (ex is not OutOfMemoryException)
+        {
+            PluginGuard.Log?.Invoke(
+                $"Reading the head of '{NodeAccess.Name(node)}' failed: {ex.GetType().Name}: {ex.Message}");
+            return [];
+        }
     }
     public IReadOnlyList<IAssetNode> Group(IReadOnlyList<IAssetNode> children)
     {

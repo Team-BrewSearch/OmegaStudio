@@ -1,7 +1,6 @@
-using Virtuos.Formats.Binary;
+using Omega.Plugins;
 using Virtuos.Formats.Gx;
 namespace Virtuos.Formats;
-
 public sealed class SskDrawSection
 {
     public int TextureIndex { get; init; }

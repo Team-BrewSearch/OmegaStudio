@@ -1,9 +1,12 @@
 <Solution>
   <Project Path="Omega.Plugins/Omega.Plugins.csproj" />
   <Project Path="OmegaStudio/OmegaStudio.csproj" />
+  <Project Path="Omega.Disc/Omega.Disc.csproj" />
   <Project Path="Formats/Generic/Generic.Formats.csproj" />
   <Project Path="Formats/Harugeki/Harugeki.Formats.csproj" />
   <Project Path="Formats/Virtuos/Virtuos.Formats.csproj" />
   <Project Path="Formats/Nintendo/Nintendo.Formats.csproj" />
+  <Project Path="Formats/PlayStation/PlayStation.Formats.csproj" />
+  <Project Path="Formats/Xbox/Xbox.Formats.csproj" />
   <Project Path="Formats/Polarbit/Polarbit.Formats.csproj" />
 </Solution>

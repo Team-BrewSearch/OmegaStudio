@@ -1,12 +1,11 @@
-using Omega.Plugins;
 using System.Collections.ObjectModel;
+using Omega.Plugins;
 using Texim.Colors;
 using Texim.Images;
 using Texim.Images.Quantization;
 using Texim.Palettes;
 using Texim.Pixels;
 namespace Nintendo.Formats;
-
 internal static class IconEncoder
 {
     public const int PaletteSize = 16;

@@ -1,7 +1,6 @@
 using Avalonia.Platform.Storage;
 using Omega.Plugins;
 namespace OmegaStudio.Services;
-
 internal static class FilePickers
 {
     public static async Task<string?> SaveAsync(

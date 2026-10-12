@@ -1,6 +1,5 @@
 using Omega.Plugins;
 namespace OmegaStudio.ViewModels;
-
 public abstract class PropertyItem
 {
     private readonly Action<PropertyRow, string>? _commit;

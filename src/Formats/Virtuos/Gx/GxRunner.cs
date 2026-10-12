@@ -1,6 +1,5 @@
 using System.Buffers.Binary;
 namespace Virtuos.Formats.Gx;
-
 public readonly record struct GxVertex(
     float X, float Y, float Z,
     float Nx, float Ny, float Nz,
@@ -81,8 +80,7 @@ public static class GxRunner
     public static void Run(ReadOnlySpan<byte> displayList, IGxSink sink)
     {
         ArgumentNullException.ThrowIfNull(sink);
-        byte[] words = displayList.ToArray();
-        int wordCount = words.Length / 4;
+        int wordCount = displayList.Length / 4;
         int word = 0;
         float cx = 0, cy = 0, cz = 0;
         float nx = 0, ny = 0, nz = 0;
@@ -93,11 +91,9 @@ public static class GxRunner
         int mode = 0;
         bool textured = false;
         List<int> strip = new(64);
-        uint Read()
+        static uint Read(ReadOnlySpan<byte> list, ref int at, int count)
         {
-            return word < wordCount
-                ? BinaryPrimitives.ReadUInt32LittleEndian(words.AsSpan(word++ * 4))
-                : 0u;
+            return at < count ? BinaryPrimitives.ReadUInt32LittleEndian(list.Slice(at++ * 4, 4)) : 0u;
         }
         void Emit()
         {
@@ -109,18 +105,18 @@ public static class GxRunner
         }
         while (word < wordCount)
         {
-            uint pack = Read();
+            uint pack = Read(displayList, ref word, wordCount);
             for (int packed = 0; packed < 4; packed++)
             {
                 byte cmd = (byte)((pack >> (packed * 8)) & 0xFF);
                 int paramByteOff = word * 4;
                 int count = s_params.TryGetValue(cmd, out int found) ? found : 0;
-                uint p0 = count >= 1 ? Read() : 0u;
-                uint p1 = count >= 2 ? Read() : 0u;
-                uint p2 = count >= 3 ? Read() : 0u;
+                uint p0 = count >= 1 ? Read(displayList, ref word, wordCount) : 0u;
+                uint p1 = count >= 2 ? Read(displayList, ref word, wordCount) : 0u;
+                uint p2 = count >= 3 ? Read(displayList, ref word, wordCount) : 0u;
                 for (int extra = 3; extra < count; extra++)
                 {
-                    _ = Read();
+                    _ = Read(displayList, ref word, wordCount);
                 }
                 switch (cmd)
                 {

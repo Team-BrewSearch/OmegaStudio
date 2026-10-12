@@ -1,0 +1,21 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="OmegaStudio.Views.UnsavedChangesWindow"
+        Title="Unsaved changes"
+        SizeToContent="WidthAndHeight"
+        CanResize="False"
+        ShowInTaskbar="False"
+        WindowStartupLocation="CenterOwner"
+        Background="{DynamicResource SurfacePanel}"
+        FontSize="{DynamicResource FontSizeBody}"
+        Icon="/Assets/icon.png">
+  <StackPanel Width="400" Margin="{DynamicResource ContentMargin}" Spacing="{DynamicResource SpaceL}">
+    <TextBlock Name="PromptText" TextWrapping="Wrap" Classes="value" />
+    <Border Height="1" Background="{DynamicResource Divider}" />
+    <StackPanel Orientation="Horizontal" Spacing="{DynamicResource SpaceS}" HorizontalAlignment="Right">
+      <Button Name="SaveButton" Content="_Save" MinWidth="88" IsDefault="True" Click="Save_OnClick" />
+      <Button Name="DiscardButton" Content="_Discard" MinWidth="88" Click="Discard_OnClick" />
+      <Button Content="_Cancel" MinWidth="88" IsCancel="True" Click="Cancel_OnClick" />
+    </StackPanel>
+  </StackPanel>
+</Window>

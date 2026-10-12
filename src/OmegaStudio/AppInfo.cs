@@ -1,6 +1,5 @@
 using System.Reflection;
 namespace OmegaStudio;
-
 internal static class AppInfo
 {
     public const string Name = "Omega Studio";

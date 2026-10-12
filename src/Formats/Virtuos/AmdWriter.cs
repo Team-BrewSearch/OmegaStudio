@@ -1,8 +1,8 @@
-using Virtuos.Formats.Gltf;
-using Omega.Plugins.Gltf;
 using System.Buffers.Binary;
+using Omega.Plugins;
+using Omega.Plugins.Gltf;
+using Virtuos.Formats.Gltf;
 namespace Virtuos.Formats;
-
 public static class AmdWriter
 {
     private const int Nop = 0x00;
@@ -74,7 +74,7 @@ public static class AmdWriter
         Emit(list, EndVtxs);
         byte[] displayList = Pack(list);
         int chunk = model.ChunkOffset;
-        int texCount = (int)Binary.BinaryRead.U32(template, chunk + 0x10);
+        int texCount = (int)BinaryRead.U32(template, chunk + 0x10);
         int header = AmdModel.HeaderSize + (bones.Length * 8) + AmdModel.ExtentSize;
         int start = header + ZonModel.ChunkHeaderSize + (texCount * ZonModel.TexRefEntrySize);
         byte[] output = new byte[start + displayList.Length];
@@ -144,14 +144,14 @@ public static class AmdWriter
             List<(TrkImportPrimitive Prim, int A, int B, int C)> triangles = byPart[part];
             if (triangles.Count == 0)
             {
-                chunks[part] = template.Slice(start, head + (int)Binary.BinaryRead.U32(template, start + 4))
+                chunks[part] = template.Slice(start, head + (int)BinaryRead.U32(template, start + 4))
                     .ToArray();
                 emitted += CountVertices(template, start, layout);
                 continue;
             }
             List<uint> list = [];
             Emit(list, MtxPush);
-            Emit(list, TeximageParam, Binary.BinaryRead.U32(template, start + 0x08));
+            Emit(list, TeximageParam, BinaryRead.U32(template, start + 0x08));
             Emit(list, PlttBase, 0u);
             Emit(list, Color, 0x7FFFu);
             Emit(list, BeginVtxs, 0u);
@@ -209,7 +209,7 @@ public static class AmdWriter
     private static int CountVertices(ReadOnlySpan<byte> template, int start, ChunkLayout layout)
     {
         int listStart = layout.ListStart(template, start);
-        int size = (int)Binary.BinaryRead.U32(template, start + 4);
+        int size = (int)BinaryRead.U32(template, start + 4);
         VertexCounter counter = new();
         Gx.GxRunner.Run(template.Slice(listStart, size), counter);
         return counter.Count;

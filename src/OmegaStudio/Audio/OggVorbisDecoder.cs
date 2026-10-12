@@ -1,8 +1,7 @@
-using NVorbis;
 using System.Buffers.Binary;
 using System.Runtime.InteropServices;
+using NVorbis;
 namespace OmegaStudio.Audio;
-
 public sealed class OggVorbisDecoder : IAudioDecoder
 {
     private const int ChunkSamples = 65536;

@@ -1,8 +1,6 @@
 using System.Buffers.Binary;
 using System.Numerics;
 namespace Polarbit.Formats;
-
-/// <summary>PowerVR legacy (v2) texture: 52-byte header, then the whole mip chain, largest level first (REPORT 4.2).</summary>
 internal sealed class PvrTexture
 {
     public const int HeaderSize = 52;
@@ -31,7 +29,6 @@ internal sealed class PvrTexture
         0x19 => "PVRTC 4bpp",
         _ => $"0x{Format:X2}",
     };
-
     public static PvrTexture Parse(ReadOnlySpan<byte> b)
     {
         Le.Need(b.Length >= HeaderSize && Le.U32(b, 0) == HeaderSize && b.Slice(44, 4).SequenceEqual("PVR!"u8) && Le.U32(b, 48) == 1,
@@ -58,7 +55,6 @@ internal sealed class PvrTexture
             Levels = levels,
         };
     }
-
     private static (int, int, int)[] LevelsFor(int format, int width, int height, int count)
     {
         (int, int, int)[] levels = new (int, int, int)[count];
@@ -70,7 +66,6 @@ internal sealed class PvrTexture
         }
         return levels;
     }
-
     private static int LevelSize(int format, int w, int h)
     {
         return format switch
@@ -82,8 +77,6 @@ internal sealed class PvrTexture
             _ => w * h * 2,
         };
     }
-
-    /// <summary>Every mip level as upright RGBA.</summary>
     public byte[][] Decode(ReadOnlySpan<byte> file)
     {
         byte[][] planes = new byte[Levels.Length][];
@@ -97,15 +90,12 @@ internal sealed class PvrTexture
         }
         return planes;
     }
-
     public byte[] DecodeTop(ReadOnlySpan<byte> file)
     {
         (int w, int h, int size) = Levels[0];
         byte[] rgba = DecodeLevel(file.Slice(HeaderSize, size), w, h);
         return (Flags & BottomUp) != 0 ? FlipRows(rgba, w, h) : rgba;
     }
-
-    /// <summary>A new file from an upright RGBA image. Unchanged pixels return the original file; a new size rebuilds the header and the mip chain.</summary>
     public byte[] Encode(ReadOnlySpan<byte> original, byte[] rgba, int width, int height)
     {
         bool same = width == Width && height == Height;
@@ -146,7 +136,6 @@ internal sealed class PvrTexture
         data.ToArray().CopyTo(output, HeaderSize);
         return output;
     }
-
     private byte[] DecodeLevel(ReadOnlySpan<byte> data, int w, int h)
     {
         if (IsPvrtc)
@@ -178,8 +167,6 @@ internal sealed class PvrTexture
         }
         return rgba;
     }
-
-    /// <summary>Inverse of the linear decode, exact for every channel depth: round(c * max / 255) undoes c = v * 255 / max. Grey formats take the luminance.</summary>
     private byte[] EncodeLevel(byte[] rgba, int w, int h)
     {
         if (IsPvrtc)
@@ -211,7 +198,6 @@ internal sealed class PvrTexture
         }
         return output;
     }
-
     private static byte[] FlipRows(byte[] rgba, int w, int h)
     {
         byte[] flipped = new byte[rgba.Length];
@@ -221,7 +207,6 @@ internal sealed class PvrTexture
         }
         return flipped;
     }
-
     private static byte[] BoxDown(byte[] p, int pw, int ph, int w, int h)
     {
         int fy = ph / h, fx = pw / w;
@@ -248,14 +233,10 @@ internal sealed class PvrTexture
         return output;
     }
 }
-
-/// <summary>PVRTC 4bpp (4x4 blocks) and 2bpp (8x4 blocks), after the PowerVR SDK decoder, blocks in Morton order with the y bit lowest.</summary>
 internal static class Pvrtc
 {
     private static readonly int[] s_weights = [0, 3, 5, 8];
     private static readonly int[] s_punchThrough = [0, 4, 4, 8];
-
-    /// <summary>Data index of each block, row by row: Morton order with the y bit lowest.</summary>
     private static int[] Order(int xb, int yb)
     {
         int[] order = new int[xb * yb];
@@ -277,8 +258,6 @@ internal static class Pvrtc
         }
         return order;
     }
-
-    /// <summary>16-bit endpoint to r, g, b on 0-31 and alpha on 0-15. Colour A (low half) has 4-bit blue in opaque mode.</summary>
     private static void Unpack(uint raw, bool a, Span<double> rgba)
     {
         bool opaque = ((raw >> 15) & 1) != 0;
@@ -289,19 +268,19 @@ internal static class Pvrtc
             : opaque ? raw & 31 : ((raw & 15) << 1) | ((raw >> 3) & 1);
         rgba[3] = opaque ? 15 : ((raw >> 12) & 7) << 1;
     }
-
-    /// <summary>Bilinear endpoint image: block colours sit at block centres and wrap around the edges.</summary>
-    private static double[] Up(double[] c, int xb, int yb, int bw)
+    private const int Band = 64;
+    private static double[] Up(double[] c, int xb, int yb, int bw, int first, int rows)
     {
-        int height = yb * 4, width = xb * bw;
-        double[] output = new double[width * height * 4];
-        for (int y = 0; y < height; y++)
+        int width = xb * bw;
+        double[] output = new double[checked(width * rows * 4)];
+        for (int y = first; y < first + rows; y++)
         {
             double ys = (y - 2) / 4.0;
             int y0 = (int)System.Math.Floor(ys);
             double fy = ys - y0;
             y0 = ((y0 % yb) + yb) % yb;
             int y1 = (y0 + 1) % yb;
+            int at = ((y - first) * width) * 4;
             for (int x = 0; x < width; x++)
             {
                 double xs = (x - (bw / 2.0)) / bw;
@@ -313,24 +292,23 @@ internal static class Pvrtc
                 {
                     double a = c[(((y0 * xb) + x0) * 4) + k], b = c[(((y0 * xb) + x1) * 4) + k];
                     double d = c[(((y1 * xb) + x0) * 4) + k], e = c[(((y1 * xb) + x1) * 4) + k];
-                    output[(((y * width) + x) * 4) + k] = (((a * (1 - fx)) + (b * fx)) * (1 - fy)) + (((d * (1 - fx)) + (e * fx)) * fy);
+                    output[at + (x * 4) + k] = (((a * (1 - fx)) + (b * fx)) * (1 - fy)) + (((d * (1 - fx)) + (e * fx)) * fy);
                 }
             }
         }
         return output;
     }
-
-    private static (double[] A, double[] B) Endpoints(uint[] colours, int xb, int yb, int bw)
+    private static (double[] A, double[] B) Endpoints(uint[] colours)
     {
-        double[] a = new double[colours.Length * 4], b = new double[colours.Length * 4];
+        double[] a = new double[checked(colours.Length * 4)];
+        double[] b = new double[checked(colours.Length * 4)];
         for (int i = 0; i < colours.Length; i++)
         {
             Unpack(colours[i] & 0xFFFF, true, a.AsSpan(i * 4, 4));
             Unpack(colours[i] >> 16, false, b.AsSpan(i * 4, 4));
         }
-        return (Up(a, xb, yb, bw), Up(b, xb, yb, bw));
+        return (a, b);
     }
-
     public static byte[] Decode(ReadOnlySpan<byte> data, int w, int h, bool twoBpp)
     {
         int bw = twoBpp ? 8 : 4;
@@ -343,10 +321,10 @@ internal static class Pvrtc
             mod[i] = Le.U32(data, order[i] * 8);
             col[i] = Le.U32(data, (order[i] * 8) + 4);
         }
-        (double[] a, double[] b) = Endpoints(col, xb, yb, bw);
+        (double[] a, double[] b) = Endpoints(col);
         int height = yb * 4, width = xb * bw;
-        int[] weight = new int[width * height];
-        bool[] transparent = new bool[width * height];
+        int[] weight = new int[checked(width * height)];
+        bool[] transparent = new bool[checked(width * height)];
         if (!twoBpp)
         {
             for (int y = 0; y < height; y++)
@@ -402,29 +380,30 @@ internal static class Pvrtc
                 }
             }
         }
-        byte[] rgba = new byte[w * h * 4];
-        for (int y = 0; y < h; y++)
+        byte[] rgba = new byte[checked(w * h * 4)];
+        for (int first = 0; first < height; first += Band)
         {
-            for (int x = 0; x < w; x++)
+            int rows = System.Math.Min(Band, height - first);
+            double[] low = Up(a, xb, yb, bw, first, rows);
+            double[] high = Up(b, xb, yb, bw, first, rows);
+            for (int y = first; y < first + rows && y < h; y++)
             {
-                int t = (y * width) + x;
-                double wt = weight[t] / 8.0;
-                for (int k = 0; k < 4; k++)
+                int into = ((y - first) * width) * 4;
+                for (int x = 0; x < width && x < w; x++)
                 {
-                    double o = (a[(t * 4) + k] * (1 - wt)) + (b[(t * 4) + k] * wt);
-                    double v = k < 3 ? o * 255 / 31 : transparent[t] ? 0 : o * 255 / 15;
-                    rgba[(((y * w) + x) * 4) + k] = (byte)System.Math.Clamp(v, 0, 255);
+                    int t = (y * width) + x;
+                    double wt = weight[t] / 8.0;
+                    for (int k = 0; k < 4; k++)
+                    {
+                        double o = (low[into + (x * 4) + k] * (1 - wt)) + (high[into + (x * 4) + k] * wt);
+                        double v = k < 3 ? o * 255 / 31 : transparent[t] ? 0 : o * 255 / 15;
+                        rgba[(((y * w) + x) * 4) + k] = (byte)System.Math.Clamp(v, 0, 255);
+                    }
                 }
             }
         }
         return rgba;
     }
-
-    /// <summary>
-    /// Encoder for edited textures: each block's per-channel minimum and maximum become its endpoints, then every texel
-    /// takes the modulation weight that best matches it under the decoder's own bilinear endpoint images.
-    /// </summary>
-    // ponytail: min/max endpoints in one pass; an optimising encoder (PVRTexTool) gives sharper results on detailed art
     public static byte[] Encode(byte[] rgba, int w, int h, bool twoBpp)
     {
         int bw = twoBpp ? 8 : 4;
@@ -474,7 +453,9 @@ internal static class Pvrtc
                 colours[(by * xb) + bx] = a | (b << 16);
             }
         }
-        (double[] ai, double[] bi) = Endpoints(colours, xb, yb, bw);
+        (double[] endpointsA, double[] endpointsB) = Endpoints(colours);
+        double[] ai = Up(endpointsA, xb, yb, bw, 0, yb * 4);
+        double[] bi = Up(endpointsB, xb, yb, bw, 0, yb * 4);
         int[] candidates = twoBpp ? [0, 8] : [0, 3, 5, 8];
         int bits = twoBpp ? 1 : 2;
         uint[] modulation = new uint[xb * yb];
@@ -514,7 +495,6 @@ internal static class Pvrtc
         }
         return output;
     }
-
     private static uint Q(double value, int max)
     {
         return (uint)System.Math.Clamp(System.Math.Round(value * max / 255), 0, max);

@@ -1,3 +1,4 @@
+using System.ComponentModel;
 using Avalonia.Media.Imaging;
 using Avalonia.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
@@ -6,10 +7,8 @@ using OmegaStudio.Audio;
 using OmegaStudio.Plugins;
 using OmegaStudio.Rendering;
 using OmegaStudio.Services;
-using System.ComponentModel;
 namespace OmegaStudio.ViewModels;
-
-public partial class MainViewModel : ObservableObject, IDisposable
+public partial class MainViewModel : ObservableObject, ISelectionView, ICommandRunner, IDisposable
 {
     private readonly IAppStorageProvider _storage;
     private readonly ArchiveSession _session = new();
@@ -22,6 +21,13 @@ public partial class MainViewModel : ObservableObject, IDisposable
     private IAssetNode? _sceneSource;
     private Task? _audioLoad;
     private AudioInfo? _audioInfo;
+    AudioInfo? ISelectionView.AudioInfo
+    {
+        get => _audioInfo;
+        set => _audioInfo = value;
+    }
+    TreeItemViewModel? ISelectionView.Owner => SelectedItem;
+    Action<string> ISelectionView.Log => Log;
     private bool _disposed;
     public MainViewModel(IAppStorageProvider storage)
     {
@@ -78,11 +84,16 @@ public partial class MainViewModel : ObservableObject, IDisposable
     public ObservableCollection<string> FailedFormats { get; } = [];
     public bool HasFailedFormats => FailedFormats.Count > 0;
     public string FormatsFolder { get; } = PluginLoader.DefaultDirectory;
+    private static string? AllowList()
+    {
+        string path = PluginLoader.AllowListPath;
+        return File.Exists(path) ? path : null;
+    }
     private void LoadPlugins()
     {
-        _catalog = PluginLoader.Load(FormatsFolder, Log);
+        _catalog = PluginLoader.Load(FormatsFolder, Log, AllowList());
         _recognition = AssetRecognition.From(_catalog, Log);
-        _tree = new TreeBuilder(_recognition);
+        _tree = new TreeBuilder(_recognition, Log);
         foreach (LoadedPlugin plugin in _catalog.Plugins)
         {
             LoadedFormats.Add(PluginRow.For(plugin));
@@ -109,100 +120,16 @@ public partial class MainViewModel : ObservableObject, IDisposable
             "Reading the selected texture",
             () => $"{image.Image.Name}   {image.Image.Width} x {image.Image.Height}   {image.Image.FormatLabel}",
             "Texture could not be read");
+    private SelectionPresenter? _presenter;
     partial void OnSelectedItemChanged(TreeItemViewModel? value)
     {
-        IAssetNode? node = value?.Node;
-        if (node is ISceneAsset)
-        {
-            ShowScene(node);
-        }
-        if (node is IImageAsset)
-        {
-            ShowImage(node);
-        }
-        ShowAudio(node);
-        RebuildCommands(node);
-        RebuildProperties(node);
-        NotifyCapabilities();
-        ChooseVisiblePane(node);
+        Present(value?.Node);
     }
-    private void ShowScene(IAssetNode? node)
+    public void Present(IAssetNode? node)
     {
-        if (node is not ISceneAsset source)
-        {
-            Animation.Unbind();
-            _sceneSource = null;
-            ViewportScene = null;
-            return;
-        }
-        _sceneSource = node;
-        Viewport?.ClearAnimatedFrame();
-        SceneGeometry? scene = PluginGuard.Try($"Building the scene for '{node.Name}'", source.GetScene, null);
-        if (scene is not null)
-        {
-            if (!PluginGuard.Try($"Validating the scene for '{node.Name}'", () => { scene.Validate(); return true; }, false))
-            {
-                scene = null;
-            }
-        }
-        ViewportScene = scene;
-        if (scene is not null && node is IAnimatedAsset animated)
-        {
-            Animation.Bind(animated);
-        }
-        else
-        {
-            Animation.Unbind();
-        }
+        (_presenter ??= new SelectionPresenter(this)).Present(node);
     }
-    private void ShowImage(IAssetNode? node)
-    {
-        TexturePreview = node is not IImageAsset image
-            ? null
-            : PluginGuard.Try(
-                $"Rendering '{node.Name}'", () => ImageIO.ToBitmap(image.Image), null);
-    }
-    private void ShowAudio(IAssetNode? node)
-    {
-        if (node is not IAudioAsset audio)
-        {
-            ResetAudioState();
-            _audioInfo = null;
-            return;
-        }
-        _audioInfo = PluginGuard.Try(
-            $"Reading the audio of '{node.Name}'",
-            () => AudioInfoHelper.TryGetInfo(audio.EncodedAudio, out AudioInfo info) ? info : (AudioInfo?)null,
-            null);
-        ResetAudioState();
-        _ = LoadAudioAsync(audio);
-    }
-    private void ChooseVisiblePane(IAssetNode? node)
-    {
-        int preferred = node switch
-        {
-            ISceneAsset => 0,
-            IImageAsset => 1,
-            IAudioAsset => 2,
-            _ => -1,
-        };
-        if (preferred >= 0)
-        {
-            SelectedPane = preferred;
-            return;
-        }
-        bool[] available = [HasScene, HasImage, HasAudio];
-        if (SelectedPane >= 0 && SelectedPane < available.Length && available[SelectedPane])
-        {
-            return;
-        }
-        int fallback = Array.IndexOf(available, true);
-        if (fallback >= 0)
-        {
-            SelectedPane = fallback;
-        }
-    }
-    private void RebuildProperties(IAssetNode? node)
+    public void RebuildProperties(IAssetNode? node)
     {
         Properties.Clear();
         TreeItemViewModel? owner = SelectedItem;
@@ -212,24 +139,24 @@ public partial class MainViewModel : ObservableObject, IDisposable
                 row, (edited, value) => CommitProperty(edited, value, owner, node)));
         }
     }
-    private void CommitProperty(
-        PropertyRow row, string value, TreeItemViewModel? item, IAssetNode? node)
+    public void CommitProperty(
+        PropertyRow row, string value, TreeItemViewModel? owner, IAssetNode? node)
     {
-        if (item is null || node is null || row.Apply is not { } apply)
+        if (owner is null || node is null || row.Apply is not { } apply)
         {
             return;
         }
         bool applied = PluginGuard.Try($"Setting '{row.Name}'", () => { apply(value); return true; }, false);
         if (applied)
         {
-            RecordPropertyEdit(row, item, row.Value, value);
+            RecordPropertyEdit(row, owner, row.Value, value);
             Log($"Set {row.Name} to {value}.");
         }
         Dispatcher.UIThread.Post(() =>
         {
             if (applied)
             {
-                ApplyChanges(item, node, row.Changed | AssetChange.Properties);
+                ApplyChanges(owner, node, row.Changed | AssetChange.Properties);
             }
             else
             {
@@ -251,7 +178,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
             Commands.Add(new AssetCommandViewModel(command, this));
         }
     }
-    private void NotifyCapabilities()
+    public void NotifyCapabilities()
     {
         OnPropertyChanged(nameof(HasScene));
         OnPropertyChanged(nameof(HasImage));
@@ -265,7 +192,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
     {
         OnPropertyChanged(nameof(ConsoleText));
     }
-    private void Log(string line)
+    public void Log(string line)
     {
         if (!Dispatcher.UIThread.CheckAccess())
         {

@@ -1,7 +1,6 @@
-using Omega.Plugins;
 using System.Text.Json.Nodes;
+using Omega.Plugins;
 namespace Virtuos.Formats.Scene;
-
 internal static class TrackScene
 {
     public static SceneGeometry Build(SskTrack track)

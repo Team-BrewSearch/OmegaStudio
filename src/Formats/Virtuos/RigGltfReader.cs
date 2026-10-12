@@ -1,8 +1,8 @@
-using Omega.Plugins.Gltf;
 using System.Numerics;
 using System.Text.Json;
+using Omega.Plugins;
+using Omega.Plugins.Gltf;
 namespace Virtuos.Formats;
-
 public static class RigGltfReader
 {
     private const float Fps = AniModel.Fps;
@@ -243,8 +243,8 @@ public static class RigGltfReader
         }
         for (int at = 0; at < template.Length; at += 4)
         {
-            int left = (int)Binary.BinaryRead.U32(template, at);
-            int right = (int)Binary.BinaryRead.U32(rebuilt, at);
+            int left = (int)BinaryRead.U32(template, at);
+            int right = (int)BinaryRead.U32(rebuilt, at);
             if (Math.Abs(left - right) > 2)
             {
                 return false;

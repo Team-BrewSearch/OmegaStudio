@@ -1,7 +1,6 @@
-using Harugeki.Formats.Binary;
 using System.Diagnostics;
+using Omega.Plugins;
 namespace Harugeki.Formats;
-
 public sealed class RingModel
 {
     public const int NodeTableOffset = 0x50;

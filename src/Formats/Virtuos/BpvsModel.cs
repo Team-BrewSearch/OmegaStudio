@@ -1,6 +1,5 @@
-using Virtuos.Formats.Binary;
+using Omega.Plugins;
 namespace Virtuos.Formats;
-
 public sealed class BpvsSector
 {
     public required int Offset { get; init; }

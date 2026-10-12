@@ -25,8 +25,7 @@ jobs:
     - name: Restore dependencies
       run: dotnet restore src/OmegaStudio.slnx
 
-    - name: Run tests
-      run: dotnet test src/OmegaStudio.slnx --configuration Release --no-restore
+    # The test suite this workflow used to run was removed on request.
 
   build:
     name: Build ${{ matrix.rid }}
@@ -63,8 +62,23 @@ jobs:
     - name: Build Release
       run: dotnet build src/OmegaStudio.slnx --configuration Release --nologo --verbosity minimal
 
+    - name: Build solution so the plugins exist
+      # DX-001: publishing only the host project produces an app with an empty formats folder, which opens nothing
+      # and used to succeed. The solution is built first so the plugin assemblies are there to copy.
+      run: dotnet build src/OmegaStudio.slnx --configuration Release --nologo --verbosity minimal
+
     - name: Publish
-      run: dotnet publish src/OmegaStudio/OmegaStudio.csproj --configuration Release --runtime ${{ matrix.rid }} --self-contained ${{ matrix.self-contained }} -p:PublishSingleFile=true -p:DebugType=none -p:DebugSymbols=false -p:IncludeNativeLibrariesForSelfExtract=true ${{ matrix.self-contained == 'true' && '-p:EnableCompressionInSingleFile=true' || '' }} --output src/publish/${{ matrix.rid }} --nologo --verbosity minimal
+      run: dotnet publish src/OmegaStudio/OmegaStudio.csproj --configuration Release --runtime ${{ matrix.rid }} --self-contained ${{ matrix.self-contained }} -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true ${{ matrix.self-contained == 'true' && '-p:EnableCompressionInSingleFile=true' || '' }} --output src/publish/${{ matrix.rid }} --nologo --verbosity minimal
+
+    - name: Verify the release can open something
+      # DX-001: the gate the audit asks for. A publish that ships no plugin opens nothing, so the build stops here.
+      run: |
+        count=$(ls src/publish/${{ matrix.rid }}/formats/*.Formats.dll 2>/dev/null | wc -l)
+        if [ "$count" -lt 1 ]; then
+          echo "::error::Published ${{ matrix.rid }} carries no format plugins; it would open nothing."
+          exit 1
+        fi
+        echo "Published ${{ matrix.rid }} with $count plugin(s)."
 
     - name: Upload artifacts
       uses: actions/upload-artifact@v4

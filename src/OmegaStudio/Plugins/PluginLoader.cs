@@ -1,7 +1,7 @@
-using Omega.Plugins;
 using System.Reflection;
+using System.Security.Cryptography;
+using Omega.Plugins;
 namespace OmegaStudio.Plugins;
-
 internal sealed record LoadedPlugin(IFormatPlugin Plugin, FormatPluginInfo Info, string Directory)
 {
     public override string ToString()
@@ -29,13 +29,21 @@ internal sealed record PluginCatalog(
         }
     }
 }
+public sealed record PluginProvenance(string File, string? Sha256, string Signature);
 internal static class PluginLoader
 {
     public const string FolderName = "formats";
     public const string Suffix = ".Formats.dll";
+    public const string AllowListName = "trusted-plugins.txt";
+    public const string AllowListPrefix = "sha256:";
     public static string DefaultDirectory =>
         Path.Combine(AppContext.BaseDirectory, FolderName);
+    public static string AllowListPath => Path.Combine(AppContext.BaseDirectory, AllowListName);
     public static PluginCatalog Load(string directory, Action<string> log)
+    {
+        return Load(directory, log, allowList: null);
+    }
+    public static PluginCatalog Load(string directory, Action<string> log, string? allowList)
     {
         ArgumentNullException.ThrowIfNull(log);
         if (!Directory.Exists(directory))
@@ -43,6 +51,7 @@ internal static class PluginLoader
             log($"No formats folder at {directory} — nothing to load.");
             return PluginCatalog.Empty;
         }
+        Dictionary<string, string> trusted = ReadAllowList(allowList, log);
         List<LoadedPlugin> loaded = [];
         List<PluginFailure> failures = [];
         HashSet<string> ids = new(StringComparer.OrdinalIgnoreCase);
@@ -51,6 +60,12 @@ internal static class PluginLoader
             string name = Path.GetFileName(file);
             try
             {
+                if (trusted.Count > 0 && !Allowed(file, trusted))
+                {
+                    throw new InvalidOperationException(
+                        $"its SHA-256 is not on the trusted list at {Path.GetFileName(allowList)}; Omega Studio "
+                        + "loads only the plugins its build vouched for. See docs/PLUGINS.md.");
+                }
                 LoadedPlugin plugin = LoadOne(file);
                 if (!ids.Add(plugin.Info.Id))
                 {
@@ -59,7 +74,7 @@ internal static class PluginLoader
                     continue;
                 }
                 loaded.Add(plugin);
-                log($"Loaded {plugin.Info.DisplayName} {plugin.Info.Version} from {name}.");
+                log($"Loaded {plugin.Info.DisplayName} {plugin.Info.Version} from {name}{Fingerprint(file, log)}.");
             }
             catch (Exception ex)
             {
@@ -72,6 +87,54 @@ internal static class PluginLoader
             log($"No format plugins found in {directory}.");
         }
         return new PluginCatalog(loaded, failures);
+    }
+    private static Dictionary<string, string> ReadAllowList(string? allowList, Action<string> log)
+    {
+        if (allowList is null || !File.Exists(allowList))
+        {
+            if (allowList is not null)
+            {
+                log($"No trusted plugin list at {Path.GetFileName(allowList)}; loading what it finds.");
+            }
+            return [];
+        }
+        Dictionary<string, string> trusted = new(StringComparer.OrdinalIgnoreCase);
+        foreach (string line in File.ReadAllLines(allowList))
+        {
+            string text = line.Trim();
+            if (text.Length == 0 || text[0] == '#')
+            {
+                continue;
+            }
+            int at = text.IndexOf(AllowListPrefix, StringComparison.OrdinalIgnoreCase);
+            if (at < 0)
+            {
+                log($"Ignoring a line in {Path.GetFileName(allowList)} that names no digest.");
+                continue;
+            }
+            string digest = text[(at + AllowListPrefix.Length)..].Trim();
+            if (digest.Length == 64)
+            {
+                trusted[digest.ToLowerInvariant()] = text[..at].Trim();
+            }
+        }
+        return trusted;
+    }
+    private static bool Allowed(string file, Dictionary<string, string> trusted)
+    {
+        string digest = Digest(file);
+        return !trusted.TryGetValue(digest, out string? name)
+            || string.IsNullOrEmpty(name)
+            || name.Equals(Path.GetFileName(file), StringComparison.OrdinalIgnoreCase);
+    }
+    private static string Fingerprint(string file, Action<string> log)
+    {
+        return $" (sha256:{Digest(file)[..16]}…)";
+    }
+    public static string Digest(string file)
+    {
+        using FileStream stream = new(file, FileMode.Open, FileAccess.Read, FileShare.Read);
+        return Convert.ToHexString(SHA256.HashData(stream)).ToLowerInvariant();
     }
     private static IEnumerable<string> Discover(string directory)
     {

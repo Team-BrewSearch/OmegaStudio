@@ -1,13 +1,10 @@
 using System.Numerics;
 using Omega.Plugins.Gltf;
 namespace Polarbit.Formats;
-
-/// <summary>A glTF mesh brought into engine space: Y up, texture v running upward.</summary>
 internal sealed class EngineMesh
 {
     public required string Name { get; init; }
     public required Vector3[] Positions { get; init; }
-    /// <summary>Normals from the file, or computed from the faces when the file had none.</summary>
     public required Vector3[] Normals { get; init; }
     public required Vector2[] Uvs { get; init; }
     public required byte[] Colors { get; init; }
@@ -17,7 +14,6 @@ internal sealed class EngineMesh
     public int VertexCount => Positions.Length;
     public int TriangleCount => Groups.Sum(g => g.Indices.Length) / 3;
 }
-
 internal static class GltfInput
 {
     public static EngineMesh Convert(GltfMesh mesh)
@@ -32,7 +28,6 @@ internal static class GltfInput
             uvs[v] = mesh.Uvs.Length >= (v * 2) + 2 ? new Vector2(mesh.Uvs[v * 2], Axes.FlipV(mesh.Uvs[(v * 2) + 1])) : Vector2.Zero;
         }
         List<(string, int[])> groups = [.. mesh.Primitives.Where(p => p.Indices.Length >= 3).Select(p => (p.MaterialName, p.Indices[..(p.Indices.Length - (p.Indices.Length % 3))]))];
-        // The host fills missing normals with +Z; a mesh whose normals are all exactly that had none.
         bool hasNormals = mesh.Normals.Length == count * 3 && Enumerable.Range(0, count).Any(v => mesh.Normals[v * 3] != 0 || mesh.Normals[(v * 3) + 1] != 0 || mesh.Normals[(v * 3) + 2] != 1);
         Vector3[] normals = new Vector3[count];
         if (hasNormals)
@@ -72,7 +67,6 @@ internal static class GltfInput
             Groups = groups,
         };
     }
-
     public static EngineMesh Merge(IReadOnlyList<EngineMesh> meshes)
     {
         if (meshes.Count == 1)
@@ -99,8 +93,6 @@ internal static class GltfInput
             Groups = groups,
         };
     }
-
-    /// <summary>The material slot a glTF material maps to: one whose texture has the same file name, else the slot at the same position, else the last.</summary>
     public static int Slot(string material, int ordinal, IReadOnlyList<string?> textures)
     {
         for (int i = 0; i < textures.Count; i++)

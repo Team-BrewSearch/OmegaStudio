@@ -1,4 +1,3 @@
-#!/usr/bin/env bash
 shopt -s nullglob
 echo ""
 echo "============================================"
@@ -65,26 +64,34 @@ if [ "$ERROR_COUNT" -eq 0 ]; then
     echo ""
     for d in "$PUBLISH_DIR"/*/; do
         [ -d "$d" ] || continue
-        d=${d%/} 
+        d=${d%/}
+        echo ""
         echo "   $(basename "$d")"
         for f in "$d"/*; do
-            if [ -f "$f" ]; then
-                f_size=$(wc -c < "$f" | tr -d ' ')
-                echo "     $(basename "$f")  $f_size bytes"
-            fi
+            [ -f "$f" ] || continue
+            f_size=$(wc -c < "$f" | tr -d ' ')
+            echo "     $(basename "$f")  $f_size bytes"
         done
         if [ -d "$d/formats" ]; then
-            for f in "$d/formats"/*.dll; do
-                if [ -f "$f" ]; then
-                    f_size=$(wc -c < "$f" | tr -d ' ')
-                    echo "     formats/$(basename "$f")  $f_size bytes"
-                fi
+            plugin_count=0
+            for f in "$d/formats"/*.Formats.dll; do
+                [ -f "$f" ] || continue
+                f_size=$(wc -c < "$f" | tr -d ' ')
+                echo "     formats/$(basename "$f")  $f_size bytes"
+                plugin_count=$((plugin_count + 1))
             done
+            if [ "$plugin_count" -eq 0 ]; then
+                echo "     [ERROR] no plugins - this build opens nothing"
+                ERROR_COUNT=$((ERROR_COUNT + 1))
+            fi
         else
-            echo "     [WARN] no formats folder - this build opens nothing"
+            echo "     [ERROR] no formats folder - this build opens nothing"
+            ERROR_COUNT=$((ERROR_COUNT + 1))
         fi
     done
 else
+    echo ""
+    echo "============================================"
     echo "   PUBLISH COMPLETED WITH ERRORS"
     echo "   Failed targets: $ERROR_COUNT"
     echo "============================================"
@@ -93,7 +100,5 @@ echo ""
 ELAPSED_MM=$(( SECONDS / 60 ))
 ELAPSED_SS=$(( SECONDS % 60 ))
 echo "[INFO] Elapsed: ${ELAPSED_MM}m ${ELAPSED_SS}s"
-echo ""
-read -n 1 -s -r -p "Press any key to continue..."
 echo ""
 exit "$ERROR_COUNT"

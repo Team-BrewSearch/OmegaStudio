@@ -1,7 +1,6 @@
-using Omega.Plugins;
 using System.Numerics;
+using Omega.Plugins;
 namespace Virtuos.Formats.Scene;
-
 internal static class RigPoser
 {
     public static AnimationClip ToClip(string name, SkeModel skeleton, AniModel animation, float fps)

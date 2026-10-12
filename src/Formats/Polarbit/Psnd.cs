@@ -1,8 +1,6 @@
 using System.Buffers.Binary;
 using System.Text;
 namespace Polarbit.Formats;
-
-/// <summary>PSND sound: rate, optional header fields picked by flag bits, then PCM or IMA ADPCM data (REPORT 6.1).</summary>
 internal sealed class PsndSound
 {
     private static readonly (int Bit, int Size)[] s_fields =
@@ -25,7 +23,6 @@ internal sealed class PsndSound
         8 => "PCM 8-bit",
         _ => "IMA ADPCM",
     };
-
     public static PsndSound Parse(ReadOnlySpan<byte> b)
     {
         Le.Need(b.Length >= 14 && b.StartsWith("PSND"u8) && Le.U32(b, 4) <= b.Length - 8, "PSND header is truncated.");
@@ -65,8 +62,6 @@ internal sealed class PsndSound
             PingPong = loopType == 2,
         };
     }
-
-    /// <summary>Interleaved 16-bit samples. Bytes past the last whole frame are left out.</summary>
     public short[] Samples(ReadOnlySpan<byte> b)
     {
         ReadOnlySpan<byte> data = b[DataOffset..];
@@ -90,7 +85,6 @@ internal sealed class PsndSound
                 return Ima.Decode(data);
         }
     }
-
     public double Seconds(ReadOnlySpan<byte> b)
     {
         int frames = Bits switch
@@ -101,13 +95,10 @@ internal sealed class PsndSound
         };
         return Rate > 0 ? frames / (double)Rate : 0;
     }
-
     public byte[] ToWav(ReadOnlySpan<byte> b)
     {
         return Wav.Write(Rate, Channels, Samples(b), Loop, PingPong);
     }
-
-    /// <summary>Rate and audio from a WAV, every other header field from the original. Loop points are kept inside the new length.</summary>
     public byte[] FromWav(ReadOnlySpan<byte> original, ReadOnlySpan<byte> wav)
     {
         (int rate, int channels, short[] samples) = Wav.Read(wav);
@@ -134,8 +125,6 @@ internal sealed class PsndSound
         }
         return output;
     }
-
-    /// <summary>16-bit data; a trailing half frame of the original survives while the audio before it is unchanged (two CNK2 songs end that way).</summary>
     private static byte[] Pcm16(short[] samples, int channels, ReadOnlySpan<byte> hint)
     {
         byte[] data = new byte[samples.Length * 2];
@@ -146,8 +135,6 @@ internal sealed class PsndSound
         return hint.Length - data.Length == hint.Length % (2 * channels) && hint.StartsWith(data) ? hint.ToArray() : data;
     }
 }
-
-/// <summary>IMA ADPCM, high nibble first, predictor and step index starting at 0, no block headers.</summary>
 internal static class Ima
 {
     private static readonly int[] s_index = [-1, -1, -1, -1, 2, 4, 6, 8, -1, -1, -1, -1, 2, 4, 6, 8];
@@ -159,20 +146,17 @@ internal static class Ima
         4428, 4871, 5358, 5894, 6484, 7132, 7845, 8630, 9493, 10442, 11487, 12635, 13899, 15289, 16818, 18500,
         20350, 22385, 24623, 27086, 29794, 32767,
     ];
-
     private static int Delta(int index, int nibble)
     {
         int s = s_steps[index];
         int d = (s >> 3) + ((nibble & 1) * (s >> 2)) + (((nibble >> 1) & 1) * (s >> 1)) + (((nibble >> 2) & 1) * s);
         return (nibble & 8) != 0 ? -d : d;
     }
-
     private static (int Predictor, int Index) Step(int predictor, int index, int nibble)
     {
         return (System.Math.Clamp(predictor + Delta(index, nibble), short.MinValue, short.MaxValue),
                 System.Math.Clamp(index + s_index[nibble], 0, 88));
     }
-
     public static short[] Decode(ReadOnlySpan<byte> data)
     {
         short[] output = new short[data.Length * 2];
@@ -185,8 +169,6 @@ internal static class Ima
         }
         return output;
     }
-
-    /// <summary>Nearest-output encoder that keeps the original nibble wherever it still produces the wanted sample; audio alone cannot settle ties.</summary>
     public static byte[] Encode(short[] samples, ReadOnlySpan<byte> hint)
     {
         byte[] output = new byte[(samples.Length + 1) / 2];
@@ -213,10 +195,8 @@ internal static class Ima
         return output;
     }
 }
-
 internal static class Wav
 {
-    /// <summary>16-bit PCM WAV; a smpl chunk carries the loop (end inclusive, type 1 = ping-pong) for samplers.</summary>
     public static byte[] Write(int rate, int channels, short[] samples, (uint Start, uint End)? loop, bool pingPong)
     {
         int smpl = loop is null ? 0 : 68;
@@ -251,8 +231,6 @@ internal static class Wav
         }
         return output;
     }
-
-    /// <summary>Integer PCM at 8, 16, 24 or 32 bits, returned as interleaved 16-bit samples.</summary>
     public static (int Rate, int Channels, short[] Samples) Read(ReadOnlySpan<byte> b)
     {
         Le.Need(b.Length >= 12 && b.StartsWith("RIFF"u8) && b.Slice(8, 4).SequenceEqual("WAVE"u8), "Not a RIFF WAVE file.");

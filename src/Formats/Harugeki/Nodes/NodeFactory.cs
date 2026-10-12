@@ -1,7 +1,6 @@
-using Omega.Plugins;
 using System.Diagnostics;
+using Omega.Plugins;
 namespace Harugeki.Formats.Nodes;
-
 internal static class NodeFactory
 {
     public static IAssetNode For(RingNode node)

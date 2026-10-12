@@ -1,10 +1,9 @@
+using System.Globalization;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Data.Converters;
 using Avalonia.Media;
-using System.Globalization;
 namespace OmegaStudio.ViewModels;
-
 internal static class PaletteLookup
 {
     public static IBrush? Find(string key)

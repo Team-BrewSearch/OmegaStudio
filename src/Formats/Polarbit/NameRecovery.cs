@@ -1,12 +1,5 @@
 using System.Text;
 namespace Polarbit.Formats;
-
-/// <summary>
-/// Names the entries of the three older archives, which store hashes only (REPORT 2.3).
-/// Every path-like string in the data is hashed as it stands and under data/, then joined with known and discovered
-/// directories. A hit only counts when the payload's kind fits the extension, which keeps chance matches near zero.
-/// Textures, sounds, modules and fonts are not scanned: they name nothing, and skipping them finds the same 995 names.
-/// </summary>
 internal static class NameRecovery
 {
     private static readonly (string Directory, string Extension)[] s_directories =
@@ -41,7 +34,6 @@ internal static class NameRecovery
         [".hxx"] = [PayloadKind.Text],
         [".db"] = [PayloadKind.Cfb],
     };
-
     public static int Apply(VfsArchive archive)
     {
         Dictionary<uint, string> found = Recover(archive);
@@ -53,7 +45,6 @@ internal static class NameRecovery
         }
         return found.Count;
     }
-
     public static Dictionary<uint, string> Recover(VfsArchive archive)
     {
         Dictionary<uint, PayloadKind> kinds = archive.Entries.ToDictionary(e => e.Hash, e => e.Kind);
@@ -118,8 +109,6 @@ internal static class NameRecovery
         }
         return found;
     }
-
-    /// <summary>Runs of path characters at least three long, as single bytes and as UTF-16LE.</summary>
     private static void Collect(ReadOnlySpan<byte> data, HashSet<string> strings)
     {
         int run = 0;
@@ -160,28 +149,23 @@ internal static class NameRecovery
             }
         }
     }
-
     private static bool IsPathChar(byte c)
     {
         return c is (>= (byte)'a' and <= (byte)'z') or (>= (byte)'A' and <= (byte)'Z') or (>= (byte)'0' and <= (byte)'9')
             or (byte)'_' or (byte)'.' or (byte)'/' or (byte)'\\' or (byte)' ' or (byte)'-';
     }
-
-    /// <summary>What Python's os.path.splitext calls the extension: from the last dot of the file name, unless the name starts there.</summary>
     private static string ExtensionOf(string path)
     {
         string name = path[(path.LastIndexOf('/') + 1)..];
         int dot = name.LastIndexOf('.');
         return dot > 0 && name[..dot].Any(c => c != '.') ? name[dot..] : string.Empty;
     }
-
     private static string Stem(string path)
     {
         string name = path[(path.LastIndexOf('/') + 1)..];
         string extension = ExtensionOf(name);
         return name[..(name.Length - extension.Length)];
     }
-
     private static string DirectoryOf(string path)
     {
         int slash = path.LastIndexOf('/');

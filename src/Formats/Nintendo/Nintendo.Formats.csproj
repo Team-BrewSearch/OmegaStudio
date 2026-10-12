@@ -1,11 +1,13 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <OmegaPluginName>Nintendo</OmegaPluginName>
-    <!-- Texim caps SixLabors.ImageSharp below 4.0, and every 3.x release carries known advisories. Remove once Texim allows a patched ImageSharp. -->
-    <NoWarn>$(NoWarn);NU1902;NU1903</NoWarn>
   </PropertyGroup>
   <ItemGroup>
+    <PackageReference Include="SixLabors.ImageSharp" Version="3.1.12" />
     <PackageReference Include="SceneGate.Ekona" Version="1.2.1" />
   </ItemGroup>
   <Import Project="../../Plugin.props" />
+  <ItemGroup>
+    <ProjectReference Include="../../Omega.Disc/Omega.Disc.csproj" />
+  </ItemGroup>
 </Project>

@@ -1,10 +1,9 @@
-using Virtuos.Formats.Gltf;
-using Virtuos.Formats.Scene;
-using Omega.Plugins;
 using System.Buffers.Binary;
 using System.Diagnostics.CodeAnalysis;
+using Omega.Plugins;
+using Virtuos.Formats.Gltf;
+using Virtuos.Formats.Scene;
 namespace Virtuos.Formats.Nodes;
-
 internal abstract class EntryNode : BinaryAssetNode
 {
     protected EntryNode(
@@ -16,7 +15,7 @@ internal abstract class EntryNode : BinaryAssetNode
         Entry = entry;
     }
     protected TrackContext Context { get; }
-    protected DwkEntry Entry { get; }
+    public DwkEntry Entry { get; }
     public override ReadOnlySpan<byte> Data => Entry.Span;
     public override int Size => Entry.Size;
     public override string Extension =>
@@ -47,6 +46,7 @@ internal sealed class RawNode : EntryNode, IDescribable
 internal sealed class TextureNode : EntryNode, IImageAsset, IDescribable
 {
     private SskTexture _texture;
+    private ImageData? _image;
     private TextureNode(TrackContext context, string name, string path, DwkEntry entry, SskTexture texture)
         : base(context, name, path, entry, detail: $"{texture.Width}x{texture.Height}")
     {
@@ -66,7 +66,7 @@ internal sealed class TextureNode : EntryNode, IImageAsset, IDescribable
             return null;
         }
     }
-    public ImageData Image => TrackScene.ToImage(_texture);
+    public ImageData Image => _image ??= TrackScene.ToImage(_texture);
     public bool CanReplaceImage => true;
     public void ReplaceImage(ImageData image)
     {
@@ -74,6 +74,7 @@ internal sealed class TextureNode : EntryNode, IImageAsset, IDescribable
         byte[] encoded = SskTextureEncoder.Encode(_texture, image.Rgba, image.Width, image.Height);
         Entry.Replace(encoded);
         _texture.SetPixels(image.Width, image.Height, image.Rgba);
+        _image = null;
         Detail = $"{_texture.Width}x{_texture.Height}";
     }
     protected override void Write(byte[] payload)
@@ -81,6 +82,7 @@ internal sealed class TextureNode : EntryNode, IImageAsset, IDescribable
         SskTexture parsed = SskTexture.Parse(payload, Entry.Name);
         base.Write(payload);
         _texture = parsed;
+        _image = null;
     }
     protected override string DescribeSize()
     {

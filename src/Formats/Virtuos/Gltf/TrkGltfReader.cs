@@ -1,8 +1,7 @@
-using Omega.Plugins.Gltf;
 using System.Numerics;
 using System.Text.Json;
+using Omega.Plugins.Gltf;
 namespace Virtuos.Formats.Gltf;
-
 public static class TrkGltfReader
 {
     public static List<TrkImportPrimitive> Read(
@@ -130,7 +129,6 @@ public static class TrkGltfReader
                 GroupBreaks = TryReadGroupBreaks(primitive),
             };
     }
-    /// <summary>A track extra, under its current "virtuos" name or the "kartz" name files exported before the rename carry.</summary>
     private static bool Extra(JsonElement extras, string name, out JsonElement value)
     {
         return extras.TryGetProperty("virtuos" + name, out value) || extras.TryGetProperty("kartz" + name, out value);
@@ -261,6 +259,13 @@ public static class TrkGltfReader
         warnings = [];
         IReadOnlyList<GltfMaterial> materials = source.Materials;
         int[] result = new int[materials.Count];
+        (long R, long G, long B)[] averages = new (long, long, long)[targetTextures.Count];
+        long[] hashes = new long[targetTextures.Count];
+        for (int i = 0; i < targetTextures.Count; i++)
+        {
+            averages[i] = AverageColor(targetTextures[i].Pixels);
+            hashes[i] = Fingerprint(targetTextures[i].Pixels);
+        }
         for (int i = 0; i < materials.Count; i++)
         {
             if (TryParseSlotName(materials[i].Name, out int named))
@@ -276,13 +281,13 @@ public static class TrkGltfReader
                     $"falling back to ordinal texture slot {result[i]}.");
                 continue;
             }
-            int exact = FindExactMatch(targetTextures, image.Rgba, image.Width, image.Height);
+            int exact = FindExactMatch(targetTextures, hashes, image.Rgba, image.Width, image.Height);
             if (exact >= 0)
             {
                 result[i] = exact;
                 continue;
             }
-            int nearest = FindNearestMatch(targetTextures, image.Rgba, image.Width, image.Height);
+            int nearest = FindNearestMatch(targetTextures, averages, image.Rgba, image.Width, image.Height);
             if (nearest >= 0)
             {
                 result[i] = nearest;
@@ -322,19 +327,34 @@ public static class TrkGltfReader
         return true;
     }
     private const int MaxTextureSlot = 4095;
-    private static int FindExactMatch(IReadOnlyList<SskTexture> targets, byte[] rgba, int w, int h)
+    private static long Fingerprint(byte[] pixels)
     {
+        unchecked
+        {
+            long hash = -3750763034362895579L;
+            for (int i = 0; i < pixels.Length; i++)
+            {
+                hash = (hash ^ pixels[i]) * 1099511628211L;
+            }
+            return hash == 0 ? 1 : hash;
+        }
+    }
+    private static int FindExactMatch(
+        IReadOnlyList<SskTexture> targets, long[] hashes, byte[] rgba, int w, int h)
+    {
+        long wanted = Fingerprint(rgba);
         for (int i = 0; i < targets.Count; i++)
         {
             SskTexture t = targets[i];
-            if (t.Width == w && t.Height == h && t.Pixels.AsSpan().SequenceEqual(rgba))
+            if (t.Width == w && t.Height == h && hashes[i] == wanted && t.Pixels.AsSpan().SequenceEqual(rgba))
             {
                 return i;
             }
         }
         return -1;
     }
-    private static int FindNearestMatch(IReadOnlyList<SskTexture> targets, byte[] rgba, int w, int h)
+    private static int FindNearestMatch(
+        IReadOnlyList<SskTexture> targets, (long R, long G, long B)[] averages, byte[] rgba, int w, int h)
     {
         (long R, long G, long B) = AverageColor(rgba);
         int best = -1;
@@ -346,7 +366,7 @@ public static class TrkGltfReader
             {
                 continue;
             }
-            (long R, long G, long B) tAvg = AverageColor(t.Pixels);
+            (long R, long G, long B) tAvg = averages[i];
             long dr = tAvg.R - R, dg = tAvg.G - G, db = tAvg.B - B;
             long dist = (dr * dr) + (dg * dg) + (db * db);
             if (dist < bestDist)

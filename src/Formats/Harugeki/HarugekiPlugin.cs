@@ -3,7 +3,6 @@ using Harugeki.Formats.Nodes;
 using Omega.Plugins;
 [assembly: OmegaPlugin(typeof(HarugekiPlugin))]
 namespace Harugeki.Formats;
-
 public sealed class HarugekiPlugin : IFormatPlugin
 {
     public FormatPluginInfo Info { get; } = new()
@@ -36,17 +35,19 @@ public sealed class RingArchiveFormat : IArchiveFormat
     }
     public IArchive Open(string path, IHostServices host)
     {
-        return new RingArchiveHandle(RingArchive.Load(path, host), path);
+        return new RingArchiveHandle(RingArchive.Load(path, host), path, host);
     }
 }
 internal sealed class RingArchiveHandle : IArchive
 {
     private readonly RingArchive _archive;
     private readonly string _path;
-    public RingArchiveHandle(RingArchive archive, string path)
+    private readonly IHostServices? _host;
+    public RingArchiveHandle(RingArchive archive, string path, IHostServices? host = null)
     {
         _archive = archive;
         _path = path;
+        _host = host;
         DisplayName = Path.GetFileName(path);
         Root = new ArchiveRootNode(archive, DisplayName);
     }
@@ -57,7 +58,15 @@ internal sealed class RingArchiveHandle : IArchive
     public void Save()
     {
         byte[] bytes = _archive.Save();
-        File.WriteAllBytes(_path, bytes);
+        List<(string Path, byte[] Rebuilt)> files = [(_path, bytes)];
+        WriteGuard.Commit(DisplayName, files, temporaries =>
+        {
+            byte[] written = File.ReadAllBytes(temporaries[0]);
+            return RingArchive.LooksLikeArchive(written, written.Length)
+                && RingArchive.Load(temporaries[0], _host).Root.Children.Count
+                    == _archive.Root.Children.Count;
+        });
+        _host?.Log(WriteGuard.Wrote(DisplayName, files));
         _archive.MarkSaved();
     }
     public void Dispose()

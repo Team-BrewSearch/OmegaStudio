@@ -1,8 +1,8 @@
-using Virtuos.Formats.Gltf;
-using Omega.Plugins.Gltf;
 using System.Numerics;
+using Omega.Plugins;
+using Omega.Plugins.Gltf;
+using Virtuos.Formats.Gltf;
 namespace Virtuos.Formats;
-
 public static class ZonWriter
 {
     public static byte[] Build(ReadOnlySpan<byte> template, IReadOnlyList<TrkChunk> chunks)
@@ -61,7 +61,7 @@ public static class ZonWriter
             return built;
         }
         int head = layout.ListStart(template, start) - start;
-        int builtList = (int)Binary.BinaryRead.U32(built, 4);
+        int builtList = (int)BinaryRead.U32(built, 4);
         int builtHead = built.Length - builtList;
         byte[] output = new byte[head + builtList];
         template.Slice(start, head).CopyTo(output);

@@ -4,7 +4,6 @@ using Avalonia.Input;
 using Avalonia.Media;
 using Avalonia.Media.Imaging;
 namespace OmegaStudio.Views;
-
 public sealed class TextureView : Control
 {
     private const double MinZoom = 0.05;

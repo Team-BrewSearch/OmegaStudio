@@ -1,6 +1,5 @@
 using System.Numerics;
 namespace Virtuos.Formats;
-
 public sealed class TrkImportPrimitive
 {
     public required float[] Positions { get; init; }

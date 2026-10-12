@@ -1,9 +1,8 @@
-using Omega.Plugins;
-using Omega.Plugins.Gltf;
 using System.Numerics;
 using System.Text.Json;
+using Omega.Plugins;
+using Omega.Plugins.Gltf;
 namespace OmegaStudio.Services.Gltf;
-
 internal sealed class GltfSource : IGltfSource
 {
     private readonly byte[][] _buffers;

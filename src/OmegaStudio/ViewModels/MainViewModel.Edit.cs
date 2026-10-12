@@ -2,7 +2,6 @@ using CommunityToolkit.Mvvm.Input;
 using Omega.Plugins;
 using OmegaStudio.Plugins;
 namespace OmegaStudio.ViewModels;
-
 public partial class MainViewModel
 {
     private const int MaxLabelLength = 34;
@@ -69,7 +68,11 @@ public partial class MainViewModel
         {
             return;
         }
-        _history.Push(new AssetEdit(Describe(title), row, before, after, changed));
+        if (!_history.Push(new AssetEdit(Describe(title), row, before, after, changed)))
+        {
+            _console.Append($"{Describe(title)} is too large for the edit history; it cannot be undone.");
+            return;
+        }
         HistoryChanged();
     }
     private void RecordPropertyEdit(PropertyRow row, TreeItemViewModel item, string before, string after)
@@ -78,12 +81,16 @@ public partial class MainViewModel
         {
             return;
         }
-        _history.Push(new AssetEdit(
+        if (!_history.Push(new AssetEdit(
             Describe($"Set {row.Name}"),
             item.Source ?? item,
             AssetSnapshot.ForProperty(apply, before),
             AssetSnapshot.ForProperty(apply, after),
-            row.Changed | AssetChange.Properties));
+            row.Changed | AssetChange.Properties)))
+        {
+            _console.Append($"{Describe($"Set {row.Name}")} is too large for the edit history; it cannot be undone.");
+            return;
+        }
         HistoryChanged();
     }
     private void ClearHistory()

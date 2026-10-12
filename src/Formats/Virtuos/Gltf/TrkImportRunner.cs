@@ -1,7 +1,6 @@
-using Omega.Plugins.Gltf;
 using System.Numerics;
+using Omega.Plugins.Gltf;
 namespace Virtuos.Formats.Gltf;
-
 public static class TrkImportRunner
 {
     public static (byte[] Bytes, bool MatchedOriginalLayout, int Triangles) ConvertToTrk(

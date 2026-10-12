@@ -1,10 +1,12 @@
-using Virtuos.Formats.Scene;
-using Omega.Plugins;
 using System.Diagnostics.CodeAnalysis;
+using System.Globalization;
+using Omega.Plugins;
+using Virtuos.Formats.Scene;
 namespace Virtuos.Formats.Nodes;
-
 internal sealed class CarNode : EntryNode, ISceneAsset, IDescribable, ICommandSource
 {
+    private const string WheelFormat = "0.###";
+    private static readonly string[] WheelAxes = ["X", "Y", "Z"];
     private SceneGeometry? _scene;
     private int _revision = -1;
     public CarNode(TrackContext context, string name, string path, DwkEntry entry)
@@ -74,16 +76,43 @@ internal sealed class CarNode : EntryNode, ISceneAsset, IDescribable, ICommandSo
         yield return PropertyRow.Of("Triangles", geometry.Indices.Length / 3);
         yield return PropertyRow.Of("Parts", Model.ChunkOffsets.Count);
         yield return PropertyRow.Of("Textures", geometry.Textures.Length);
-        for (int wheel = 0; wheel < CarModel.WheelCount; wheel++)
+        CarModel model = Model;
+        if (model.HasWheels)
         {
-            yield return PropertyRow.Of(
-                $"Wheel {wheel + 1}",
-                $"{Model.Wheel(wheel, 0):0.###}, {Model.Wheel(wheel, 1):0.###}, {Model.Wheel(wheel, 2):0.###}");
+            for (int wheel = 0; wheel < CarModel.WheelCount; wheel++)
+            {
+                for (int axis = 0; axis < WheelAxes.Length; axis++)
+                {
+                    yield return WheelRow(model, wheel, axis);
+                }
+            }
         }
         foreach (PropertyRow row in EntryRows())
         {
             yield return row;
         }
+    }
+    private PropertyRow WheelRow(CarModel model, int wheel, int axis)
+    {
+        return PropertyRow.Editable(
+            $"Wheel {wheel + 1} {WheelAxes[axis]}",
+            model.Wheel(wheel, axis).ToString(WheelFormat, CultureInfo.InvariantCulture),
+            value => SetWheel(wheel, axis, value));
+    }
+    private void SetWheel(int wheel, int axis, string value)
+    {
+        string text = value.Trim();
+        bool parsed = float.TryParse(
+            text, NumberStyles.Float, CultureInfo.InvariantCulture, out float number);
+        if (!parsed || text.Length == 0)
+        {
+            throw new InvalidDataException(
+                $"a wheel value is a decimal number, and '{value}' is not one");
+        }
+        CarModel model = CarModel.Parse(Entry.Span);
+        model.SetWheel(wheel, axis, number);
+        Entry.Replace(model.Serialize());
+        Invalidate();
     }
 }
 internal sealed class SkinnedModelNode : EntryNode, ISceneAsset, IAnimatedAsset, IDescribable, ICommandSource

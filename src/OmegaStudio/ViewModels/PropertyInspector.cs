@@ -2,7 +2,6 @@ using Omega.Plugins;
 using OmegaStudio.Audio;
 using OmegaStudio.Plugins;
 namespace OmegaStudio.ViewModels;
-
 internal static class PropertyInspector
 {
     public static IEnumerable<PropertyRow> Describe(IAssetNode? node, AudioInfo? audio = null)
@@ -15,7 +14,7 @@ internal static class PropertyInspector
         if (node is IDescribable describable)
         {
             rows.AddRange(PluginGuard.Try(
-                $"Describing '{node.Name}'",
+                $"Describing '{NodeAccess.Name(node)}'",
                 () => (IReadOnlyList<PropertyRow>)[.. describable.Describe()],
                 []));
         }
@@ -32,14 +31,14 @@ internal static class PropertyInspector
             rows.Add(new PropertyRow("Bit depth", $"{clip.BitsPerSample}-bit"));
             rows.Add(new PropertyRow("Duration", $"{clip.Duration:mm\\:ss\\.fff}"));
         }
-        if (!string.IsNullOrEmpty(node.PathText))
+        string where = NodeAccess.PathText(node);
+        if (!string.IsNullOrEmpty(where))
         {
-            rows.Add(new PropertyRow("Location", node.PathText));
+            rows.Add(new PropertyRow("Location", where));
         }
         if (node is IBinaryAsset binary)
         {
-            rows.Add(new PropertyRow("Size", Sizes.Describe(PluginGuard.Try(
-                $"Reading the size of '{node.Name}'", () => binary.Size, 0))));
+            rows.Add(new PropertyRow("Size", Sizes.Describe(NodeAccess.Size(binary))));
         }
         return rows;
     }

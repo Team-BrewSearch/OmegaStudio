@@ -1,13 +1,6 @@
 using System.Numerics;
 using Omega.Plugins;
 namespace Polarbit.Formats;
-
-/// <summary>
-/// 3DOB skeletal animation. Each key holds, per bone, a rotation about the bone's model-space pivot and an optional
-/// offset, both relative to the parent bone; the bind pose is the identity. Quaternions are stored w, x, y, z.
-/// The parent-relative reading was chosen over an absolute one because it stretches skinned edges least in 27 of 49
-/// models, and the stored sign over the conjugate because it puts the drivers' hands forward on the wheel.
-/// </summary>
 internal sealed class PiffAnimation
 {
     public const float Fps = 30f;
@@ -19,7 +12,6 @@ internal sealed class PiffAnimation
         Clips = model.IsAnimated ? Build(model, _ranges) : [];
     }
     public IReadOnlyList<AnimationClip> Clips { get; }
-
     public static IReadOnlyList<SceneJoint> Joints(PiffModel model)
     {
         List<SceneJoint> joints = [];
@@ -31,23 +23,19 @@ internal sealed class PiffAnimation
         }
         return joints;
     }
-
     public static IReadOnlyList<AnimationClip> ClipsOf(PiffModel model)
     {
         return Build(model, []);
     }
-
     private static string UniqueName(PiffModel model, PiffBone bone)
     {
         return model.Bones.Count(x => x.Name == bone.Name) > 1 ? $"{bone.Name}_{model.Bones.IndexOf(bone)}" : bone.Name;
     }
-
     private static Vector3 Host(float[] v, int at)
     {
         (float x, float y, float z) = Axes.ToHost(v[at], v[at + 1], v[at + 2]);
         return new Vector3(x, y, z);
     }
-
     private static List<AnimationClip> Build(PiffModel model, Dictionary<AnimationClip, (int, int)> ranges)
     {
         List<AnimationClip> clips = [];
@@ -86,32 +74,63 @@ internal sealed class PiffAnimation
         }
         return clips;
     }
-
-    /// <summary>Model-space bone matrices (row-vector convention) at a fractional key, parents composed first.</summary>
+    public const int MaxParentDepth = 256;
     private Matrix4x4[] Pose(int k0, int k1, float blend)
     {
         PiffModel m = _model;
         Matrix4x4[] world = new Matrix4x4[m.Bones.Count];
         bool[] done = new bool[world.Length];
+        Dictionary<int, int> byId = new(m.Bones.Count);
+        for (int i = 0; i < m.Bones.Count; i++)
+        {
+            byId[unchecked((int)m.Bones[i].Id)] = i;
+        }
+        List<int> chain = [];
         Matrix4x4 Of(int b)
         {
             if (done[b])
             {
                 return world[b];
             }
-            PiffBone bone = m.Bones[b];
-            float[] a = m.Rotations![k0], c = m.Rotations[k1];
-            Quaternion q = Quaternion.Slerp(
-                new Quaternion(a[(b * 4) + 1], a[(b * 4) + 2], a[(b * 4) + 3], a[b * 4]),
-                new Quaternion(c[(b * 4) + 1], c[(b * 4) + 2], c[(b * 4) + 3], c[b * 4]), blend);
-            Vector3 pivot = new(bone.Pivot[0], bone.Pivot[1], bone.Pivot[2]);
-            Vector3 offset = m.Translations is { } t
-                ? Vector3.Lerp(new Vector3(t[k0][b * 3], t[k0][(b * 3) + 1], t[k0][(b * 3) + 2]), new Vector3(t[k1][b * 3], t[k1][(b * 3) + 1], t[k1][(b * 3) + 2]), blend)
-                : Vector3.Zero;
-            Matrix4x4 local = Matrix4x4.CreateTranslation(-pivot) * Matrix4x4.CreateFromQuaternion(Quaternion.Normalize(q)) * Matrix4x4.CreateTranslation(pivot + offset);
-            int parent = m.Bones.FindIndex(x => x.Id == bone.Parent);
-            done[b] = true;
-            world[b] = parent < 0 || parent == b ? local : local * Of(parent);
+            chain.Clear();
+            int at = b;
+            int depth = 0;
+            while (true)
+            {
+                if (done[at])
+                {
+                    break;
+                }
+                chain.Add(at);
+                PiffBone bone = m.Bones[at];
+                int parent = byId.TryGetValue(unchecked((int)bone.Parent), out int found) ? found : -1;
+                if (parent < 0 || parent == at || !byId.ContainsKey(unchecked((int)m.Bones[parent].Id)))
+                {
+                    break;
+                }
+                at = parent;
+                depth++;
+                if (depth > MaxParentDepth)
+                {
+                    break;
+                }
+            }
+            for (int i = chain.Count - 1; i >= 0; i--)
+            {
+                int index = chain[i];
+                if (done[index])
+                {
+                    continue;
+                }
+                world[index] = Local(m, k0, k1, blend, index);
+                done[index] = true;
+                PiffBone bone = m.Bones[index];
+                int parent = byId.TryGetValue(unchecked((int)bone.Parent), out int found) ? found : -1;
+                if (parent >= 0 && parent != index)
+                {
+                    world[index] = world[index] * world[parent];
+                }
+            }
             return world[b];
         }
         for (int b = 0; b < world.Length; b++)
@@ -120,7 +139,20 @@ internal sealed class PiffAnimation
         }
         return world;
     }
-
+    private static Matrix4x4 Local(PiffModel m, int k0, int k1, float blend, int b)
+    {
+        float[] a = m.Rotations![k0], c = m.Rotations[k1];
+        Quaternion q = Quaternion.Slerp(
+            new Quaternion(a[(b * 4) + 1], a[(b * 4) + 2], a[(b * 4) + 3], a[b * 4]),
+            new Quaternion(c[(b * 4) + 1], c[(b * 4) + 2], c[(b * 4) + 3], c[b * 4]), blend);
+        Vector3 pivot = new(m.Bones[b].Pivot[0], m.Bones[b].Pivot[1], m.Bones[b].Pivot[2]);
+        Vector3 offset = m.Translations is { } t
+            ? Vector3.Lerp(new Vector3(t[k0][b * 3], t[k0][(b * 3) + 1], t[k0][(b * 3) + 2]), new Vector3(t[k1][b * 3], t[k1][(b * 3) + 1], t[k1][(b * 3) + 2]), blend)
+            : Vector3.Zero;
+        return Matrix4x4.CreateTranslation(-pivot)
+            * Matrix4x4.CreateFromQuaternion(Quaternion.Normalize(q))
+            * Matrix4x4.CreateTranslation(pivot + offset);
+    }
     public bool TryPose(AnimationClip clip, double seconds, out float[] positions, out float[] normals)
     {
         PiffModel m = _model;

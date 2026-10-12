@@ -1,7 +1,6 @@
 using Omega.Plugins;
 using OmegaStudio.Plugins;
 namespace OmegaStudio.ViewModels;
-
 public sealed record PluginRow(
     string Name,
     string Version,

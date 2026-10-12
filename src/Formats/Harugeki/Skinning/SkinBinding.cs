@@ -1,5 +1,4 @@
 namespace Harugeki.Formats.Skinning;
-
 public sealed class SkinBinding
 {
     public const int MaxInfluences = 4;

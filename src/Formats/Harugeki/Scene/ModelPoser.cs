@@ -1,9 +1,8 @@
+using System.Numerics;
 using Harugeki.Formats.Math;
 using Harugeki.Formats.Skinning;
 using Omega.Plugins;
-using System.Numerics;
 namespace Harugeki.Formats.Scene;
-
 internal static class ModelPoser
 {
     public static bool TryPose(

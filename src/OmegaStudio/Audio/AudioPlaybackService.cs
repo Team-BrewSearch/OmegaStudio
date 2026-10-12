@@ -1,5 +1,5 @@
+using System.Globalization;
 namespace OmegaStudio.Audio;
-
 public enum PlaybackState
 {
     Stopped,
@@ -9,15 +9,21 @@ public enum PlaybackState
 public sealed class AudioPlaybackService : IDisposable
 {
     private static readonly TimeSpan s_pollInterval = TimeSpan.FromMilliseconds(25);
-    private readonly AudioPlaybackEngine _engine = new();
+    private readonly AudioPlaybackEngine _engine;
     private readonly Lock _sync = new();
-    private Timer? _poll;
+    private CancellationTokenSource? _pollCts;
+    private Task? _pollLoop;
     private IAudioDecoder? _decoder;
     private bool _disposed;
+    private double _restingSeconds;
     public event Action? StateChanged;
     public bool IsLoaded { get; private set; }
     public PlaybackState State { get; private set; }
     public TimeSpan Duration { get; private set; }
+    public AudioPlaybackService()
+    {
+        _engine = new AudioPlaybackEngine();
+    }
     public TimeSpan Position
     {
         get
@@ -35,7 +41,6 @@ public sealed class AudioPlaybackService : IDisposable
             }
         }
     }
-    private double _restingSeconds;
     public bool CanPlay => IsLoaded && State != PlaybackState.Playing;
     public bool CanPause => State == PlaybackState.Playing;
     public bool CanResume => State == PlaybackState.Paused;
@@ -44,19 +49,23 @@ public sealed class AudioPlaybackService : IDisposable
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
         ArgumentNullException.ThrowIfNull(data);
+        IAudioDecoder decoder = AudioInfoHelper.CreateDecoder(data);
+        byte[] pcm = new byte[decoder.TotalBytes];
+        decoder.ReadAll(pcm);
+        int channels = decoder.Channels;
+        int bitsPerSample = decoder.BitsPerSample;
+        int sampleRate = decoder.SampleRate;
+        long totalSamples = decoder.TotalSamples;
         lock (_sync)
         {
             Unload();
             try
             {
-                _decoder = AudioInfoHelper.CreateDecoder(data);
+                _decoder = decoder;
                 _engine.Initialize();
-                byte[] pcm = new byte[_decoder.TotalBytes];
-                _decoder.ReadAll(pcm);
-                _engine.UploadPcm(pcm, _decoder.Channels, _decoder.BitsPerSample, _decoder.SampleRate);
-                Duration = _decoder.SampleRate > 0 && _decoder.Channels > 0
-                    ? TimeSpan.FromSeconds(
-                        (double)_decoder.TotalSamples / (_decoder.SampleRate * _decoder.Channels))
+                _engine.UploadPcm(pcm, channels, bitsPerSample, sampleRate);
+                Duration = sampleRate > 0 && channels > 0
+                    ? TimeSpan.FromSeconds((double)totalSamples / (sampleRate * channels))
                     : TimeSpan.Zero;
                 IsLoaded = true;
                 State = PlaybackState.Stopped;
@@ -150,15 +159,45 @@ public sealed class AudioPlaybackService : IDisposable
         }
         StateChanged?.Invoke();
     }
+    private void StopPolling()
+    {
+        CancellationTokenSource? found = _pollCts;
+        _pollCts = null;
+        _pollLoop = null;
+        found?.Cancel();
+    }
     private void StartPolling()
     {
         StopPolling();
-        _poll = new Timer(_ => Tick(), null, s_pollInterval, s_pollInterval);
+        CancellationTokenSource cts = new();
+        PeriodicTimer timer = new(s_pollInterval);
+        _pollCts = cts;
+        _pollLoop = Task.Factory.StartNew(
+            () => PollLoop(timer, cts),
+            CancellationToken.None,
+            TaskCreationOptions.LongRunning,
+            TaskScheduler.Default).Unwrap();
     }
-    private void StopPolling()
+    private async Task PollLoop(PeriodicTimer timer, CancellationTokenSource stop)
     {
-        _poll?.Dispose();
-        _poll = null;
+        try
+        {
+            while (await timer.WaitForNextTickAsync(stop.Token).ConfigureAwait(false))
+            {
+                Tick();
+            }
+        }
+        catch (OperationCanceledException)
+        {
+        }
+        catch (ObjectDisposedException)
+        {
+        }
+        finally
+        {
+            timer.Dispose();
+            stop.Dispose();
+        }
     }
     private void Tick()
     {
@@ -168,13 +207,14 @@ public sealed class AudioPlaybackService : IDisposable
             {
                 return;
             }
-            if (!_engine.IsPlaying)
+            if (_engine.IsPlaying)
             {
-                _engine.Stop();
-                State = PlaybackState.Stopped;
-                _restingSeconds = Duration.TotalSeconds;
-                StopPolling();
+                return;
             }
+            _engine.Stop();
+            State = PlaybackState.Stopped;
+            _restingSeconds = Duration.TotalSeconds;
+            StopPolling();
         }
         StateChanged?.Invoke();
     }
@@ -191,15 +231,24 @@ public sealed class AudioPlaybackService : IDisposable
     }
     public void Dispose()
     {
-        if (_disposed)
-        {
-            return;
-        }
-        _disposed = true;
+        Task? loop;
         lock (_sync)
         {
+            if (_disposed)
+            {
+                return;
+            }
+            _disposed = true;
             Unload();
             _engine.Dispose();
+            loop = _pollLoop;
+        }
+        try
+        {
+            loop?.Wait(TimeSpan.FromSeconds(2));
+        }
+        catch (AggregateException)
+        {
         }
     }
 }

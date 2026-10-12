@@ -1,7 +1,6 @@
-using Harugeki.Formats.Binary;
 using System.Buffers.Binary;
+using Omega.Plugins;
 namespace Harugeki.Formats;
-
 public static class ModelTextures
 {
     private const int TableOffset = 0x10;

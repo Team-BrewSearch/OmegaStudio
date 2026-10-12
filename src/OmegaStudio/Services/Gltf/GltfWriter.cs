@@ -1,11 +1,10 @@
-using Omega.Plugins;
 using System.Buffers.Binary;
 using System.Numerics;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using Omega.Plugins;
 namespace OmegaStudio.Services.Gltf;
-
 internal static class GltfWriter
 {
     private const int Float = 5126, UShort = 5123, UInt = 5125;
@@ -19,23 +18,21 @@ internal static class GltfWriter
         JsonObject gltf = builder.Build();
         if (Path.GetExtension(path).Equals(".glb", StringComparison.OrdinalIgnoreCase))
         {
-            WriteGlb(path, gltf, builder.Binary);
+            AtomicSave.WriteToStream(path, stream => WriteGlb(stream, gltf, builder.Binary));
+            AtomicSave.Overwrite(path);
+            return;
         }
-        else
+        gltf["buffers"] = new JsonArray
         {
-            gltf["buffers"] = new JsonArray
+            new JsonObject
             {
-                new JsonObject
-                {
-                    ["uri"] = "data:application/octet-stream;base64," + Convert.ToBase64String(builder.Binary),
-                    ["byteLength"] = builder.Binary.Length,
-                },
-            };
-            File.WriteAllText(
-                path,
-                gltf.ToJsonString(new JsonSerializerOptions { WriteIndented = true }),
-                new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
-        }
+                ["uri"] = "data:application/octet-stream;base64," + Convert.ToBase64String(builder.Binary),
+                ["byteLength"] = builder.Binary.Length,
+            },
+        };
+        byte[] text = new UTF8Encoding(encoderShouldEmitUTF8Identifier: false)
+            .GetBytes(gltf.ToJsonString(new JsonSerializerOptions { WriteIndented = true }));
+        AtomicSave.Write(path, text);
     }
     private sealed class Builder : IDisposable
     {
@@ -460,14 +457,13 @@ internal static class GltfWriter
             return new JsonArray([.. flat.Select(v => JsonValue.Create(v))]);
         }
     }
-    private static void WriteGlb(string path, JsonObject gltf, byte[] binary)
+    private static void WriteGlb(Stream file, JsonObject gltf, byte[] binary)
     {
         gltf["buffers"] = new JsonArray { new JsonObject { ["byteLength"] = binary.Length } };
         byte[] json = Encoding.UTF8.GetBytes(gltf.ToJsonString());
         int jsonPadded = Align4(json.Length);
         int binPadded = Align4(binary.Length);
         int total = 12 + 8 + jsonPadded + (binary.Length > 0 ? 8 + binPadded : 0);
-        using FileStream file = File.Create(path);
         Span<byte> header = stackalloc byte[12];
         BinaryPrimitives.WriteUInt32LittleEndian(header, 0x46546C67);
         BinaryPrimitives.WriteUInt32LittleEndian(header[4..], 2);

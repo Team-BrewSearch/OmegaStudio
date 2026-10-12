@@ -1,6 +1,5 @@
 using Omega.Plugins;
 namespace Virtuos.Formats.Nodes;
-
 internal readonly record struct DwkParts(IAssetNode Gda, IAssetNode Gdf, IAssetNode Gdt);
 public sealed class DwkContainerRecognizer : IContainerRecognizer
 {
@@ -98,7 +97,21 @@ public sealed class DwkContainerRecognizer : IContainerRecognizer
     }
     private static byte[] Bytes(IAssetNode node)
     {
-        return ((IBinaryAsset)node).Data.ToArray();
+        return node is EntryNode entry && DataOwned(entry.Entry)
+            ? entry.Entry.AsArray()
+            : ((IBinaryAsset)node).Data.ToArray();
+    }
+    private static bool DataOwned(DwkEntry entry)
+    {
+        try
+        {
+            byte[] array = entry.AsArray();
+            return array.Length == entry.Size;
+        }
+        catch (Exception ex) when (ex is InvalidOperationException)
+        {
+            return false;
+        }
     }
     private static string Extension(IAssetNode node)
     {

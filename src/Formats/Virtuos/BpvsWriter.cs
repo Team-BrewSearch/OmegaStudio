@@ -1,5 +1,4 @@
 namespace Virtuos.Formats;
-
 public static class BpvsWriter
 {
     public static byte[] BuildMinimalSingleSection()

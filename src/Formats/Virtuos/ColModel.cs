@@ -1,8 +1,6 @@
-using Virtuos.Formats.Binary;
-using Omega.Plugins;
 using System.Buffers.Binary;
+using Omega.Plugins;
 namespace Virtuos.Formats;
-
 public sealed class ColSection
 {
     public const int HeaderSize = 16;

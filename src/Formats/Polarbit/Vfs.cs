@@ -2,8 +2,6 @@ using System.Buffers.Binary;
 using System.IO.Compression;
 using System.Text;
 namespace Polarbit.Formats;
-
-/// <summary>A FUFS container: a hash-sorted table of payloads, and in the 2011 games a name table after them.</summary>
 internal sealed class VfsArchive
 {
     private const uint SizeFlag = 0x80000000;
@@ -45,8 +43,6 @@ internal sealed class VfsArchive
     {
         return Find(NameHash(path));
     }
-
-    /// <summary>h = h * 67 + toupper(c) - 113, mod 2^32, over the path's bytes. Recovered from the 649 stored names.</summary>
     public static uint NameHash(string path)
     {
         uint h = 0;
@@ -57,7 +53,6 @@ internal sealed class VfsArchive
         }
         return h;
     }
-
     public static bool LooksLikeArchive(ReadOnlySpan<byte> head, long length)
     {
         if (head.Length < 12 || !head.StartsWith("FUFS"u8))
@@ -68,7 +63,6 @@ internal sealed class VfsArchive
         long count = Le.U32(head, 8);
         return (tag & SizeFlag) != 0 && (tag & ~SizeFlag) <= length && 12 + (count * 12) <= length;
     }
-
     public static VfsArchive Read(byte[] data)
     {
         ArgumentNullException.ThrowIfNull(data);
@@ -124,7 +118,6 @@ internal sealed class VfsArchive
         }
         return new VfsArchive(entries, tail, blockLength);
     }
-
     public byte[] Build()
     {
         int count = _entries.Count;
@@ -153,8 +146,6 @@ internal sealed class VfsArchive
         BinaryPrimitives.WriteUInt32LittleEndian(output.AsSpan(4), SizeFlag | (uint)end);
         return output;
     }
-
-    /// <summary>Names, NUL-terminated, then their length and a level-9 zlib copy that is sync-flushed and never finished.</summary>
     private static (byte[] Tail, int BlockLength) BuildNameTail(List<VfsEntry> entries)
     {
         byte[] block = Encoding.Latin1.GetBytes(string.Concat(entries.Select(e => (e.Name ?? string.Empty) + "\0")));
@@ -172,8 +163,6 @@ internal sealed class VfsArchive
         }
     }
 }
-
-/// <summary>One compression layer: a PLZP wrapper or a bare zlib stream, with the level its header names.</summary>
 internal readonly record struct Layer(bool Plzp, int Level)
 {
     public override string ToString()
@@ -181,7 +170,6 @@ internal readonly record struct Layer(bool Plzp, int Level)
         return $"{(Plzp ? "PLZP" : "zlib")} (level {Level})";
     }
 }
-
 internal sealed class VfsEntry
 {
     private readonly ReadOnlyMemory<byte> _source;
@@ -218,8 +206,6 @@ internal sealed class VfsEntry
         }
     }
     public PayloadKind Kind => _kind ??= Kinds.Sniff(Payload);
-
-    /// <summary>Stores a new payload under the same compression layers. A payload equal to the one first read takes back its original bytes.</summary>
     public void Replace(byte[] payload)
     {
         ArgumentNullException.ThrowIfNull(payload);
@@ -231,7 +217,6 @@ internal sealed class VfsEntry
         _kind = null;
         Owner?.MarkChanged();
     }
-
     private void EnsureLoaded()
     {
         if (_payload is null)
@@ -242,7 +227,6 @@ internal sealed class VfsEntry
             _sourcePayloadLength = payload.Length;
         }
     }
-
     private static (Layer[] Layers, byte[] Payload) Unwrap(ReadOnlySpan<byte> blob)
     {
         List<Layer> layers = [];
@@ -270,12 +254,10 @@ internal sealed class VfsEntry
             }
         }
     }
-
     private static bool IsZlib(ReadOnlySpan<byte> b)
     {
         return b.Length > 2 && b[0] == 0x78 && ((b[0] << 8) | b[1]) % 31 == 0;
     }
-
     private static int Level(byte flags)
     {
         return (flags >> 6) switch
@@ -286,7 +268,6 @@ internal sealed class VfsEntry
             _ => 9,
         };
     }
-
     private static byte[] Wrap(byte[] payload, Layer[] layers)
     {
         byte[] current = payload;
@@ -307,7 +288,6 @@ internal sealed class VfsEntry
         return current;
     }
 }
-
 internal static class Zlib
 {
     public const int MaxInflated = 256 << 20;
@@ -319,7 +299,6 @@ internal static class Zlib
         Le.Need(stream.ReadByte() < 0, $"zlib stream inflates past its declared {size} bytes.");
         return output;
     }
-
     public static byte[]? TryInflate(byte[] z)
     {
         try
@@ -340,7 +319,6 @@ internal static class Zlib
             return null;
         }
     }
-
     public static byte[] Deflate(ReadOnlySpan<byte> data, int level)
     {
         using MemoryStream output = new();

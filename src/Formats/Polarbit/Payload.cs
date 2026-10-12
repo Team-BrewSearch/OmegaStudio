@@ -1,7 +1,6 @@
 using System.Buffers.Binary;
 using System.Text;
 namespace Polarbit.Formats;
-
 internal enum PayloadKind
 {
     Binary,
@@ -20,7 +19,6 @@ internal enum PayloadKind
     Xml,
     Text,
 }
-
 internal static class Kinds
 {
     private static readonly UTF8Encoding s_strictUtf8 = new(false, true);
@@ -79,7 +77,6 @@ internal static class Kinds
             return PayloadKind.Binary;
         }
     }
-
     public static string Extension(PayloadKind kind)
     {
         return kind switch
@@ -100,7 +97,6 @@ internal static class Kinds
             _ => ".bin",
         };
     }
-
     public static string Describe(PayloadKind kind)
     {
         return kind switch
@@ -123,32 +119,16 @@ internal static class Kinds
         };
     }
 }
-
 internal static class Le
 {
-    public static ushort U16(ReadOnlySpan<byte> b, int o)
-    {
-        return BinaryPrimitives.ReadUInt16LittleEndian(b[o..]);
-    }
-    public static short I16(ReadOnlySpan<byte> b, int o)
-    {
-        return BinaryPrimitives.ReadInt16LittleEndian(b[o..]);
-    }
-    public static uint U32(ReadOnlySpan<byte> b, int o)
-    {
-        return BinaryPrimitives.ReadUInt32LittleEndian(b[o..]);
-    }
-    public static int I32(ReadOnlySpan<byte> b, int o)
-    {
-        return BinaryPrimitives.ReadInt32LittleEndian(b[o..]);
-    }
-    public static float Fx(ReadOnlySpan<byte> b, int o)
-    {
-        return I32(b, o) / 65536f;
-    }
+    public static ushort U16(ReadOnlySpan<byte> b, int o) => Omega.Plugins.BinaryRead.U16(b, o);
+    public static short I16(ReadOnlySpan<byte> b, int o) => Omega.Plugins.BinaryRead.I16(b, o);
+    public static uint U32(ReadOnlySpan<byte> b, int o) => Omega.Plugins.BinaryRead.U32(b, o);
+    public static int I32(ReadOnlySpan<byte> b, int o) => Omega.Plugins.BinaryRead.I32(b, o);
+    public static float Fx(ReadOnlySpan<byte> b, int o) => Omega.Plugins.BinaryRead.Fixed(b, o);
     public static int Count(ReadOnlySpan<byte> b, int o, int recordSize, string what)
     {
-        uint count = U32(b, o);
+        uint count = Omega.Plugins.BinaryRead.U32(b, o);
         return count > (uint)((b.Length - o) / System.Math.Max(1, recordSize))
             ? throw new InvalidDataException($"{what} at 0x{o:X} claims {count} records, more than the data holds.")
             : (int)count;
@@ -168,12 +148,6 @@ internal static class Le
             : (int)scaled;
     }
 }
-
-/// <summary>
-/// The engine is OpenGL ES: right-handed, Y up, texture v running upward. The host wants v running down.
-/// Positions pass through unchanged: a Y-up to Z-up turn (+90 degrees about X) showed every model lying on its back
-/// in the viewport, and the -90 degrees that stands it up again cancels it.
-/// </summary>
 internal static class Axes
 {
     public static (float X, float Y, float Z) ToHost(float x, float y, float z)

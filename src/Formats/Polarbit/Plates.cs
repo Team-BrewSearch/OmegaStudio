@@ -1,19 +1,15 @@
 using System.Buffers.Binary;
 using System.Text;
 namespace Polarbit.Formats;
-
-/// <summary>A texture-atlas plate: named (TLPB, Getaway) or numbered (PLT, Raging Thunder 2) rectangles in pixels (REPORT 4.4, 4.5).</summary>
 internal sealed class Plate
 {
     public int Width { get; private init; }
     public int Height { get; private init; }
     public List<(string Name, int X, int Y, int W, int H)> Rects { get; } = [];
-
     public static Plate Parse(ReadOnlySpan<byte> b)
     {
         return b.StartsWith("TLPB"u8) ? ParseTlpb(b) : ParsePlt(b);
     }
-
     private static Plate ParseTlpb(ReadOnlySpan<byte> b)
     {
         Le.Need(b.Length >= 44 && Le.U32(b, 4) == 4 && Le.I32(b, 40) == -1, "TLPB header is not version 4.");
@@ -33,7 +29,6 @@ internal sealed class Plate
         Le.Need(p == b.Length, "TLPB has trailing bytes.");
         return plate;
     }
-
     private static Plate ParsePlt(ReadOnlySpan<byte> b)
     {
         Le.Need(b.Length >= 20 && Le.U16(b, 6) == 9 && b.Length == 20 + (40 * Le.U16(b, 4)), "PLT header does not match its rectangle count.");

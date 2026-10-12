@@ -2,12 +2,6 @@ using System.Buffers.Binary;
 using System.Numerics;
 using Omega.Plugins.Gltf;
 namespace Polarbit.Formats;
-
-/// <summary>
-/// Replaces a 3DOB model's geometry with a glTF file of any shape. The glTF meshes merge into the model's one mesh,
-/// each primitive becomes a POLY drawn with the appearance whose texture has its material's name (else by position),
-/// and a skinned model is re-bound by bone name. Textures, materials and animation stay as they are.
-/// </summary>
 internal static class PiffWriter
 {
     public static (byte[] Payload, List<string> Notes) Replace(byte[] original, GltfDocument document)
@@ -107,7 +101,6 @@ internal static class PiffWriter
         Le.Need(check.VertexCount == count && (!check.IsSkinned || check.Influences.All(i => i.Count > 0)), "The rebuilt model did not read back.");
         return (result, notes);
     }
-
     private static void Chunk(MemoryStream output, string id, byte[] data)
     {
         output.Write(System.Text.Encoding.Latin1.GetBytes(id));
@@ -116,16 +109,10 @@ internal static class PiffWriter
         output.Write(size);
         output.Write(data);
     }
-
     private static byte[] Fixed(IEnumerable<float> values)
     {
         return [.. values.SelectMany(v => BitConverter.GetBytes(Le.ToFixed(v)))];
     }
-
-    /// <summary>
-    /// JNTS and SKEL for the new vertices: glTF joints matched to bones by name, then by position; at most four
-    /// influences each, renormalised; a lone full-weight influence is stored rigid; anything unbound follows the root.
-    /// </summary>
     private static byte[] SkinForm(PiffModel model, EngineMesh mesh, IReadOnlyList<string> jointNames, byte[] original, List<PiffChunk> chunks, List<string> notes)
     {
         List<PiffBone> bones = model.Bones;

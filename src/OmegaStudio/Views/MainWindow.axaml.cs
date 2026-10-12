@@ -1,14 +1,14 @@
+using System.ComponentModel;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.Primitives;
 using Avalonia.Input;
 using Avalonia.Interactivity;
+using Avalonia.LogicalTree;
 using Avalonia.Markup.Xaml;
 using OmegaStudio.Rendering;
 using OmegaStudio.ViewModels;
-using System.ComponentModel;
 namespace OmegaStudio.Views;
-
 public partial class MainWindow : Window
 {
     private MainViewModel? _currentVm;
@@ -17,12 +17,14 @@ public partial class MainWindow : Window
     private readonly GlViewport? _vp;
     private readonly ScrollViewer? _consoleScroll;
     private readonly TextureView? _texture;
+    private readonly TreeView? _outliner;
     public MainWindow()
     {
         InitializeComponent();
         _vp = this.FindControl<GlViewport>("Viewport");
         _consoleScroll = this.FindControl<ScrollViewer>("ConsoleScroll");
         _texture = this.FindControl<TextureView>("TexturePreviewView");
+        _outliner = this.FindControl<TreeView>("OutlinerTree");
         Slider? seek = this.FindControl<Slider>("AudioSeek");
         if (seek is not null)
         {
@@ -35,6 +37,29 @@ public partial class MainWindow : Window
             vm.Viewport = _vp;
         }
         DataContextChanged += OnDataContextChanged;
+    }
+    public async Task CloseAsync(MainViewModel vm)
+    {
+        if (await vm.CanDiscardAsync())
+        {
+            Close();
+        }
+    }
+    public async Task<bool> AskAboutUnsavedChangesAsync(MainViewModel vm)
+    {
+        UnsavedChangesWindow prompt = new();
+        string what = string.IsNullOrEmpty(vm.OpenArchiveName) ? "The archive" : vm.OpenArchiveName;
+        UnsavedChangesChoice choice = await prompt.AskAsync(this, what);
+        switch (choice)
+        {
+            case UnsavedChangesChoice.Cancel:
+                return false;
+            case UnsavedChangesChoice.Discard:
+                return true;
+            default:
+                await vm.SaveAsync();
+                return !vm.HasUnsavedChanges;
+        }
     }
     private void PropertyBox_OnKeyDown(object? sender, KeyEventArgs e)
     {
@@ -97,6 +122,21 @@ public partial class MainWindow : Window
     }
     private bool _dragging, _panning;
     private Point _lastPointer;
+    private void Tree_OnPointerPressed(object? sender, PointerPressedEventArgs e)
+    {
+        if (!e.GetCurrentPoint(this).Properties.IsRightButtonPressed || DataContext is not MainViewModel vm)
+        {
+            return;
+        }
+        TreeViewItem? row = (e.Source as Visual)
+            ?.GetLogicalAncestors()
+            .OfType<TreeViewItem>()
+            .FirstOrDefault();
+        if (row?.DataContext is TreeItemViewModel under)
+        {
+            vm.SelectedItem = under;
+        }
+    }
     private void Overlay_OnPointerPressed(object? sender, PointerPressedEventArgs e)
     {
         if (_vp is null)

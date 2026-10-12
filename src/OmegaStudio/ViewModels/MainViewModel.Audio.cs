@@ -1,8 +1,8 @@
 using Avalonia.Threading;
 using CommunityToolkit.Mvvm.Input;
 using Omega.Plugins;
+using OmegaStudio.Plugins;
 namespace OmegaStudio.ViewModels;
-
 public partial class MainViewModel
 {
     private bool _pushingAudioPosition;
@@ -56,7 +56,9 @@ public partial class MainViewModel
     {
         _audioPlayer.Stop();
     }
-    private Task LoadAudioAsync(IAudioAsset audio)
+    private int _audioGeneration;
+    private readonly SemaphoreSlim _audioGate = new(1, 1);
+    public Task LoadAudioAsync(IAudioAsset audio)
     {
         if (_audioLoad is not null && ReferenceEquals(audio, _currentAudio))
         {
@@ -68,20 +70,30 @@ public partial class MainViewModel
     }
     private async Task RunAudioLoadAsync(IAudioAsset audio)
     {
+        int generation = Interlocked.Increment(ref _audioGeneration);
+        await _audioGate.WaitAsync();
         try
         {
-            byte[] data = audio.EncodedAudio.ToArray();
+            byte[] data = NodeAccess.EncodedAudio(audio).ToArray();
             await Task.Run(() => _audioPlayer.Load(data));
+            if (Interlocked.CompareExchange(ref _audioGeneration, generation, generation) != generation)
+            {
+                return;
+            }
         }
         catch (Exception ex)
         {
             _currentAudio = null;
             _audioLoad = null;
-            Log($"Failed to load audio: {ex.Message}");
+            Log($"Failed to load audio: {ex.GetType().Name}: {ex.Message}");
+        }
+        finally
+        {
+            _audioGate.Release();
         }
         NotifyAudioState();
     }
-    private void ResetAudioState()
+    public void ResetAudioState()
     {
         if (_audioPlayer.IsLoaded)
         {

@@ -1,14 +1,13 @@
+using System.Numerics;
+using System.Runtime.InteropServices;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Media;
 using Avalonia.OpenGL;
 using Avalonia.OpenGL.Controls;
 using Omega.Plugins;
-using System.Numerics;
-using System.Runtime.InteropServices;
 using static Avalonia.OpenGL.GlConsts;
 namespace OmegaStudio.Rendering;
-
 public enum ShadingMode
 {
     Textured,
@@ -50,6 +49,7 @@ public class GlViewport : OpenGlControlBase
     private MeshBuffer? _buffer;
     private bool _ready;
     private SceneGeometry? _framedFor;
+    private int _lineUploaded = -1;
     private float[]? _posePositions;
     private float[]? _poseNormals;
     private (float R, float G, float B) _background = (0.1f, 0.1f, 0.1f);
@@ -334,6 +334,8 @@ public class GlViewport : OpenGlControlBase
             gl.Uniform1f(_uHasTex, 0f);
             gl.Uniform1f(_uAlphaClip, 0f);
             gl.Uniform1f(_uVertexLit, 0f);
+            _buffer.EnsureLines();
+            UploadLineBuffer(gl);
             gl.BindVertexArray(_lineVao);
             gl.DrawArrays(Gl.Lines, 0, _buffer.LineVertexCount);
             return;
@@ -341,6 +343,7 @@ public class GlViewport : OpenGlControlBase
         gl.BindVertexArray(_vao);
         gl.Uniform1i(_uMode, (int)Shading);
         gl.Uniform1f(_uVertexLit, Scene?.Lighting == SceneLighting.VertexBaked ? 1f : 0f);
+        EnableBlending(gl);
         foreach ((int first, int count, int texture, bool alphaClip) in _buffer.Batches)
         {
             bool textured = Shading == ShadingMode.Textured && texture != 0;
@@ -350,6 +353,37 @@ public class GlViewport : OpenGlControlBase
             gl.Uniform1f(_uAlphaClip, textured && alphaClip ? 1f : 0f);
             gl.DrawArrays(GL_TRIANGLES, first, count);
         }
+        if (_blendFunc is not null)
+        {
+            gl.Disable((int)BlendCap);
+        }
+    }
+    private static Action<uint, uint>? _blendFunc;
+    private const uint BlendCap = 0x0BE2;
+    private const uint SrcAlphaFactor = 0x0302;
+    private const uint OneMinusSrcAlphaFactor = 0x0303;
+    private static void EnableBlending(GlInterface gl)
+    {
+        if (_blendFunc is null)
+        {
+            try
+            {
+                IntPtr entry = gl.GetProcAddress("glBlendFunc");
+                _blendFunc = entry == IntPtr.Zero
+                    ? null
+                    : Marshal.GetDelegateForFunctionPointer<Action<uint, uint>>(entry);
+            }
+            catch (Exception ex) when (ex is not OutOfMemoryException)
+            {
+                _blendFunc = null;
+            }
+        }
+        if (_blendFunc is null)
+        {
+            return;
+        }
+        gl.Enable((int)BlendCap);
+        _blendFunc(SrcAlphaFactor, OneMinusSrcAlphaFactor);
     }
     private Vector3 EyePosition()
     {
@@ -424,8 +458,22 @@ public class GlViewport : OpenGlControlBase
         gl.BindBuffer(GL_ARRAY_BUFFER, _vbo);
         BufferData(gl, _buffer.Vertices, _buffer.VertexCount * MeshBuffer.Stride, usage);
         gl.BindBuffer(GL_ARRAY_BUFFER, _lineVbo);
-        BufferData(gl, _buffer.Lines, _buffer.LineVertexCount * MeshBuffer.Stride, usage);
+        if (_buffer.Lines is { } lines)
+        {
+            BufferData(gl, lines, _buffer.LineVertexCount * MeshBuffer.Stride, usage);
+        }
         gl.BindBuffer(GL_ARRAY_BUFFER, 0);
+    }
+    private void UploadLineBuffer(GlInterface gl)
+    {
+        if (_buffer is not { Lines: { } lines } || _lineUploaded >= _buffer.LineVertexCount)
+        {
+            return;
+        }
+        gl.BindBuffer(GL_ARRAY_BUFFER, _lineVbo);
+        BufferData(gl, lines, _buffer.LineVertexCount * MeshBuffer.Stride, Gl.DynamicDraw);
+        gl.BindBuffer(GL_ARRAY_BUFFER, 0);
+        _lineUploaded = _buffer.LineVertexCount;
     }
     private static void BindAttribs(GlInterface gl, int buffer)
     {

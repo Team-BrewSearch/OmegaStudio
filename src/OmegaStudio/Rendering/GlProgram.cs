@@ -1,7 +1,6 @@
 using Avalonia.OpenGL;
 using static Avalonia.OpenGL.GlConsts;
 namespace OmegaStudio.Rendering;
-
 internal sealed class GlProgram
 {
     private GlProgram(int handle)

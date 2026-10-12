@@ -3,7 +3,6 @@ using OmegaStudio.Audio;
 using OmegaStudio.Plugins;
 using OmegaStudio.Services;
 namespace OmegaStudio.ViewModels;
-
 internal static class NodeCommands
 {
     private static readonly FileFilter s_anyFile = new("All files", "*.*");
@@ -45,7 +44,7 @@ internal static class NodeCommands
         if (node is ICommandSource source)
         {
             foreach (AssetCommand command in PluginGuard.Try(
-                $"Listing commands for '{node.Name}'",
+                $"Listing commands for '{NodeAccess.Name(node)}'",
                 () => (IReadOnlyList<AssetCommand>)[.. source.GetCommands()],
                 []))
             {
@@ -79,7 +78,7 @@ internal static class NodeCommands
     }
     private static AssetCommand Extract(IAssetNode node, IBinaryAsset binary)
     {
-        string extension = string.IsNullOrEmpty(binary.Extension) ? ".bin" : binary.Extension;
+        string extension = string.IsNullOrEmpty(NodeAccess.Extension(binary)) ? ".bin" : NodeAccess.Extension(binary);
         return new AssetCommand
         {
             Title = "Extract…",
@@ -89,8 +88,8 @@ internal static class NodeCommands
             Execute = context =>
             {
                 byte[] bytes = ((IBinaryAsset)context.Node).Data.ToArray();
-                File.WriteAllBytes(context.Path!, bytes);
-                context.Log($"Extracted {node.PathText} ({Sizes.Describe(bytes.Length)}) " +
+                AtomicSave.Write(context.Path!, bytes);
+                context.Log($"Extracted {NodeAccess.PathText(node)} ({Sizes.Describe(bytes.Length)}) " +
                     $"to {Path.GetFileName(context.Path!)}.");
             },
         };
@@ -116,7 +115,7 @@ internal static class NodeCommands
                 string delta = bytes.Length == was
                     ? string.Empty
                     : $" — slot {(bytes.Length > was ? "grew" : "shrank")} from {Sizes.Describe(was)}";
-                context.Log($"Replaced {node.PathText} with {Path.GetFileName(context.Path!)} " +
+                context.Log($"Replaced {NodeAccess.PathText(node)} with {Path.GetFileName(context.Path!)} " +
                     $"({Sizes.Describe(bytes.Length)}){delta}. Use File ▸ Save to write it back.");
                 context.Changed = AssetChange.Bytes | AssetChange.Children | AssetChange.Scene
                     | AssetChange.Image | AssetChange.Properties | AssetChange.Dirty;
@@ -126,8 +125,8 @@ internal static class NodeCommands
     private static AssetCommand ExtractAudio(IAssetNode node, IAudioAsset audio)
     {
         string extension = PluginGuard.Try(
-            $"Reading the audio of '{node.Name}'",
-            () => AudioFormats.ExtensionOf(audio.EncodedAudio),
+            $"Reading the audio of '{NodeAccess.Name(node)}'",
+            () => AudioFormats.ExtensionOf(NodeAccess.EncodedAudio(audio)),
             ".wav");
         string label = extension == ".ogg" ? "OGG Vorbis" : "WAV audio";
         return new AssetCommand
@@ -139,7 +138,7 @@ internal static class NodeCommands
             Execute = context =>
             {
                 byte[] bytes = ((IAudioAsset)context.Node).EncodedAudio.ToArray();
-                File.WriteAllBytes(context.Path!, bytes);
+                AtomicSave.Write(context.Path!, bytes);
                 context.Log($"Extracted {label} ({Sizes.Describe(bytes.Length)}) " +
                     $"to {Path.GetFileName(context.Path!)}.");
             },
@@ -180,7 +179,7 @@ internal static class NodeCommands
                 string resized = replacement.Width == wasWidth && replacement.Height == wasHeight
                     ? string.Empty
                     : $" — resized from {wasWidth}x{wasHeight} to {replacement.Width}x{replacement.Height}";
-                context.Log($"Replaced {node.Name} from {Path.GetFileName(context.Path!)}{resized}. " +
+                context.Log($"Replaced {NodeAccess.Name(node)} from {Path.GetFileName(context.Path!)}{resized}. " +
                     "Use File ▸ Save to write it back.");
                 context.Changed = AssetChange.Image | AssetChange.Bytes | AssetChange.Scene
                     | AssetChange.Properties | AssetChange.Dirty;
@@ -202,11 +201,26 @@ internal static class NodeCommands
                     ?? throw new InvalidOperationException("this asset has no geometry to export");
                 scene = WithClip(scene, clip, fps);
                 context.Host.Gltf.Write(scene, context.Path!);
-                context.Log($"Exported {node.Name} to {Path.GetFileName(context.Path!)} " +
+                context.Log($"Exported {NodeAccess.Name(node)} to {Path.GetFileName(context.Path!)} " +
                     $"({scene.TriangleCount:N0} triangles, {scene.Textures.Count} texture(s), " +
                     $"{scene.Clips.Count} animation(s)).");
             },
         };
+    }
+    private static string FirstLabel(IAssetNode node)
+    {
+        string stem = NodeAccess.FileStem(node);
+        if (!string.IsNullOrWhiteSpace(stem))
+        {
+            return stem;
+        }
+        stem = NodeAccess.Name(node);
+        if (!string.IsNullOrWhiteSpace(stem))
+        {
+            return stem;
+        }
+        stem = NodeAccess.PathText(node);
+        return string.IsNullOrWhiteSpace(stem) ? "asset" : stem;
     }
     private static SceneGeometry WithClip(SceneGeometry scene, AnimationClip? clip, float fps)
     {
@@ -303,11 +317,7 @@ internal static class NodeCommands
     }
     private static string SuggestName(IAssetNode node, string extension)
     {
-        string stem = !string.IsNullOrWhiteSpace(node.FileStem) ? node.FileStem
-            : !string.IsNullOrWhiteSpace(node.Name) ? node.Name
-            : !string.IsNullOrWhiteSpace(node.PathText) ? node.PathText
-            : "asset";
-        return ImageIO.SafeName(
-            stem.Replace('/', '_').Replace('\\', '_').Replace("..", "_")) + extension;
+        string stem = FirstLabel(node);
+        return ImageIO.SafeName(stem.Replace('/', '_').Replace('\\', '_').Replace("..", "_")) + extension;
     }
 }

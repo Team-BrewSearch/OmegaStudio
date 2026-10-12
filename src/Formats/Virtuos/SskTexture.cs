@@ -1,9 +1,9 @@
-using Virtuos.Formats.Binary;
+using Omega.Plugins;
 using SMath = System.Math;
 namespace Virtuos.Formats;
-
 public sealed class SskTexture
 {
+    private const int MaxDimension = 1 << 14;
     private static ReadOnlySpan<byte> NttxMagic => "NTTX"u8;
     private static ReadOnlySpan<byte> PaltMagic => "PALT"u8;
     private static ReadOnlySpan<byte> ImgeMagic => "IMGE"u8;
@@ -47,7 +47,10 @@ public sealed class SskTexture
             {
                 throw new ArgumentException("malformed PALT section", nameof(blob));
             }
-            for (uint ci = 0; ci < numColors && secOff + 12 + ((ci + 1) * 2) <= blob.Length; ci++)
+            long colorsAvailable = Math.Min(
+                (long)numColors,
+                Math.Max(0, (blob.Length - (secOff + 12)) / 2));
+            for (long ci = 0; ci < colorsAvailable; ci++)
             {
                 ushort c = BinaryRead.U16(blob, (int)(secOff + 12 + (ci * 2)));
                 palette.Add(DsColor.FromRgb555(c));
@@ -67,6 +70,18 @@ public sealed class SskTexture
         int pixDataOff = secOff + 20;
         int paddedWidth = 8 << SMath.Clamp(log2Width, 0, 10);
         int paddedHeight = 8 << SMath.Clamp(log2Height, 0, 10);
+        if (origWidth > paddedWidth || origHeight > paddedHeight)
+        {
+            throw new ArgumentException(
+                $"a {origWidth}x{origHeight} texture does not fit the {paddedWidth}x{paddedHeight} its header declares",
+                nameof(blob));
+        }
+        if (origWidth > MaxDimension || origHeight > MaxDimension)
+        {
+            throw new ArgumentException(
+                $"a {origWidth}x{origHeight} texture is larger than the {MaxDimension}x{MaxDimension} this reader takes",
+                nameof(blob));
+        }
         (byte[] pixels, bool hasTransparency) = Decode(
             blob, pixDataOff, paddedWidth, paddedHeight, origWidth, origHeight, fmt, palette,
             c0xp && colorZeroTransparency);
@@ -102,12 +117,12 @@ public sealed class SskTexture
         int origWidth, int origHeight, int fmt,
         List<(byte R, byte G, byte B)> palette, bool c0xp)
     {
-        byte[] pixels = new byte[SMath.Max(0, origWidth) * SMath.Max(0, origHeight) * 4];
+        byte[] pixels = new byte[checked((long)Math.Max(0, origWidth) * Math.Max(0, origHeight) * 4)];
         if (origWidth <= 0 || origHeight <= 0)
         {
             return (pixels, false);
         }
-        int available = SMath.Max(0, blob.Length - dataOff);
+        int available = Math.Max(0, blob.Length - dataOff);
         int texelSize = SMath.Clamp(DsColor.CalcTexelSize(fmt, paddedWidth, paddedHeight), 0, available);
         ReadOnlySpan<byte> texel = blob.Slice(dataOff, texelSize);
         ReadOnlySpan<byte> cmp = default;

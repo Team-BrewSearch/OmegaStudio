@@ -1,6 +1,5 @@
 using Omega.Plugins;
 namespace OmegaStudio.Rendering;
-
 internal readonly record struct DrawBatch(int First, int Count, int Texture, bool AlphaClip);
 internal sealed class MeshBuffer
 {
@@ -15,12 +14,19 @@ internal sealed class MeshBuffer
         LineVertexCount = vertexCount * 2;
         Batches = batches;
         Vertices = new byte[vertexCount * Stride];
-        Lines = new byte[LineVertexCount * Stride];
     }
     public int VertexCount { get; }
     public int LineVertexCount { get; }
     public byte[] Vertices { get; }
-    public byte[] Lines { get; }
+    public byte[]? Lines { get; private set; }
+    public void EnsureLines()
+    {
+        if (Lines is not null)
+        {
+            return;
+        }
+        Lines = new byte[checked(LineVertexCount * Stride)];
+    }
     public IReadOnlyList<DrawBatch> Batches { get; }
     public static MeshBuffer Build(SceneGeometry scene, IReadOnlyList<int> textures)
     {
@@ -53,6 +59,7 @@ internal sealed class MeshBuffer
         bool posed = posedPositions is not null && posedNormals is not null;
         int vertex = 0;
         int line = 0;
+        byte[]? lines = Lines;
         int meshBase = 0;
         foreach (SceneMesh mesh in scene.Meshes)
         {
@@ -68,9 +75,9 @@ internal sealed class MeshBuffer
                         : submesh.First + i;
                     WriteVertex(mesh, positions, normals, shift, source, vertex * Stride);
                     vertex++;
-                    if ((i + 1) % 3 == 0)
+                    if (lines is not null && (i + 1) % 3 == 0)
                     {
-                        line = WriteTriangleEdges(vertex, line);
+                        line = WriteTriangleEdges(lines, vertex, line);
                     }
                 }
             }
@@ -100,14 +107,14 @@ internal sealed class MeshBuffer
             : s_white;
         colour.CopyTo(Vertices.AsSpan(at + ColorOffset, 4));
     }
-    private int WriteTriangleEdges(int vertex, int line)
+    private int WriteTriangleEdges(byte[] lines, int vertex, int line)
     {
         int a = (vertex - 3) * Stride;
         int b = (vertex - 2) * Stride;
         int c = (vertex - 1) * Stride;
         foreach (int edge in (ReadOnlySpan<int>)[a, b, b, c, c, a])
         {
-            Vertices.AsSpan(edge, Stride).CopyTo(Lines.AsSpan(line));
+            Vertices.AsSpan(edge, Stride).CopyTo(lines.AsSpan(line));
             line += Stride;
         }
         return line;

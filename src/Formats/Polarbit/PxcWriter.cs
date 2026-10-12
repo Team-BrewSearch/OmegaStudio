@@ -2,12 +2,6 @@ using System.Buffers.Binary;
 using System.Numerics;
 using Omega.Plugins.Gltf;
 namespace Polarbit.Formats;
-
-/// <summary>
-/// Replaces the geometry of a PXC scene's MESH objects (car bodies, wheels, props) with glTF meshes of any shape.
-/// glTF meshes go to the objects of the same name, the rest to the remaining objects in order, any surplus merged
-/// into the last; objects nothing maps to keep their geometry. Track scenery (LICM) is never touched.
-/// </summary>
 internal static class PxcWriter
 {
     public static (byte[] Payload, List<string> Notes) Replace(byte[] original, GltfDocument document)
@@ -65,7 +59,6 @@ internal static class PxcWriter
         Le.Need(check.Objects.Count == scene.Objects.Count, "The rebuilt scene did not read back.");
         return (buffer, notes);
     }
-
     private static byte[] Splice(byte[] b, PxcScene scene, PxcObject target, EngineMesh mesh, bool getaway)
     {
         PxcMesh old = target.Mesh!;
@@ -168,8 +161,6 @@ internal static class PxcWriter
         }
         return result;
     }
-
-    /// <summary>Radius, box centre and half size in 16.16, as the exporter wrote them: the box of the untransformed vertices.</summary>
     private static int[] Bounds(int[] p)
     {
         long[] lo = [long.MaxValue, long.MaxValue, long.MaxValue], hi = [long.MinValue, long.MinValue, long.MinValue];

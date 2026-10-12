@@ -1,6 +1,5 @@
 using Omega.Plugins;
 namespace OmegaStudio.Plugins;
-
 internal static class PluginGuard
 {
     public static Action<string>? Log { get; set; }
@@ -12,7 +11,7 @@ internal static class PluginGuard
         }
         catch (Exception ex) when (ex is not OutOfMemoryException)
         {
-            Log?.Invoke($"{what} failed: {ex.Message}");
+            Report(what, ex);
             return fallback;
         }
     }
@@ -24,7 +23,7 @@ internal static class PluginGuard
         }
         catch (Exception ex) when (ex is not OutOfMemoryException)
         {
-            Log?.Invoke($"{what} failed: {ex.Message}");
+            Report(what, ex);
         }
     }
     public static IReadOnlyList<IArchiveFormat> Formats(LoadedPlugin plugin)
@@ -42,8 +41,13 @@ internal static class PluginGuard
         }
         catch (Exception ex) when (ex is not OutOfMemoryException)
         {
-            Log?.Invoke($"{format.DisplayName} failed while identifying {Path.GetFileName(path)}: {ex.Message}");
+            Report($"Identifying {Path.GetFileName(path)} as {format.DisplayName}", ex);
             return false;
         }
+    }
+    private static void Report(string what, Exception ex)
+    {
+        string trace = ex.StackTrace is { Length: > 0 } stack ? $"  {stack.Replace("\n", "\n  ", StringComparison.Ordinal)}" : string.Empty;
+        Log?.Invoke($"{what} failed: {ex.GetType().FullName}: {ex.Message}{Environment.NewLine}{trace}");
     }
 }

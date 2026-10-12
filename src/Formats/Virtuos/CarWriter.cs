@@ -1,10 +1,9 @@
-using Virtuos.Formats.Binary;
-using Virtuos.Formats.Gltf;
-using Omega.Plugins.Gltf;
 using System.Buffers.Binary;
 using System.Numerics;
+using Omega.Plugins;
+using Omega.Plugins.Gltf;
+using Virtuos.Formats.Gltf;
 namespace Virtuos.Formats;
-
 public static class CarWriter
 {
     public static byte[] Build(ReadOnlySpan<byte> template, IReadOnlyList<TrkChunk> chunks)

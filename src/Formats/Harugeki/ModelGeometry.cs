@@ -1,5 +1,4 @@
 namespace Harugeki.Formats;
-
 public sealed class ModelGeometry
 {
     public required float[] Positions { get; init; }

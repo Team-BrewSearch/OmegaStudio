@@ -3,7 +3,6 @@ using Polarbit.Formats;
 using Polarbit.Formats.Nodes;
 [assembly: OmegaPlugin(typeof(PolarbitPlugin))]
 namespace Polarbit.Formats;
-
 public sealed class PolarbitPlugin : IFormatPlugin
 {
     public FormatPluginInfo Info { get; } = new()
@@ -16,7 +15,6 @@ public sealed class PolarbitPlugin : IFormatPlugin
     };
     public IEnumerable<IArchiveFormat> Archives { get; } = [new VfsFormat()];
 }
-
 public sealed class VfsFormat : IArchiveFormat
 {
     public string Id => "polarbit.vfs";
@@ -48,7 +46,6 @@ public sealed class VfsFormat : IArchiveFormat
         return new VfsHandle(archive, path, host);
     }
 }
-
 internal sealed class VfsHandle : IArchive
 {
     private readonly VfsArchive _archive;
@@ -67,9 +64,14 @@ internal sealed class VfsHandle : IArchive
     public void Save()
     {
         byte[] bytes = _archive.Build();
-        VfsArchive check = VfsArchive.Read(bytes);
-        Le.Need(check.Entries.Count == _archive.Entries.Count, "The rebuilt archive did not read back.");
-        File.WriteAllBytes(_path, bytes);
+        List<(string Path, byte[] Rebuilt)> files = [(_path, bytes)];
+        WriteGuard.Commit(DisplayName, files, temporaries =>
+        {
+            byte[] written = File.ReadAllBytes(temporaries[0]);
+            VfsArchive check = VfsArchive.Read(written);
+            return check.Entries.Count == _archive.Entries.Count
+                && check.Entries.Count(e => e.Name is not null) == _archive.Entries.Count(e => e.Name is not null);
+        });
         _archive.MarkSaved();
     }
     public void Dispose()

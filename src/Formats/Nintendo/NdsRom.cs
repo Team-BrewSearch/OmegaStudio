@@ -2,7 +2,6 @@ using SceneGate.Ekona.Containers.Rom;
 using Yarhl.FileSystem;
 using Yarhl.IO;
 namespace Nintendo.Formats;
-
 internal sealed class NdsRom : IDisposable
 {
     private readonly bool _uncompressedProgram;
@@ -57,18 +56,23 @@ internal sealed class NdsRom : IDisposable
             throw;
         }
     }
-    public void Save(string path)
+    public void WriteTo(Stream output)
     {
-        using DataStream output = DataStreamFactory.FromTemporaryFile(deleteOnClose: true);
+        ArgumentNullException.ThrowIfNull(output);
+        using DataStream scratch = DataStreamFactory.FromTemporaryFile(deleteOnClose: true);
         NitroRom2BinaryParams parameters = new()
         {
-            OutputStream = output,
+            OutputStream = scratch,
             DecompressedProgram = _uncompressedProgram,
         };
         using (BinaryFormat image = new NitroRom2Binary(parameters).Convert(Rom))
         {
-            image.Stream.WriteTo(path);
+            image.Stream.WriteTo(output);
         }
+        output.Flush();
+    }
+    public void MarkSaved()
+    {
         HasChanges = false;
     }
     public void Dispose()

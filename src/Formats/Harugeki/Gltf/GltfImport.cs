@@ -1,7 +1,6 @@
 using Harugeki.Formats.Skinning;
 using Omega.Plugins.Gltf;
 namespace Harugeki.Formats.Gltf;
-
 public sealed record GltfImportReport(
     int MeshesReplaced,
     int MeshesKept,

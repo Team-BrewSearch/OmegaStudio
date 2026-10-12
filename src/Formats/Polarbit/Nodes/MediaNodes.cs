@@ -1,6 +1,5 @@
 using Omega.Plugins;
 namespace Polarbit.Formats.Nodes;
-
 internal sealed class PvrNode : EntryNode, IImageAsset
 {
     public PvrNode(ArchiveContext context, string name, string path, VfsEntry entry)
@@ -41,7 +40,6 @@ internal sealed class PvrNode : EntryNode, IImageAsset
         }
     }
 }
-
 internal sealed class FontNode : EntryNode, IImageAsset
 {
     public FontNode(ArchiveContext context, string name, string path, VfsEntry entry)
@@ -91,8 +89,6 @@ internal sealed class FontNode : EntryNode, IImageAsset
         }
     }
 }
-
-/// <summary>What a stand-alone sound and a module sample share: a WAV for the transport, a replace-from-WAV command, rows.</summary>
 internal static class Sounds
 {
     public static AssetCommand ReplaceCommand(Func<byte[]> current, Action<byte[]> store)
@@ -115,7 +111,6 @@ internal static class Sounds
             },
         };
     }
-
     public static IEnumerable<PropertyRow> Rows(byte[] psnd)
     {
         PsndSound sound = PsndSound.Parse(psnd);
@@ -130,7 +125,6 @@ internal static class Sounds
         yield return PropertyRow.Of("Header flags", $"0x{sound.Flags:X3}");
     }
 }
-
 internal sealed class SoundNode : EntryNode, IAudioAsset, ICommandSource
 {
     private (int Revision, byte[] Wav)? _wav;
@@ -175,7 +169,6 @@ internal sealed class SoundNode : EntryNode, IAudioAsset, ICommandSource
         return Sounds.Rows(Entry.Payload).Concat(EntryRows());
     }
 }
-
 internal sealed class ModuleNode : EntryNode
 {
     public ModuleNode(ArchiveContext context, string name, string path, VfsEntry entry)
@@ -208,12 +201,11 @@ internal sealed class ModuleNode : EntryNode
         }
     }
 }
-
-/// <summary>One PSND sample inside a PMOD module; edits splice it back and re-deflate the module.</summary>
 internal sealed class SampleNode(VfsEntry module, int index, string path)
     : BinaryAssetNode($"sample{index:00}", path, AssetKinds.Audio, $"sample {index}"), IAudioAsset, ICommandSource, IDescribable
 {
-    private byte[] Sample => PmodModule.Parse(module.Payload).Sample(index).ToArray();
+    private byte[]? _sample;
+    private byte[] Sample => _sample ??= PmodModule.Parse(module.Payload).Sample(index).ToArray();
     public override ReadOnlySpan<byte> Data => Sample;
     public override string Extension => ".psn";
     public override string FileStem => $"{Path.GetFileNameWithoutExtension(module.Name ?? $"{module.Hash:x8}")}_sample{index:00}";

@@ -1,6 +1,5 @@
-using Harugeki.Formats.Binary;
+using Omega.Plugins;
 namespace Harugeki.Formats;
-
 public sealed class RingMesh
 {
     private const int MaxMaterials = 16;
@@ -23,8 +22,13 @@ public sealed class RingMesh
     public int VertexCount => VertexIds.Length;
     public static RingMesh Parse(ReadOnlySpan<byte> blob, int off, int end, int index)
     {
-        int[] counts = ReadTriangleCounts(blob, off);
+        if (off < 0 || end > blob.Length || off + MaterialTableOffset + (MaxMaterials * 4) > end)
+        {
+            throw new ArgumentException("mesh header is outside its blob");
+        }
+        int[] counts = ReadTriangleCounts(blob, off, end);
         int triangles = counts.Sum();
+        long vertices = (long)triangles * 3;
         int countsOff = FindCountBlock(blob, off, end, triangles);
         int skinVertexCount = (int)BinaryRead.U32(blob, countsOff);
         int positionsOff = countsOff + PositionArrayOffset;
@@ -32,7 +36,13 @@ public sealed class RingMesh
         {
             throw new ArgumentException("mesh arrays overrun");
         }
-        (float[] skinPositions, float[] skinNormals) = ReadSkinArrays(blob, positionsOff, skinVertexCount);
+        long strideBudget = (end - (positionsOff + ((long)skinVertexCount * SkinVertexStride))) / RingModel.VertexStride;
+        if (vertices > strideBudget)
+        {
+            throw new ArgumentException(
+                $"mesh draw stream wants {vertices} vertex record(s) where {strideBudget} fit");
+        }
+        (float[] skinPositions, float[] skinNormals) = ReadSkinArrays(blob, positionsOff, skinVertexCount, end);
         DrawStream draw = ReadDrawStream(
             blob, positionsOff + (skinVertexCount * SkinVertexStride), end, triangles);
         RingMesh mesh = new()
@@ -51,12 +61,17 @@ public sealed class RingMesh
         mesh.Materials.AddRange(ReadMaterials(blob, off, countsOff, counts.Length));
         return mesh;
     }
-    private static int[] ReadTriangleCounts(ReadOnlySpan<byte> blob, int off)
+    private static int[] ReadTriangleCounts(ReadOnlySpan<byte> blob, int off, int end)
     {
         List<int> counts = [];
         for (int i = 0; i < MaxMaterials; i++)
         {
-            int c = (int)BinaryRead.U32(blob, off + MaterialTableOffset + (i * 4));
+            int at = off + MaterialTableOffset + (i * 4);
+            if (at + 4 > end)
+            {
+                break;
+            }
+            int c = (int)BinaryRead.U32(blob, at);
             if (c == 0)
             {
                 break;
@@ -79,10 +94,15 @@ public sealed class RingMesh
         throw new ArgumentException("mesh count block not found");
     }
     private static (float[] Positions, float[] Normals) ReadSkinArrays(
-        ReadOnlySpan<byte> blob, int positionsOff, int count)
+        ReadOnlySpan<byte> blob, int positionsOff, int count, int end)
     {
-        float[] positions = new float[count * 3];
-        float[] normals = new float[count * 3];
+        if (positionsOff + ((long)count * SkinVertexStride) > end)
+        {
+            throw new ArgumentException(
+                $"skin arrays want {count} vertex record(s) of {SkinVertexStride} byte(s), past the end of the blob");
+        }
+        float[] positions = new float[checked(count * 3)];
+        float[] normals = new float[checked(count * 3)];
         int normalsOff = positionsOff + (count * 12);
         for (int i = 0; i < positions.Length; i++)
         {
@@ -121,10 +141,15 @@ public sealed class RingMesh
     private static DrawStream ReadDrawStream(ReadOnlySpan<byte> blob, int at, int end, int triangles)
     {
         int n = triangles * 3;
-        float[] positions = new float[n * 3];
-        float[] normals = new float[n * 3];
-        float[] uvs = new float[n * 2];
-        byte[] colors = new byte[n * 4];
+        if ((long)n * (RingModel.VertexStride + RingModel.FaceTrailer) > end - at)
+        {
+            throw new ArgumentException(
+                $"draw stream wants {triangles} triangle(s) where {(end - at) / (RingModel.VertexStride + RingModel.FaceTrailer)} fit");
+        }
+        float[] positions = new float[checked(n * 3)];
+        float[] normals = new float[checked(n * 3)];
+        float[] uvs = new float[checked(n * 2)];
+        byte[] colors = new byte[checked(n * 4)];
         int[] ids = new int[n];
         for (int f = 0; f < triangles; f++)
         {

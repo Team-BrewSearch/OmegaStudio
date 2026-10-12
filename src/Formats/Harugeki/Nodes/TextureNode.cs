@@ -1,10 +1,10 @@
 using Harugeki.Formats.Scene;
 using Omega.Plugins;
 namespace Harugeki.Formats.Nodes;
-
 internal sealed class TextureNode : SlotNode, IImageAsset, IDescribable
 {
     private readonly RingTexture _texture;
+    private ImageData? _image;
     private readonly RingModel? _owner;
     private readonly int _indexInOwner;
     private byte[]? _encoded;
@@ -46,7 +46,7 @@ internal sealed class TextureNode : SlotNode, IImageAsset, IDescribable
     {
         return $"{_texture.Width}x{_texture.Height}";
     }
-    public ImageData Image => ModelScene.ToImage(_texture);
+    public ImageData Image => _image ??= ModelScene.ToImage(_texture);
     public bool CanReplaceImage => true;
     public void ReplaceImage(ImageData image)
     {
@@ -63,6 +63,7 @@ internal sealed class TextureNode : SlotNode, IImageAsset, IDescribable
             SpliceIntoModel(encoded);
         }
         _texture.SetPixels(image.Width, image.Height, image.Rgba);
+        _image = null;
         _encoded = null;
         Detail = $"{_texture.Width}x{_texture.Height}";
     }

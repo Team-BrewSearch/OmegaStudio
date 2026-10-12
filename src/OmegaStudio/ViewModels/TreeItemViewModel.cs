@@ -1,7 +1,6 @@
 using CommunityToolkit.Mvvm.ComponentModel;
 using Omega.Plugins;
 namespace OmegaStudio.ViewModels;
-
 public partial class TreeItemViewModel : ObservableObject
 {
     [ObservableProperty]
@@ -9,6 +8,24 @@ public partial class TreeItemViewModel : ObservableObject
     private readonly Lock _loadLock = new();
     private volatile List<TreeItemViewModel>? _built;
     private bool _published;
+    public void EnsureLoaded()
+    {
+        if (_published || Loader is null)
+        {
+            return;
+        }
+        _published = true;
+        Children.Clear();
+        Children.Add(new TreeItemViewModel("…", string.Empty, "loading"));
+        _ = BuildAsync();
+    }
+    internal void CancelPendingBuild()
+    {
+        _pendingCts?.Cancel();
+        _pendingCts = null;
+    }
+    private CancellationTokenSource? _pendingCts;
+    internal Action<string, int, long>? OnBuilt { get; set; }
     public TreeItemViewModel(string header, string detail = "", string kind = "")
     {
         Header = header;
@@ -31,6 +48,7 @@ public partial class TreeItemViewModel : ObservableObject
         set
         {
             field = value;
+            CancelPendingBuild();
             _built = null;
             _published = false;
             Children.Clear();
@@ -42,6 +60,7 @@ public partial class TreeItemViewModel : ObservableObject
     }
     public void Reload(Func<IEnumerable<TreeItemViewModel>> loader)
     {
+        CancelPendingBuild();
         bool wasExpanded = IsExpanded;
         Loader = loader;
         if (wasExpanded)
@@ -56,14 +75,31 @@ public partial class TreeItemViewModel : ObservableObject
             EnsureLoaded();
         }
     }
-    public void EnsureLoaded()
+    private async Task BuildAsync()
     {
-        if (_published || Loader is null)
+        IReadOnlyList<TreeItemViewModel> items;
+        System.Diagnostics.Stopwatch watch = System.Diagnostics.Stopwatch.StartNew();
+        try
+        {
+            CancellationTokenSource cts = new();
+            _pendingCts = cts;
+            items = await Task.Run(Build, cts.Token);
+        }
+        finally
+        {
+            _pendingCts = null;
+        }
+        watch.Stop();
+        OnBuilt?.Invoke(Header, items.Count, watch.ElapsedMilliseconds);
+        await Avalonia.Threading.Dispatcher.UIThread.InvokeAsync(
+            () => Publish((IReadOnlyList<TreeItemViewModel>)items));
+    }
+    private void Publish(IReadOnlyList<TreeItemViewModel> items)
+    {
+        if (!_published)
         {
             return;
         }
-        IReadOnlyList<TreeItemViewModel> items = Build();
-        _published = true;
         Children.Clear();
         foreach (TreeItemViewModel child in items)
         {

@@ -1,14 +1,13 @@
 using Omega.Plugins;
 using OmegaStudio.Plugins;
 namespace OmegaStudio.ViewModels;
-
 internal abstract class AssetSnapshot
 {
     public static AssetSnapshot? Capture(IAssetNode? node)
     {
         return node is null
             ? null
-            : PluginGuard.Try($"Reading '{node.Name}' for the edit history", () => Read(node), null);
+            : PluginGuard.Try($"Reading '{NodeAccess.Name(node)}' for the edit history", () => Read(node), null);
     }
     private static AssetSnapshot? Read(IAssetNode node)
     {
@@ -23,6 +22,7 @@ internal abstract class AssetSnapshot
     {
         return new PropertySnapshot(apply, value);
     }
+    public abstract int Bytes { get; }
     public abstract bool SameAs(AssetSnapshot other);
     public abstract void Restore(IAssetNode node);
     private sealed class BytesSnapshot : AssetSnapshot
@@ -32,6 +32,7 @@ internal abstract class AssetSnapshot
         {
             _bytes = bytes;
         }
+        public override int Bytes => _bytes.Length;
         public override bool SameAs(AssetSnapshot other)
         {
             return other is BytesSnapshot snapshot && _bytes.AsSpan().SequenceEqual(snapshot._bytes);
@@ -50,6 +51,7 @@ internal abstract class AssetSnapshot
             _apply = apply;
             _value = value;
         }
+        public override int Bytes => _value.Length;
         public override bool SameAs(AssetSnapshot other)
         {
             return other is PropertySnapshot snapshot && _value == snapshot._value;
@@ -66,6 +68,7 @@ internal abstract class AssetSnapshot
         {
             _image = image;
         }
+        public override int Bytes => _image.Rgba.Length;
         public override bool SameAs(AssetSnapshot other)
         {
             return other is ImageSnapshot snapshot
@@ -88,22 +91,34 @@ internal sealed record AssetEdit(
     AssetChange Changed);
 internal sealed class EditHistory
 {
-    private const int Capacity = 24;
+    private const long Budget = MemoryBudget.Undo;
     private readonly List<AssetEdit> _edits = [];
     private int _applied;
+    private long _bytes;
     public bool CanUndo => _applied > 0;
     public bool CanRedo => _applied < _edits.Count;
     public string? UndoTitle => CanUndo ? _edits[_applied - 1].Title : null;
     public string? RedoTitle => CanRedo ? _edits[_applied].Title : null;
-    public void Push(AssetEdit edit)
+    public long UsedBytes => _bytes;
+    public bool Push(AssetEdit edit)
     {
+        long needed = edit.Before.Bytes + edit.After.Bytes;
+        if (needed > Budget)
+        {
+            return false;
+        }
         _edits.RemoveRange(_applied, _edits.Count - _applied);
         _edits.Add(edit);
-        if (_edits.Count > Capacity)
+        _bytes += needed;
+        while (_bytes > Budget && _edits.Count > 1)
         {
+            AssetEdit oldest = _edits[0];
             _edits.RemoveAt(0);
+            _bytes -= oldest.Before.Bytes + oldest.After.Bytes;
+            _applied--;
         }
         _applied = _edits.Count;
+        return true;
     }
     public AssetEdit Undo()
     {
@@ -121,5 +136,6 @@ internal sealed class EditHistory
     {
         _edits.Clear();
         _applied = 0;
+        _bytes = 0;
     }
 }

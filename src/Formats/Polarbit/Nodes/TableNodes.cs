@@ -1,7 +1,5 @@
 using Omega.Plugins;
 namespace Polarbit.Formats.Nodes;
-
-/// <summary>A LANG table, one child row per language; string k means the same thing in every language.</summary>
 internal sealed class LangNode : EntryNode
 {
     public LangNode(ArchiveContext context, string name, string path, VfsEntry entry)
@@ -33,8 +31,6 @@ internal sealed class LangNode : EntryNode
         }
     }
 }
-
-/// <summary>One language of a LANG table, every string editable in the Properties pane.</summary>
 internal sealed class LanguageNode(VfsEntry entry, int language, string name, string path, int count)
     : AssetNode(name, path, AssetKinds.Text, $"{count} strings"), IDescribable
 {
@@ -47,7 +43,6 @@ internal sealed class LanguageNode(VfsEntry entry, int language, string name, st
             yield return PropertyRow.Editable($"#{k:000}", strings[k], value => Set(index, value));
         }
     }
-
     private void Set(int index, string value)
     {
         ArgumentNullException.ThrowIfNull(value);
@@ -60,8 +55,6 @@ internal sealed class LanguageNode(VfsEntry entry, int language, string name, st
         entry.Replace(table.Build());
     }
 }
-
-/// <summary>An FCOL table: keys with UTF-16 values, each value editable in the Properties pane.</summary>
 internal sealed class FcolNode : EntryNode
 {
     public FcolNode(ArchiveContext context, string name, string path, VfsEntry entry)
@@ -85,7 +78,6 @@ internal sealed class FcolNode : EntryNode
             yield return row;
         }
     }
-
     private void Set(int index, string value)
     {
         ArgumentNullException.ThrowIfNull(value);
@@ -98,8 +90,6 @@ internal sealed class FcolNode : EntryNode
         Entry.Replace(table.Build());
     }
 }
-
-/// <summary>A texture-atlas plate: the rectangles of the PVR of the same name.</summary>
 internal sealed class PlateNode : EntryNode
 {
     public PlateNode(ArchiveContext context, string name, string path, VfsEntry entry)

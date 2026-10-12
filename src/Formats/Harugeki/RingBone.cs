@@ -1,7 +1,6 @@
-using Harugeki.Formats.Binary;
 using Harugeki.Formats.Math;
+using Omega.Plugins;
 namespace Harugeki.Formats;
-
 public sealed class RingBone
 {
     public const int WeightsOffset = 0x150;

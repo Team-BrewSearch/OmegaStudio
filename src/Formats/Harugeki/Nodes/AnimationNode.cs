@@ -1,6 +1,5 @@
 using Omega.Plugins;
 namespace Harugeki.Formats.Nodes;
-
 internal sealed class AnimationNode : SlotNode, IDescribable
 {
     private readonly RingAnimation _animation;

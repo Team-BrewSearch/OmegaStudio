@@ -1,7 +1,6 @@
 using Silk.NET.OpenAL;
 namespace OmegaStudio.Audio;
-
-public sealed class AudioPlaybackEngine : IDisposable
+public class AudioPlaybackEngine : IDisposable
 {
     private readonly uint[] _queue = new uint[1];
     private AudioContext? _context;
@@ -21,6 +20,7 @@ public sealed class AudioPlaybackEngine : IDisposable
             {
                 return 0;
             }
+            _context?.MakeCurrent();
             _al.GetSourceProperty(_source, GetSourceInteger.SampleOffset, out int frames);
             return (double)frames / _sampleRate;
         }
@@ -40,13 +40,22 @@ public sealed class AudioPlaybackEngine : IDisposable
         long frames = (long)Math.Round(seconds * _sampleRate, MidpointRounding.AwayFromZero);
         return (int)Math.Clamp(frames, 0, _frameCount - 1);
     }
+    private SourceState TryGetState()
+    {
+        if (_al is null || _source == 0)
+        {
+            return SourceState.Stopped;
+        }
+        _context?.MakeCurrent();
+        _al.GetSourceProperty(_source, GetSourceInteger.SourceState, out int state);
+        return (SourceState)state;
+    }
     public void Initialize()
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
         Reset();
-        _context = new AudioContext(null, 0, 0, true);
-        _al = AL.GetApi(true);
-        _ = _al.GetError();
+        _ = Api();
+        _ = _al!.GetError();
         _source = _al.GenSource();
         _buffer = _al.GenBuffer();
     }
@@ -125,8 +134,30 @@ public sealed class AudioPlaybackEngine : IDisposable
         _sampleRate = 0;
         _frameCount = 0;
         _al = null;
+        ReleaseContext();
+    }
+    private void ReleaseContext()
+    {
+        try
+        {
+            _context?.MakeCurrent();
+        }
+        catch (Exception ex) when (ex is not OutOfMemoryException)
+        {
+        }
         _context?.Dispose();
         _context = null;
+    }
+    private AL? Api()
+    {
+        if (_al is not null)
+        {
+            return _al;
+        }
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        _context = new AudioContext(null, 0, 0, true);
+        _al = AL.GetApi(true);
+        return _al;
     }
     private void Queue()
     {
@@ -144,15 +175,6 @@ public sealed class AudioPlaybackEngine : IDisposable
         _al.SourceQueueBuffers(_source, _queue);
         _ = _al.GetError();
     }
-    private SourceState? TryGetState()
-    {
-        if (_al is null || _source == 0)
-        {
-            return null;
-        }
-        _al.GetSourceProperty(_source, GetSourceInteger.SourceState, out int state);
-        return (SourceState)state;
-    }
     public void Dispose()
     {
         if (_disposed)
@@ -161,5 +183,6 @@ public sealed class AudioPlaybackEngine : IDisposable
         }
         _disposed = true;
         Reset();
+        GC.SuppressFinalize(this);
     }
 }

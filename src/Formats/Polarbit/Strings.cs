@@ -1,15 +1,12 @@
 using System.Buffers.Binary;
 using System.Text;
 namespace Polarbit.Formats;
-
-/// <summary>LANG string table: one zlib blob of NUL-terminated strings per language, string k meaning the same in each (REPORT 5.2).</summary>
 internal sealed class LangTable
 {
     public bool Utf16 { get; private init; }
     public int StringsPerLanguage { get; private init; }
     public List<(string Name, string[] Strings)> Languages { get; } = [];
     private Encoding TextEncoding => Utf16 ? Encoding.Unicode : Encoding.UTF8;
-
     public static LangTable Parse(ReadOnlySpan<byte> b)
     {
         Le.Need(b.Length >= 20 && b.StartsWith("LANG"u8), "LANG header is truncated.");
@@ -32,13 +29,13 @@ internal sealed class LangTable
         Le.Need(end == b.Length, "LANG has trailing bytes.");
         return table;
     }
-
     private static string ReadName(ReadOnlySpan<byte> b, bool utf16)
     {
         if (!utf16)
         {
             int nul = b.IndexOf((byte)0);
-            return Encoding.UTF8.GetString(nul < 0 ? b : b[..nul]);
+            ReadOnlySpan<byte> name = nul < 0 ? b : b[..nul];
+            return Decodes(name) ? Encoding.UTF8.GetString(name) : Encoding.Latin1.GetString(name);
         }
         int k = 0;
         while (k + 1 < b.Length && (b[k] | b[k + 1]) != 0)
@@ -47,8 +44,14 @@ internal sealed class LangTable
         }
         return Encoding.Unicode.GetString(b[..k]);
     }
-
-    /// <summary>Names NUL-terminated and padded to four bytes; each language a level-9 zlib stream.</summary>
+    private static bool Decodes(ReadOnlySpan<byte> b)
+    {
+        System.Text.Decoder decoder = System.Text.Encoding.UTF8.GetDecoder();
+        byte[] probe = b.ToArray();
+        char[] one = new char[1 + (b.Length * 2)];
+        decoder.Convert(probe, 0, probe.Length, one, 0, one.Length, flush: true, out _, out _, out bool usedAll);
+        return usedAll;
+    }
     public byte[] Build()
     {
         int width = Utf16 ? 2 : 1;
@@ -90,12 +93,9 @@ internal sealed class LangTable
         return output;
     }
 }
-
-/// <summary>FCOL string table: ASCII keys, then UTF-16 values (REPORT 5.3).</summary>
 internal sealed class FcolTable
 {
     public List<(string Key, string Value)> Strings { get; } = [];
-
     public static FcolTable Parse(ReadOnlySpan<byte> b)
     {
         Le.Need(b.Length >= 8 && b.StartsWith("FCOL"u8), "FCOL header is truncated.");
@@ -131,7 +131,6 @@ internal sealed class FcolTable
         Le.Need(p == b.Length, "FCOL has trailing bytes.");
         return table;
     }
-
     public byte[] Build()
     {
         byte[][] keys = [.. Strings.Select(s => Encoding.ASCII.GetBytes(s.Key + "\0"))];

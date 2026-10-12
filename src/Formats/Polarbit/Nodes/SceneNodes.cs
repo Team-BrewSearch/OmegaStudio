@@ -1,7 +1,5 @@
 using Omega.Plugins;
 namespace Polarbit.Formats.Nodes;
-
-/// <summary>Base for rows that draw: the scene is rebuilt whenever anything in the archive changed, since textures live in other entries.</summary>
 internal abstract class GeometryNode(ArchiveContext context, string name, string path, VfsEntry entry, string detail)
     : EntryNode(context, name, path, entry, AssetKinds.Model, detail), ISceneAsset
 {
@@ -15,8 +13,6 @@ internal abstract class GeometryNode(ArchiveContext context, string name, string
         return cached.Scene.TriangleCount > 0 ? cached.Scene : null;
     }
     protected abstract SceneGeometry Build(TextureSet textures);
-
-    /// <summary>Replace-from-glTF, the same shape for models and scenes: rewrite the payload, log what the import had to decide.</summary>
     protected AssetCommand ImportCommand(Func<byte[], Omega.Plugins.Gltf.GltfDocument, (byte[] Payload, List<string> Notes)> replace)
     {
         return new AssetCommand
@@ -42,8 +38,6 @@ internal abstract class GeometryNode(ArchiveContext context, string name, string
         };
     }
 }
-
-/// <summary>A PIFF 3DOB model: karts, characters, pick-ups and props, with their skins and animation clips.</summary>
 internal sealed class ModelNode : GeometryNode, IAnimatedAsset, ICommandSource
 {
     private (int Revision, PiffModel Model, PiffAnimation Animation)? _parsed;
@@ -118,8 +112,6 @@ internal sealed class ModelNode : GeometryNode, IAnimatedAsset, ICommandSource
         }
     }
 }
-
-/// <summary>A PIFF SCEN track: the render geometry, with the gameplay chunk counts listed.</summary>
 internal sealed class TrackNode : GeometryNode
 {
     public TrackNode(ArchiveContext context, string name, string path, VfsEntry entry)
@@ -165,8 +157,6 @@ internal sealed class TrackNode : GeometryNode
         }
     }
 }
-
-/// <summary>A PXC scene graph: a car, a track or a set of props, every mesh placed through its parents.</summary>
 internal sealed class SceneNode : GeometryNode, ICommandSource
 {
     public SceneNode(ArchiveContext context, string name, string path, VfsEntry entry)

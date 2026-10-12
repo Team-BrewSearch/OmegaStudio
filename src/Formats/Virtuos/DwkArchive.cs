@@ -1,10 +1,9 @@
-using Virtuos.Formats.Binary;
 using System.Buffers.Binary;
 using System.Security.Cryptography;
 using System.Text;
+using Omega.Plugins;
 using SMath = System.Math;
 namespace Virtuos.Formats;
-
 public sealed class DwkArchive
 {
     private readonly List<DwkEntry> _entries;
@@ -104,16 +103,6 @@ public sealed class DwkArchive
             }
         }
         return 4;
-    }
-    public async Task SaveAsync(string gdaPath, string gdtPath)
-    {
-        if (!HasChanges)
-        {
-            return;
-        }
-        (byte[] gdaBytes, byte[] gdtBytes) = await Task.Run(Pack);
-        await File.WriteAllBytesAsync(gdaPath, gdaBytes);
-        await File.WriteAllBytesAsync(gdtPath, gdtBytes);
     }
     public (byte[] Gda, byte[] Gdt) Pack()
     {

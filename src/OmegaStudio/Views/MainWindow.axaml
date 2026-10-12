@@ -87,10 +87,12 @@
                    Text="{Binding SearchFilter, Mode=TwoWay}"
                    PlaceholderText="Search assets"
                    Margin="8,8,8,4" />
-          <TreeView ItemsSource="{Binding CurrentItems}"
+          <TreeView Name="OutlinerTree"
+                    ItemsSource="{Binding CurrentItems}"
                     SelectedItem="{Binding SelectedItem, Mode=TwoWay}"
                     Background="Transparent" BorderThickness="0"
-                    Padding="4,0,4,8">
+                    Padding="4,0,4,8"
+                    PointerPressed="Tree_OnPointerPressed">
             <TreeView.Styles>
               <Style Selector="TreeViewItem" x:DataType="vm:TreeItemViewModel">
                 <Setter Property="IsExpanded" Value="{Binding IsExpanded, Mode=TwoWay}" />

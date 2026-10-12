@@ -1,8 +1,7 @@
-using Omega.Plugins.Gltf;
 using System.Numerics;
 using System.Text.Json;
+using Omega.Plugins.Gltf;
 namespace OmegaStudio.Services.Gltf;
-
 internal static class GltfReader
 {
     public static GltfDocument Read(string path)
@@ -171,19 +170,23 @@ internal static class GltfReader
         {
             return [.. Enumerable.Range(first, count)];
         }
-        float[] raw = GltfContainer.ReadAccessor(root, buffers, reference.GetInt32(), 1);
-        int[] indices = new int[raw.Length];
-        for (int i = 0; i < raw.Length; i++)
+        int accessor = reference.GetInt32();
+        int[] indices = GltfContainer.ReadIntegers(root, buffers, accessor, 1);
+        for (int i = 0; i < indices.Length; i++)
         {
-            int index = (int)raw[i];
+            int index = indices[i];
             if (index < 0 || index >= count)
             {
                 throw new InvalidDataException(
                     $"glTF index {i} is {index}, outside the primitive's {count} vertices.");
             }
-            indices[i] = first + index;
         }
-        return indices;
+        int[] into = new int[indices.Length];
+        for (int i = 0; i < indices.Length; i++)
+        {
+            into[i] = first + indices[i];
+        }
+        return into;
     }
     private static float[] Read(
         JsonElement root, byte[][] buffers, JsonElement attributes,

@@ -1,5 +1,4 @@
 namespace Generic.Formats;
-
 internal static class Magic
 {
     private readonly record struct Signature(byte[] Bytes, int Offset, string Extension);

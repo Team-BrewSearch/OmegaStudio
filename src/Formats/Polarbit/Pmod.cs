@@ -1,7 +1,5 @@
 using System.Buffers.Binary;
 namespace Polarbit.Formats;
-
-/// <summary>PMOD tracker module: a 42-byte header, then one level-9 zlib body of orders, patterns, PSND samples and instruments (REPORT 6.2).</summary>
 internal sealed class PmodModule
 {
     private const int HeaderSize = 42;
@@ -16,7 +14,6 @@ internal sealed class PmodModule
     public int Instruments { get; private init; }
     public byte[] Body { get; private init; } = [];
     public List<(int Offset, int Length)> Samples { get; } = [];
-
     public static PmodModule Parse(ReadOnlySpan<byte> b)
     {
         Le.Need(b.Length > HeaderSize && b.StartsWith("PMOD"u8) && Le.U32(b, 4) == b.Length - 8 && Le.U32(b, 8) == 30, "PMOD header is not a 30-byte module header.");
@@ -59,14 +56,11 @@ internal sealed class PmodModule
         }
         return module;
     }
-
     public ReadOnlySpan<byte> Sample(int index)
     {
         (int offset, int length) = Samples[index];
         return Body.AsSpan(offset, length);
     }
-
-    /// <summary>The same module with one sample swapped, the body re-deflated at level 9.</summary>
     public byte[] WithSample(ReadOnlySpan<byte> original, int index, byte[] sample)
     {
         (int offset, int length) = Samples[index];

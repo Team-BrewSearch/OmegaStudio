@@ -2,7 +2,6 @@ using Omega.Plugins;
 using OmegaStudio.Services;
 using OmegaStudio.Services.Gltf;
 namespace OmegaStudio.Plugins;
-
 internal sealed class HostServices : IHostServices
 {
     private readonly Action<string> _log;

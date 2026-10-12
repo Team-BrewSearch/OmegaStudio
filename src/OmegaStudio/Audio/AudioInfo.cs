@@ -1,5 +1,4 @@
 namespace OmegaStudio.Audio;
-
 public readonly record struct AudioInfo(
     string Format, int SampleRate, int Channels, int BitsPerSample, long TotalSamples)
 {

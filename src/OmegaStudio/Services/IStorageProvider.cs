@@ -1,6 +1,5 @@
 using Avalonia.Platform.Storage;
 namespace OmegaStudio.Services;
-
 public interface IAppStorageProvider
 {
     Task<IReadOnlyList<IStorageFile>> OpenFilePickerAsync(FilePickerOpenOptions options);
