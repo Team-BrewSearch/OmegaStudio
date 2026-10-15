@@ -22,7 +22,7 @@ internal static class RigPoser
                 }
                 matrices[frame] = Upright(skeleton, track.Bone, matrix);
             }
-            tracks.Add(new AnimationTrack { Name = $"bone{track.Bone}", Times = times, Matrices = matrices });
+            tracks.Add(new AnimationTrack { Name = SkeModel.JointName(track.Bone), Times = times, Matrices = matrices });
         }
         return new AnimationClip
         {

@@ -10,6 +10,7 @@ public static class AssetKinds
     public const string Texture = "Texture";
     public const string Animation = "Animation";
     public const string Audio = "Audio";
+    public const string Video = "Video";
     public const string Text = "Text";
     public const string Unknown = "Unknown";
     public static string Resolve(IAssetNode node)
@@ -21,6 +22,7 @@ public static class AssetKinds
             {
                 ISceneAsset => Model,
                 IImageAsset => Texture,
+                IVideoAsset => Video,
                 IAudioAsset => Audio,
                 { HasChildren: true } => Container,
                 _ => Unknown,

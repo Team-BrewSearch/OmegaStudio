@@ -32,6 +32,12 @@ public partial class MainWindow : Window
             seek.AddHandler(Thumb.DragCompletedEvent, AudioSeek_OnThumbReleased, handledEventsToo: true);
             seek.AddHandler(InputElement.PointerCaptureLostEvent, AudioSeek_OnThumbReleased, handledEventsToo: true);
         }
+        Slider? videoSeek = this.FindControl<Slider>("VideoSeek");
+        if (videoSeek is not null)
+        {
+            videoSeek.AddHandler(Thumb.DragStartedEvent, VideoSeek_OnThumbHeld, handledEventsToo: true);
+            videoSeek.AddHandler(Thumb.DragCompletedEvent, VideoSeek_OnThumbReleased, handledEventsToo: true);
+        }
         if (_vp is not null && DataContext is MainViewModel vm)
         {
             vm.Viewport = _vp;
@@ -205,5 +211,13 @@ public partial class MainWindow : Window
     private void AudioSeek_OnThumbReleased(object? sender, RoutedEventArgs e)
     {
         (DataContext as MainViewModel)?.SetThumbHeld(false);
+    }
+    private void VideoSeek_OnThumbHeld(object? sender, RoutedEventArgs e)
+    {
+        (DataContext as MainViewModel)?.Video.Scrub(true);
+    }
+    private void VideoSeek_OnThumbReleased(object? sender, RoutedEventArgs e)
+    {
+        (DataContext as MainViewModel)?.Video.Scrub(false);
     }
 }

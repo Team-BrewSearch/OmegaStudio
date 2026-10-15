@@ -263,10 +263,34 @@ public static class RigGltfReader
             }
             if (joints.Count > 0)
             {
-                return [.. joints];
+                return InBoneOrder(source, joints);
             }
         }
         throw new InvalidDataException("the model has no skin, so it carries no skeleton to read");
+    }
+    private static int[] InBoneOrder(IGltfSource source, List<int> joints)
+    {
+        JsonElement[] nodes = GltfJson.Array(source.Root, "nodes");
+        int[] ordered = new int[joints.Count];
+        int named = 0;
+        for (int bone = 0; bone < joints.Count; bone++)
+        {
+            for (int at = 0; at < joints.Count; at++)
+            {
+                int node = joints[at];
+                if (node < 0 || node >= nodes.Length)
+                {
+                    continue;
+                }
+                if (SkeModel.JointIndex(GltfJson.Name(nodes[node], string.Empty)) == bone)
+                {
+                    ordered[bone] = node;
+                    named++;
+                    break;
+                }
+            }
+        }
+        return named == joints.Count ? ordered : [.. joints];
     }
     private static Matrix4x4 Local(JsonElement node)
     {

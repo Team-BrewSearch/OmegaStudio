@@ -11,6 +11,7 @@ public interface ISelectionView
 {
     TreeItemViewModel? Owner { get; }
     AnimationPlayer Animation { get; }
+    VideoPlayer Video { get; }
     GlViewport? Viewport { get; }
     SceneGeometry? ViewportScene { get; set; }
     Bitmap? TexturePreview { get; set; }
@@ -21,6 +22,7 @@ public interface ISelectionView
     bool HasScene { get; }
     bool HasImage { get; }
     bool HasAudio { get; }
+    bool HasVideo { get; }
     string TextureStatus { get; }
     string AudioStatus { get; }
     AudioInfo? AudioInfo { get; set; }
@@ -56,6 +58,7 @@ internal sealed class SelectionPresenter
             ShowImage(node);
         }
         ShowAudio(node);
+        ShowVideo(node);
         RebuildCommands(node);
         RebuildProperties(node);
         _view.NotifyCapabilities();
@@ -113,12 +116,24 @@ internal sealed class SelectionPresenter
         _view.ResetAudioState();
         _ = _view.LoadAudioAsync(audio);
     }
+    private void ShowVideo(IAssetNode? node)
+    {
+        if (node is IVideoAsset video)
+        {
+            _ = _view.Video.BindAsync(video);
+        }
+        else
+        {
+            _view.Video.Unbind();
+        }
+    }
     private void ChooseVisiblePane(IAssetNode? node)
     {
         int preferred = node switch
         {
             ISceneAsset => 0,
             IImageAsset => 1,
+            IVideoAsset => 3,
             IAudioAsset => 2,
             _ => -1,
         };
@@ -127,7 +142,7 @@ internal sealed class SelectionPresenter
             _view.SelectedPane = preferred;
             return;
         }
-        bool[] available = [_view.HasScene, _view.HasImage, _view.HasAudio];
+        bool[] available = [_view.HasScene, _view.HasImage, _view.HasAudio, _view.HasVideo];
         int selected = _view.SelectedPane;
         if (selected >= 0 && selected < available.Length && available[selected])
         {
@@ -156,7 +171,7 @@ internal sealed class SelectionPresenter
         {
             return;
         }
-        foreach (AssetCommand command in NodeCommands.For(node, _view.Animation.ExportClip, _view.Animation.ExportFps))
+        foreach (AssetCommand command in NodeCommands.For(node, _view.Animation.ExportClip, _view.Animation.ExportFps, () => _view.Video.CurrentFrame))
         {
             _view.Commands.Add(new AssetCommandViewModel(command, _runner));
         }

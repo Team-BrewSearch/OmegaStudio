@@ -18,6 +18,12 @@ internal static class PropertyInspector
                 () => (IReadOnlyList<PropertyRow>)[.. describable.Describe()],
                 []));
         }
+        if (node is IVideoAsset video && PluginGuard.Try("Reading the video header", () => video.Video, null) is { } info)
+        {
+            rows.Add(new PropertyRow("Video", $"{info.Width} x {info.Height}, {info.FramesPerSecond:0.###} fps"));
+            rows.Add(new PropertyRow("Frames", $"{info.FrameCount:N0}"));
+            rows.Add(new PropertyRow("Duration", $"{info.Duration:mm\\:ss\\.fff}"));
+        }
         if (audio is { } clip)
         {
             rows.Add(new PropertyRow("Format", clip.Format));

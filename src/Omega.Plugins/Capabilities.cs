@@ -23,6 +23,12 @@ public interface IAudioAsset
 {
     ReadOnlySpan<byte> EncodedAudio { get; }
 }
+public interface IVideoAsset
+{
+    VideoInfo Video { get; }
+    IVideoReader OpenVideo();
+    ReadOnlySpan<byte> Soundtrack { get; }
+}
 public interface IAnimatedAsset
 {
     IReadOnlyList<AnimationClip> Clips { get; }

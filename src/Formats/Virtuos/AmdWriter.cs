@@ -216,8 +216,22 @@ public static class AmdWriter
     }
     private static int PartBone(TrkImportPrimitive primitive, int vertex, SkeModel skeleton)
     {
-        int bone = primitive.Bones is { } bound && vertex < bound.Length ? bound[vertex] : -1;
+        int bone = SkeletonBone(primitive, vertex);
         return bone >= 0 && bone < skeleton.Bones.Count ? bone : 0;
+    }
+    private static int SkeletonBone(TrkImportPrimitive primitive, int vertex)
+    {
+        int joint = primitive.Bones is { } bound && vertex < bound.Length ? bound[vertex] : -1;
+        if (joint < 0)
+        {
+            return -1;
+        }
+        if (primitive.Joints is { } joints && joint < joints.Count
+            && SkeModel.JointIndex(joints[joint]) is int named and >= 0)
+        {
+            return named;
+        }
+        return joint;
     }
     private sealed class VertexCounter : Gx.IGxSink
     {
@@ -307,7 +321,7 @@ public static class AmdWriter
     private static int Bone(
         TrkImportPrimitive primitive, int vertex, AmdModel model, SkeModel skeleton)
     {
-        int bone = primitive.Bones is { } bound && vertex < bound.Length ? bound[vertex] : -1;
+        int bone = SkeletonBone(primitive, vertex);
         return bone >= 0 && bone < skeleton.Bones.Count ? bone : model.Bones.Count > 0 ? model.Bones[0] : 0;
     }
     private static float[] Local(

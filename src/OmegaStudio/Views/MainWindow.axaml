@@ -217,6 +217,32 @@
               </StackPanel>
             </DockPanel>
           </TabItem>
+          <TabItem Header="Video" IsVisible="{Binding HasVideo}">
+            <DockPanel Background="{DynamicResource SurfaceWell}">
+              <Border DockPanel.Dock="Top" Classes="toolbar">
+                <TextBlock Text="{Binding Video.Status}" Classes="label" />
+              </Border>
+              <StackPanel DockPanel.Dock="Bottom" Margin="16,8,16,12" Spacing="{DynamicResource SpaceM}">
+                <Slider Name="VideoSeek" Minimum="0" Maximum="{Binding Video.Duration}"
+                        Value="{Binding Video.Position, Mode=TwoWay}"
+                        SmallChange="0.04" LargeChange="1"
+                        IsEnabled="{Binding Video.IsLoaded}" />
+                <Grid ColumnDefinitions="*,Auto,*">
+                  <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="{DynamicResource SpaceM}">
+                    <Button Content="{Binding Video.PlayLabel}" Command="{Binding Video.PlayPauseCommand}"
+                            IsEnabled="{Binding Video.IsLoaded}" MinWidth="96" />
+                    <Button Content="Stop" Command="{Binding Video.StopCommand}"
+                            IsEnabled="{Binding Video.IsLoaded}" MinWidth="96" />
+                  </StackPanel>
+                  <TextBlock Grid.Column="2" Text="{Binding Video.TimeDisplay}"
+                             HorizontalAlignment="Right" VerticalAlignment="Center"
+                             FontFamily="{DynamicResource MonoFont}"
+                             Foreground="{DynamicResource TextPrimary}" />
+                </Grid>
+              </StackPanel>
+              <views:VideoView Source="{Binding Video.Frame}" Version="{Binding Video.FrameVersion}" />
+            </DockPanel>
+          </TabItem>
         </TabControl>
         <GridSplitter Grid.Row="1" ResizeDirection="Rows" HorizontalAlignment="Stretch" />
         <TabControl Grid.Row="2" Background="{DynamicResource SurfaceWell}">

@@ -36,6 +36,7 @@ public partial class MainViewModel : ObservableObject, ISelectionView, ICommandR
         _console.PropertyChanged += OnConsoleChanged;
         _audioPlayer.StateChanged += OnAudioPlayerStateChanged;
         Animation = new AnimationPlayer();
+        Video = new VideoPlayer(_audioPlayer, LoadSoundtrackAsync, Log);
         Animation.FrameReady += (positions, normals) => Viewport?.SetAnimatedFrame(positions, normals);
         Animation.FrameCleared += () => Viewport?.ClearAnimatedFrame();
         Animation.PropertyChanged += (_, changed) =>
@@ -51,6 +52,7 @@ public partial class MainViewModel : ObservableObject, ISelectionView, ICommandR
     }
     public GlViewport? Viewport { get; set; }
     public AnimationPlayer Animation { get; }
+    public VideoPlayer Video { get; }
     [ObservableProperty]
     public partial TreeItemViewModel? SelectedItem { get; set; }
     [ObservableProperty]
@@ -112,6 +114,7 @@ public partial class MainViewModel : ObservableObject, ISelectionView, ICommandR
     public bool HasScene => ViewportScene is not null;
     public bool HasImage => TexturePreview is not null;
     public bool HasAudio => Node is IAudioAsset;
+    public bool HasVideo => Node is IVideoAsset;
     public bool HasAnimation => Animation.IsAvailable;
     public bool HasCommands => Commands.Count > 0;
     public string TextureStatus => Node is not IImageAsset image
@@ -173,7 +176,7 @@ public partial class MainViewModel : ObservableObject, ISelectionView, ICommandR
         {
             return;
         }
-        foreach (AssetCommand command in NodeCommands.For(node, Animation.ExportClip, Animation.ExportFps))
+        foreach (AssetCommand command in NodeCommands.For(node, Animation.ExportClip, Animation.ExportFps, () => Video.CurrentFrame))
         {
             Commands.Add(new AssetCommandViewModel(command, this));
         }
@@ -183,6 +186,7 @@ public partial class MainViewModel : ObservableObject, ISelectionView, ICommandR
         OnPropertyChanged(nameof(HasScene));
         OnPropertyChanged(nameof(HasImage));
         OnPropertyChanged(nameof(HasAudio));
+        OnPropertyChanged(nameof(HasVideo));
         OnPropertyChanged(nameof(HasAnimation));
         OnPropertyChanged(nameof(HasCommands));
         OnPropertyChanged(nameof(TextureStatus));
@@ -212,6 +216,7 @@ public partial class MainViewModel : ObservableObject, ISelectionView, ICommandR
         _session.Logged -= Log;
         _console.PropertyChanged -= OnConsoleChanged;
         Animation.Dispose();
+        Video.Dispose();
         _audioPlayer.StateChanged -= OnAudioPlayerStateChanged;
         _audioPlayer.Dispose();
         _session.Dispose();

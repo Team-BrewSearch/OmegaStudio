@@ -39,6 +39,7 @@
   <SolidColorBrush x:Key="AssetTextureBrush" Color="#D98E1F" />
   <SolidColorBrush x:Key="AssetAnimationBrush" Color="#9268DE" />
   <SolidColorBrush x:Key="AssetAudioBrush" Color="#2FA86F" />
+  <SolidColorBrush x:Key="AssetVideoBrush" Color="#D9534F" />
   <SolidColorBrush x:Key="AssetMeshBrush" Color="#6FA83C" />
   <SolidColorBrush x:Key="AssetMaterialBrush" Color="#D9629A" />
   <SolidColorBrush x:Key="AssetBoneBrush" Color="#8A93A3" />

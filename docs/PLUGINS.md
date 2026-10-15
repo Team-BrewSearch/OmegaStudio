@@ -219,6 +219,29 @@ yourself.
 
 **`IAudioAsset`**: the clip still encoded, exactly as stored. The host decodes it.
 
+**`IVideoAsset`**: a movie. `Video` is a `VideoInfo` with the size, the frame rate as a
+fraction, the frame count and a codec label, all read from the header without decoding
+anything. `OpenVideo` hands back a fresh `IVideoReader` each call, so the player and an
+export can decode at the same time without sharing state. `ReadFrame` fills the span with
+the frame at `Position` as RGBA8, top-down like `ImageData`, and moves `Position` on by
+one; it returns `false` past the last frame. `Seek` may land anywhere: going back to the
+previous keyframe and decoding forward is the reader's job, not the host's. `Soundtrack`
+is the audio as a file the host can already play, normally a WAV, or empty for a silent
+movie. The host plays and exports it in step with the frames.
+
+```csharp
+internal sealed class MovieNode(Slot slot) : AssetNode(...), IVideoAsset
+{
+    public VideoInfo Video => Movie.Info;
+    public IVideoReader OpenVideo() => new MovieReader(Movie);
+    public ReadOnlySpan<byte> Soundtrack => Movie.SoundtrackWav;
+}
+```
+
+The Video tab plays, pauses and scrubs the movie, and the context menu offers the current
+frame as an image, every frame as numbered images, the soundtrack, and the whole movie as
+a Matroska file (Motion JPEG with PCM sound) that ordinary players open.
+
 **`ISceneAsset`**: geometry as `SceneGeometry`. Positions set the vertex count and every
 other array must match it or be empty. Submeshes are runs of triangles sharing a
 material, and their `TextureIndex` points into the scene's own texture list, or `-1` for

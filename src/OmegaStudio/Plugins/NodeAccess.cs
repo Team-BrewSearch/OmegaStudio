@@ -52,6 +52,7 @@ internal static class NodeAccess
             {
                 ISceneAsset => AssetKinds.Model,
                 IImageAsset => AssetKinds.Texture,
+                IVideoAsset => AssetKinds.Video,
                 IAudioAsset => AssetKinds.Audio,
                 _ => HasChildren(node) ? AssetKinds.Container : AssetKinds.Unknown,
             };

@@ -105,6 +105,7 @@ public partial class MainViewModel
     {
         ResetAudioState();
         Animation.Unbind();
+        Video.Unbind();
         _session.Close();
         ClearHistory();
         Roots.Clear();

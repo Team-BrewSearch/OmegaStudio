@@ -93,6 +93,28 @@ public partial class MainViewModel
         }
         NotifyAudioState();
     }
+    private async Task<bool> LoadSoundtrackAsync(byte[] data)
+    {
+        int generation = Interlocked.Increment(ref _audioGeneration);
+        _currentAudio = null;
+        _audioLoad = null;
+        await _audioGate.WaitAsync();
+        try
+        {
+            await Task.Run(() => _audioPlayer.Load(data));
+            return Volatile.Read(ref _audioGeneration) == generation;
+        }
+        catch (Exception ex)
+        {
+            Log($"Failed to load the soundtrack: {ex.GetType().Name}: {ex.Message}");
+            return false;
+        }
+        finally
+        {
+            _audioGate.Release();
+            NotifyAudioState();
+        }
+    }
     public void ResetAudioState()
     {
         if (_audioPlayer.IsLoaded)

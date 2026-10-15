@@ -31,7 +31,7 @@ internal static class TrackScene
         List<SceneJoint> joints = new(skeleton.Bones.Count);
         for (int bone = 0; bone < skeleton.Bones.Count; bone++)
         {
-            joints.Add(new SceneJoint($"bone{bone}", skeleton.Bones[bone].Parent, skeleton.RestMatrix(bone)));
+            joints.Add(new SceneJoint(SkeModel.JointName(bone), skeleton.Bones[bone].Parent, skeleton.RestMatrix(bone)));
         }
         return joints;
     }

@@ -21,6 +21,7 @@ public sealed class SkeBone
 public sealed class SkeModel
 {
     public const int HeaderSize = 8;
+    public const string JointPrefix = "bone";
     private SkeModel(IReadOnlyList<SkeBone> bones, int record)
     {
         Bones = bones;
@@ -32,6 +33,18 @@ public sealed class SkeModel
     public static bool IsSkeleton(ReadOnlySpan<byte> blob)
     {
         return TryRead(blob, out _);
+    }
+    public static int JointIndex(string name)
+    {
+        return name.Length > JointPrefix.Length
+            && name.StartsWith(JointPrefix, StringComparison.Ordinal)
+            && int.TryParse(name.AsSpan(JointPrefix.Length), out int index)
+                ? index
+                : -1;
+    }
+    public static string JointName(int bone)
+    {
+        return $"{JointPrefix}{bone}";
     }
     public static SkeModel Parse(ReadOnlySpan<byte> blob)
     {

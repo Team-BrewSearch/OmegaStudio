@@ -34,11 +34,12 @@ public static class TrkGltfReader
                 ? Matrix4x4.Transpose(inverse)
                 : Matrix4x4.Identity;
             int? chunkIndex = TryParseChunkName(nodes[node]) ?? TryParseChunkName(meshes[meshIndex]);
+            List<string>? joints = JointNames(source, nodes[node]);
             foreach (JsonElement primitive in GltfJson.Array(meshes[meshIndex], "primitives"))
             {
                 result.Add(ReadPrimitive(
                     primitive, source, world, normalMatrix, materialToTexture,
-                    targetTextures, chunkIndex));
+                    targetTextures, joints, chunkIndex));
             }
         }
         return result.Count == 0 ? throw new InvalidDataException("The glTF file contains no mesh with triangles.") : result;
@@ -56,10 +57,31 @@ public static class TrkGltfReader
             ? null
             : parsed;
     }
+    private static List<string>? JointNames(IGltfSource source, JsonElement node)
+    {
+        JsonElement[] nodes = GltfJson.Array(source.Root, "nodes");
+        JsonElement[] skins = GltfJson.Array(source.Root, "skins");
+        if (!node.TryGetProperty("skin", out JsonElement skinRef)
+            || !skinRef.TryGetInt32(out int skin)
+            || skin < 0 || skin >= skins.Length)
+        {
+            return null;
+        }
+        List<string> names = [];
+        foreach (JsonElement joint in GltfJson.Array(skins[skin], "joints"))
+        {
+            if (!joint.TryGetInt32(out int index) || index < 0 || index >= nodes.Length)
+            {
+                return null;
+            }
+            names.Add(GltfJson.Name(nodes[index], string.Empty));
+        }
+        return names.Count > 0 ? names : null;
+    }
     private static TrkImportPrimitive ReadPrimitive(
         JsonElement primitive, IGltfSource source,
         Matrix4x4 world, Matrix4x4 normalMatrix, int[] materialToTexture,
-        IReadOnlyList<SskTexture> targetTextures, int? chunkIndex)
+        IReadOnlyList<SskTexture> targetTextures, List<string>? joints, int? chunkIndex)
     {
         if (primitive.TryGetProperty("mode", out JsonElement mode) && mode.GetInt32() != 4)
         {
@@ -122,6 +144,7 @@ public static class TrkGltfReader
                 Colors = colors,
                 Indices = indices,
                 Bones = bones,
+                Joints = joints,
                 TextureIndex = textureIndex,
                 ChunkIndex = chunkIndex,
                 Blocks = TryReadBlocks(primitive, indices.Length / 3),

@@ -9,4 +9,5 @@
   <Project Path="Formats/PlayStation/PlayStation.Formats.csproj" />
   <Project Path="Formats/Xbox/Xbox.Formats.csproj" />
   <Project Path="Formats/Polarbit/Polarbit.Formats.csproj" />
+  <Project Path="Formats/DWSSK/DWSSK.Formats.csproj" />
 </Solution>

@@ -8,6 +8,7 @@ public sealed class TrkImportPrimitive
     public required byte[] Colors { get; init; }
     public required int[] Indices { get; init; }
     public int[]? Bones { get; init; }
+    public IReadOnlyList<string>? Joints { get; init; }
     public required int TextureIndex { get; init; }
     public int? ChunkIndex { get; init; }
     public IReadOnlyList<(int Mode, int TriangleCount)>? Blocks { get; init; }

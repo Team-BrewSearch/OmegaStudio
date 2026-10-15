@@ -44,6 +44,7 @@ src/
     Virtuos/                 Virtuos racing engine (Nintendo DS)
     Nintendo/                Nintendo DS ROM images, WBFS Wii containers, 3DS cart images
     Polarbit/                Polarbit racing engine (iOS)
+    DWSSK/                   DreamWorks Super Star Kartz (PS3, Xbox 360, Wii, 3DS)
     Generic/                 OGG, WAV, PNG, JPEG, GIF, BMP recognisers
     PlayStation/             PlayStation 3 game discs
     Xbox/                    Xbox 360 game discs
@@ -146,6 +147,7 @@ implements as many as apply:
 | `IBinaryAsset` | Extract, and a raw file type under Replace when it says bytes can be swapped |
 | `IImageAsset` | The Texture pane, and PNG, JPEG, and BMP under both Export and Replace |
 | `IAudioAsset` | The Audio pane and Extract Audio |
+| `IVideoAsset` | The Video pane, frame, soundtrack and `.mkv` under Export, and Export all frames |
 | `ISceneAsset` | The Viewport, and glTF under Export |
 | `IAnimatedAsset` | The Animation pane, its clip picker, and its dope sheet |
 | `IDescribable` | Rows in the Properties pane, editable ones included |
@@ -309,6 +311,23 @@ itself needs, which is what used to hang the process on a close. OpenAL contexts
 on one thread at a time, so the query the poll loop makes carries the context over. Loads are
 serialised with a generation counter, so a clip the user has already left is never played
 over the newer one.
+
+## Video
+
+`VideoPlayer` decodes ahead on the thread pool: a producer task reads frames from the
+plugin's `IVideoReader` into a bounded channel six frames deep and swaps them to BGRA there,
+so the UI thread only copies rows into a `WriteableBitmap`. A render-priority timer picks the
+newest decoded frame not later than the clock and drops the ones it has passed. The clock is
+the audio position whenever the soundtrack plays and a stopwatch otherwise, so picture and
+sound share one time base. A seek cancels the producer, drains the channel back into a
+buffer pool, and starts a new producer at the target frame; when paused, the first frame it
+delivers is shown. The soundtrack goes through the same audio path as any clip, under the
+same generation counter, so a movie the user has left never starts its sound late.
+
+`MatroskaWriter` exports a movie without outside tools. It writes Motion JPEG frames, encoded
+in parallel batches, and the decoded soundtrack as interleaved PCM blocks, with a seek head,
+cues every second and the segment size patched in at the end. The file is written beside the
+target and moved over it only when complete.
 
 ## Threading
 

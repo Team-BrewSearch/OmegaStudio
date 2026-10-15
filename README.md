@@ -41,6 +41,7 @@ make sense for it appear:
 | Viewport | anything with geometry | Orbit camera, five shading modes: textured, shaded, wireframe, normals, UV |
 | Texture | anything that decodes to an image | Zoom, fit, actual size |
 | Audio | anything that decodes to sound | Play, pause, stop, and a seek bar |
+| Video | anything that decodes to a movie | Playback with sound, scrubbing, frame and movie export |
 | Animation | anything with clips | Clip picker, transport, and a dope sheet |
 | Console | always | Every load, edit, and failure, timestamped |
 
@@ -60,7 +61,7 @@ save of a session copies each affected file to `<name>.bak` first.
 
 ## Formats it ships with
 
-Seven plugins are built from this repository:
+Eight plugins are built from this repository:
 
 | Plugin | Games |
 | --- | --- |
@@ -68,6 +69,7 @@ Seven plugins are built from this repository:
 | Virtuos | Hot Wheels: Battle Force 5 and four other DS racing games |
 | Nintendo | DS ROMs, WBFS Wii containers, 3DS cart images |
 | Polarbit | Crash Bandicoot Nitro Kart 2 and 3D and three other iOS games |
+| DWSSK | DreamWorks Super Star Kartz (PS3, Xbox 360, Wii, 3DS) |
 | PlayStation 3 | Game discs |
 | Xbox 360 | Game discs |
 | Standard Formats | OGG, WAV, PNG, JPEG, GIF, BMP payloads, anywhere |

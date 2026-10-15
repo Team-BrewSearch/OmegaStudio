@@ -1,6 +1,6 @@
 # Formats
 
-Seven plugins are built from this repository. The host knows nothing about any of them; each
+Eight plugins are built from this repository. The host knows nothing about any of them; each
 plugin teaches it one or more formats, and the host draws the panes and the edit commands
 from what the plugin says a row can do. To add your own, see [PLUGINS.md](PLUGINS.md).
 
@@ -10,6 +10,7 @@ from what the plugin says a row can do. To add your own, see [PLUGINS.md](PLUGIN
 | Virtuos | Nintendo DS game archives | tracks, textures, zones, collision, visibility, cars, models, skeletons, animation | textures, tracks, models, skeletons, animation, collision |
 | Nintendo | DS ROMs, WBFS containers, 3DS images | whole file systems, disc images | DS ROMs in full, WBFS by same-length patch |
 | Polarbit | iOS game archives | models, tracks, scenes, textures, fonts, sounds, music, strings | textures, sounds, scene geometry, strings |
+| DWSSK | console game WADs, sound banks, Wwise audio, Scaleform movies, Bink videos | textures, models, animation, levels, collision, navigation, data tables, strings, shaders, audio, video | textures, models, data tables, strings, shaders, audio, movie images, whole WADs and banks |
 | PlayStation 3 | game discs | ISO 9660 file system | nothing (read-only) |
 | Xbox 360 | game discs | game partition directory tree | nothing (read-only) |
 | Standard Formats | no archives of its own | OGG, WAV, PNG, JPEG, GIF, BMP payloads | PNG replacement where the container allows |
@@ -84,6 +85,57 @@ tracks, and props render with their textures in the Viewport.
 Textures can be replaced from a PNG, sounds and music samples from a WAV, and scene geometry
 from a glTF file of any shape. LANG and FCOL string tables are edited in the Properties
 pane. Saving rebuilds the archive in place.
+
+## DWSSK
+
+*DreamWorks Super Star Kartz* on PlayStation 3, Xbox 360, Wii and 3DS. The DS version runs
+on a different engine and is covered by the Virtuos plugin.
+
+Opens the `HIG!` WAD containers. A level's `.wad`, `.wad.mem1` and `.wad.vram` are read
+together as one tree. A texture a model names is looked up in its own WAD, then its other
+parts, then the `global.wad` in a folder above it, and last in the other WADs of the same
+game folder, which are indexed the first time a texture is missing. That last step works
+the same inside a disc image, where the index covers the disc's game folder. The TJZIP
+compression is rebuilt byte for byte, so an untouched WAD saves to the same file. Sound banks
+(`.bnk`), Wwise audio (`.wem`), Scaleform movies (`.swf`), Bink videos (`.bik`) and level
+name tables (`.nog`) also open on their own. A single file extracted from a WAD opens without
+reading its sibling files; they are read only when a texture is missing. Inside a PS3, Xbox
+360, Wii or 3DS disc image the same files open in place, and the WAD parts there are grouped
+the same way; a WAD row is decompressed the first time it is expanded, and an edit inside it
+is written back to the row when the disc allows it.
+
+What each row does:
+
+- `.htx` textures decode for every platform layout: PS3 swizzled and DXT, Xbox 360 tiled,
+  Wii GX tiles and CMPR, 3DS CTPK. Replacing one from a PNG re-encodes it in the original
+  format; the lossless formats give back the same bytes for an unchanged PNG.
+- `.gdw`, `.gds`, `.gdi`, `.gdt` and `.gdt.piece` models render with their textures. A world
+  splits into one mesh per visibility zone. Skinned models carry their skeleton and play
+  every animation from the `.animpack` files beside their `MASTER` folder. Geometry can be
+  replaced from a glTF (the first LOD), and every model exports and imports as the JSON and
+  `.bin` pair the reverse-engineering tools write.
+- `.animpack` files play on their character's master model and export and import as JSON.
+- `.bog` level databases, `.p2b` data tables, `.lcl` string tables, `.fkd` font kerning,
+  `.cam` cameras, `.csd` collision surfaces, `.nav` navigation meshes, `.col` and
+  `.col.piece` collision and `.nog` name tables export and import as JSON. Navigation and
+  collision meshes show in the Viewport and export as OBJ; level placements export as a
+  glTF scene. Strings in a `.lcl` are edited in the Properties pane.
+- `.vs_bin` and `.ps_bin` shaders (RSX, Xenos, PICA200) export as JSON with their
+  disassembly and rebuild from edited JSON.
+- `.arc` U8 archives on the Wii open as folders with their TPL images.
+- `.wem` audio plays and exports as WAV with no outside tools. PCM, Wwise IMA, Nintendo DSP
+  ADPCM, Wwise Vorbis and XMA2 all decode inside the plugin. A sound is replaced from a
+  16-bit WAV in its own codec: Vorbis is encoded with the sound's own Wwise setup and
+  codebooks, and XMA2 is encoded as XMA2 with its seek table rebuilt. Sound banks list their
+  events by name and hold their embedded media as rows.
+- `.swf` Scaleform movies list their bitmaps as rows. Each one previews and can be replaced
+  from a PNG: lossless bitmaps stay lossless, and JPEG bitmaps are re-encoded as JPEG, so
+  they lose a little quality.
+- `.bik` Bink 1 videos (revisions `f` to `k`) play in the Video tab with their sound, and export
+  as frames, a WAV soundtrack or a Matroska movie.
+- Every WAD, U8 archive and sound bank extracts to a folder with a manifest and rebuilds
+  from it, in the layout the Python tools use. An alias entry names its target by index
+  only; manifests from the older tools, which also carry an `offset`, still rebuild.
 
 ## PlayStation 3
 

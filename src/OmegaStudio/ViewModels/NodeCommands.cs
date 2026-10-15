@@ -14,7 +14,7 @@ internal static class NodeCommands
         new FileFilter("BMP image", "*.bmp"),
     ];
     private static readonly FileFilter s_imageRead = new("Image", "*.png", "*.jpg", "*.jpeg", "*.bmp");
-    public static IReadOnlyList<AssetCommand> For(IAssetNode node, AnimationClip? clip, float fps)
+    public static IReadOnlyList<AssetCommand> For(IAssetNode node, AnimationClip? clip, float fps, Func<int> videoFrame)
     {
         List<AssetCommand> own = [], exports = [], replacements = [], extra = [];
         if (node is IBinaryAsset binary)
@@ -40,6 +40,13 @@ internal static class NodeCommands
         if (node is ISceneAsset)
         {
             exports.Add(ExportScene(node, clip, fps));
+        }
+        if (node is IVideoAsset)
+        {
+            exports.Add(ExportFrame(node, videoFrame));
+            exports.Add(ExportVideo(node));
+            exports.Add(ExportSoundtrack(node));
+            extra.Add(ExportFrames(node));
         }
         if (node is ICommandSource source)
         {
@@ -204,6 +211,121 @@ internal static class NodeCommands
                 context.Log($"Exported {NodeAccess.Name(node)} to {Path.GetFileName(context.Path!)} " +
                     $"({scene.TriangleCount:N0} triangles, {scene.Textures.Count} texture(s), " +
                     $"{scene.Clips.Count} animation(s)).");
+            },
+        };
+    }
+    private static AssetCommand ExportFrame(IAssetNode node, Func<int> current)
+    {
+        return new AssetCommand
+        {
+            Title = "Export frame",
+            Kind = AssetCommandKind.SaveFile,
+            Role = AssetCommandRole.Export,
+            Filters = s_imageWrite,
+            SuggestedFileName = SuggestName(node, ".png"),
+            Execute = context =>
+            {
+                IVideoAsset video = (IVideoAsset)context.Node;
+                using IVideoReader reader = video.OpenVideo();
+                VideoInfo info = reader.Info;
+                int frame = Math.Clamp(current(), 0, Math.Max(0, info.FrameCount - 1));
+                byte[] rgba = new byte[info.FrameBytes];
+                reader.Seek(frame);
+                if (!reader.ReadFrame(rgba))
+                {
+                    throw new InvalidDataException($"frame {frame + 1} could not be decoded");
+                }
+                context.Host.Images.Save(ImageData.Create($"frame{frame}", info.Width, info.Height, rgba), context.Path!);
+                context.Log($"Exported frame {frame + 1} of {NodeAccess.Name(node)} ({info.Width}x{info.Height}) to {Path.GetFileName(context.Path!)}.");
+            },
+        };
+    }
+    private static AssetCommand ExportFrames(IAssetNode node)
+    {
+        return new AssetCommand
+        {
+            Title = "Export all frames…",
+            Kind = AssetCommandKind.SaveFile,
+            Filters = [new FileFilter("PNG images, numbered", "*.png")],
+            SuggestedFileName = SuggestName(node, ".png"),
+            Execute = context =>
+            {
+                IVideoAsset video = (IVideoAsset)context.Node;
+                using IVideoReader reader = video.OpenVideo();
+                VideoInfo info = reader.Info;
+                string folder = Path.GetDirectoryName(Path.GetFullPath(context.Path!))!;
+                string stem = Path.GetFileNameWithoutExtension(context.Path!);
+                int digits = Math.Max(5, info.FrameCount.ToString(System.Globalization.CultureInfo.InvariantCulture).Length);
+                int batch = Math.Max(1, Environment.ProcessorCount);
+                int written = 0;
+                reader.Seek(0);
+                while (written < info.FrameCount)
+                {
+                    List<byte[]> pixels = [];
+                    for (int k = 0; k < batch && written + pixels.Count < info.FrameCount; k++)
+                    {
+                        byte[] rgba = new byte[info.FrameBytes];
+                        if (!reader.ReadFrame(rgba))
+                        {
+                            break;
+                        }
+                        pixels.Add(rgba);
+                    }
+                    if (pixels.Count == 0)
+                    {
+                        break;
+                    }
+                    int first = written;
+                    Parallel.For(0, pixels.Count, k =>
+                    {
+                        string name = $"{stem}_{(first + k + 1).ToString(new string('0', digits), System.Globalization.CultureInfo.InvariantCulture)}.png";
+                        AtomicSave.Write(Path.Combine(folder, name), context.Host.Images.EncodePng(ImageData.Create(name, info.Width, info.Height, pixels[k])));
+                    });
+                    written += pixels.Count;
+                }
+                context.Log($"Exported {written:N0} frames of {NodeAccess.Name(node)} to {folder} as {stem}_{new string('0', digits - 1)}1.png and on.");
+            },
+        };
+    }
+    private static AssetCommand ExportVideo(IAssetNode node)
+    {
+        return new AssetCommand
+        {
+            Title = "Export video",
+            Kind = AssetCommandKind.SaveFile,
+            Role = AssetCommandRole.Export,
+            Filters = [new FileFilter("Matroska video (Motion JPEG and PCM)", "*.mkv")],
+            SuggestedFileName = SuggestName(node, ".mkv"),
+            Execute = context =>
+            {
+                IVideoAsset video = (IVideoAsset)context.Node;
+                using IVideoReader reader = video.OpenVideo();
+                byte[] soundtrack = video.Soundtrack.ToArray();
+                MatroskaWriter.Write(context.Path!, reader, soundtrack, image => context.Host.Images.Encode(image, ".jpg"), context.Log);
+                context.Log($"Exported {NodeAccess.Name(node)} to {Path.GetFileName(context.Path!)} ({Sizes.Describe(new FileInfo(context.Path!).Length)}, "
+                    + $"{reader.Info.FrameCount:N0} frames{(soundtrack.Length > 0 ? " with sound" : ", no sound")}).");
+            },
+        };
+    }
+    private static AssetCommand ExportSoundtrack(IAssetNode node)
+    {
+        return new AssetCommand
+        {
+            Title = "Export soundtrack",
+            Kind = AssetCommandKind.SaveFile,
+            Role = AssetCommandRole.Export,
+            Filters = [new FileFilter("Soundtrack (WAV or Ogg Vorbis, as the video stores it)", "*.wav", "*.ogg")],
+            SuggestedFileName = SuggestName(node, ".wav"),
+            Execute = context =>
+            {
+                byte[] sound = ((IVideoAsset)context.Node).Soundtrack.ToArray();
+                if (sound.Length == 0)
+                {
+                    throw new InvalidOperationException("this video has no soundtrack");
+                }
+                string path = Path.ChangeExtension(context.Path!, AudioFormats.ExtensionOf(sound));
+                AtomicSave.Write(path, sound);
+                context.Log($"Exported the soundtrack of {NodeAccess.Name(node)} to {Path.GetFileName(path)} ({Sizes.Describe(sound.Length)}).");
             },
         };
     }

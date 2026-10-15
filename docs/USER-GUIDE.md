@@ -59,6 +59,14 @@ The Audio pane appears for anything that decodes to sound. Clips in OGG or WAV p
 pane has a time readout, a seek bar, and Play, Pause / Resume, and Stop buttons. The
 transport follows the real play position, so the clock and the sound never disagree.
 
+### Video
+
+The Video pane appears for anything that decodes to a movie. It shows the codec, size, frame
+rate and frame count, and plays the movie with its sound. The picture follows the sound's
+clock, so frames that cannot keep up are dropped rather than letting the two drift apart.
+Drag the seek bar to scrub; the frame under the bar shows when you let go, playing or paused.
+The readout gives the time and the frame number.
+
 ### Animation
 
 The Animation pane appears for anything with clips. Choose a clip, set the playback rate in
@@ -103,8 +111,10 @@ list:
 - **Extract Audio** copies the row's sound out in the form it is stored in: an OGG clip keeps
   its extension, and anything else is offered as a WAV.
 - **Export…** turns the row into a file: a PNG, JPEG, or BMP for an image, a glTF for a
-  scene. One entry offers every type the row supports, and the extension you pick in the
-  dialog decides which one runs.
+  scene, and for a movie the frame on screen as an image, the soundtrack as a WAV, or the
+  whole movie as an `.mkv` file (Motion JPEG with PCM sound). One entry offers every type the
+  row supports, and the extension you pick in the dialog decides which one runs.
+- **Export all frames…** writes every frame of a movie to a folder as numbered PNG files.
 - **Replace…** writes a file back into the row: raw bytes, a PNG over an image, or a glTF
   over a model, wherever the format supports it. Again one entry, decided by the file you
   pick.
