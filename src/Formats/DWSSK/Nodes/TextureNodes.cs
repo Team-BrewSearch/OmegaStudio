@@ -1,18 +1,14 @@
 using DWSSK.Formats.Core;
 using DWSSK.Formats.Textures;
 using Omega.Plugins;
-
 namespace DWSSK.Formats.Nodes;
-
 internal sealed class HtxNode : SlotNode, IImageAsset
 {
     private (int Revision, ImageData Image)? _image;
-
     public HtxNode(Slot slot, string name, string path)
         : base(slot, name, path, AssetKinds.Texture, Label(slot))
     {
     }
-
     private static string Label(Slot slot)
     {
         try
@@ -26,12 +22,10 @@ internal sealed class HtxNode : SlotNode, IImageAsset
             return Sizes.Describe(slot.Data.Length);
         }
     }
-
     protected override string DescribeSize()
     {
         return Label(Slot);
     }
-
     public ImageData Image
     {
         get
@@ -45,9 +39,7 @@ internal sealed class HtxNode : SlotNode, IImageAsset
             return cached.Image;
         }
     }
-
     public bool CanReplaceImage => Slot.CanWrite;
-
     public void ReplaceImage(ImageData image)
     {
         ArgumentNullException.ThrowIfNull(image);
@@ -57,13 +49,11 @@ internal sealed class HtxNode : SlotNode, IImageAsset
             Store(blob);
         }
     }
-
     protected override void Check(byte[] payload)
     {
         Htx t = Htx.Parse(payload);
         _ = t.Dimensions(Slot.Platform);
     }
-
     public override IEnumerable<PropertyRow> Describe()
     {
         Htx t = Htx.Parse(Slot.Data);
@@ -90,13 +80,11 @@ internal sealed class HtxNode : SlotNode, IImageAsset
         }
     }
 }
-
 internal sealed class TplNode : AssetNode, IImageAsset, IDescribable, IBinaryAsset
 {
     private readonly Func<byte[]> _tpl;
     private readonly Action<byte[]>? _store;
     private readonly int _index;
-
     public TplNode(Func<byte[]> tpl, Action<byte[]>? store, int index, string name, string path)
         : base(name, path, AssetKinds.Texture, string.Empty)
     {
@@ -106,13 +94,11 @@ internal sealed class TplNode : AssetNode, IImageAsset, IDescribable, IBinaryAss
         TplImage im = Tpl.Images(tpl())[index];
         Detail = $"{im.Width}x{im.Height} {(im.Format < Tpl.Names.Length ? Tpl.Names[im.Format] : im.Format.ToString(System.Globalization.CultureInfo.InvariantCulture))}";
     }
-
     private (TplImage Image, int Size) Info(byte[] b)
     {
         TplImage im = Tpl.Images(b)[_index];
         return (im, Tpl.Size(im.Format, im.Width, im.Height));
     }
-
     public ImageData Image
     {
         get
@@ -123,9 +109,7 @@ internal sealed class TplNode : AssetNode, IImageAsset, IDescribable, IBinaryAss
             return ImageData.Create(Name, im.Width, im.Height, px, $"GX {Tpl.Names[im.Format]}");
         }
     }
-
     public bool CanReplaceImage => _store is not null;
-
     public void ReplaceImage(ImageData image)
     {
         ArgumentNullException.ThrowIfNull(image);
@@ -143,7 +127,6 @@ internal sealed class TplNode : AssetNode, IImageAsset, IDescribable, IBinaryAss
         _ = size;
         _store(b);
     }
-
     public IEnumerable<PropertyRow> Describe()
     {
         (TplImage im, int size) = Info(_tpl());
@@ -152,7 +135,6 @@ internal sealed class TplNode : AssetNode, IImageAsset, IDescribable, IBinaryAss
         yield return PropertyRow.Of("Data", $"0x{im.DataOffset:X}, {Sizes.Describe(size)}");
         yield return PropertyRow.Of("Encoding", "exact: an unchanged PNG gives back the same bytes");
     }
-
     public int Size => Info(_tpl()).Size;
     public ReadOnlySpan<byte> Data
     {
@@ -163,14 +145,11 @@ internal sealed class TplNode : AssetNode, IImageAsset, IDescribable, IBinaryAss
             return Bin.Slice(b, im.DataOffset, im.DataOffset + size);
         }
     }
-
     public string Extension => ".gx";
     public bool CanReplaceBytes => false;
-
     public void ReplaceBytes(byte[] payload)
     {
         throw new InvalidOperationException("replace the image from a PNG instead");
     }
-
     public override string FileStem => Name;
 }

@@ -1,14 +1,11 @@
 using DWSSK.Formats.Core;
 using DWSSK.Formats.Data;
 using static DWSSK.Formats.Shaders.Bits;
-
 namespace DWSSK.Formats.Shaders;
-
 internal static class Shader
 {
     private static readonly string[] s_constTypes = ["bool", "int", "float24"];
     private static readonly string[] s_dvleTypes = ["vertex", "geometry"];
-
     private static readonly Dictionary<long, string> s_cgVar = new() { [4101] = "varying", [4102] = "uniform", [4103] = "constant", [4104] = "mixed" };
     private static readonly Dictionary<long, string> s_cgDir = new() { [4097] = "in", [4098] = "out", [4099] = "inout" };
     private static readonly string[] s_vpInfo = ["instructions", "instruction_slot", "registers", "inputs_mask", "outputs_mask", "user_clip_mask"];
@@ -23,12 +20,9 @@ internal static class Shader
         [0] = "void", [1] = "bool", [2] = "int", [3] = "float", [4] = "string", [5] = "texture", [10] = "sampler",
         [11] = "sampler1D", [12] = "sampler2D", [13] = "sampler3D", [14] = "samplerCUBE",
     };
-
     private static readonly string[] s_declUsage =
         ["position", "blendweight", "blendindices", "normal", "psize", "texcoord", "tangent", "binormal", "tessfactor", "positiont", "color", "fog", "depth", "sample"];
-
     private static readonly string[] s_xeInfo = ["field08", "field0C", "field10", "interpolator_info"];
-
     private static object CgType(long t)
     {
         if (t is >= 1025 and <= 1028)
@@ -63,7 +57,6 @@ internal static class Shader
             _ => t,
         };
     }
-
     private static object? CgResource(long r)
     {
         if (r is >= 2048 and <= 2063)
@@ -91,7 +84,6 @@ internal static class Shader
             _ => r,
         };
     }
-
     private static Dictionary<string, long> BuildTypeN()
     {
         Dictionary<string, long> d = [];
@@ -104,7 +96,6 @@ internal static class Shader
         }
         return d;
     }
-
     private static Dictionary<string, long> BuildResN()
     {
         Dictionary<string, long> d = [];
@@ -117,12 +108,10 @@ internal static class Shader
         }
         return d;
     }
-
     private static string? CStr(byte[] b, long o)
     {
         return o != 0 ? Bin.CString(b, (int)o) : null;
     }
-
     private static long Inv(Dictionary<long, string> table, object? v)
     {
         if (v is string s)
@@ -138,7 +127,6 @@ internal static class Shader
         }
         return J.L(v);
     }
-
     public static JObj DescribeCg(byte[] b)
     {
         uint[] h = Bin.U32s(b, 0, 8, true);
@@ -233,7 +221,6 @@ internal static class Shader
             ["disassembly"] = J.List((kind is "vertex" ? Rsx.VpDisasm(ucode) : Rsx.FpDisasm(ucode, uniforms)).Select(x => (object?)x)),
         };
     }
-
     public static byte[] BuildCg(JObj d, byte[] ucode)
     {
         List<object?> pars = J.A(d["parameters"]);
@@ -333,7 +320,6 @@ internal static class Shader
         }
         return output.ToArray();
     }
-
     private static JObj XeElement(long v)
     {
         return new JObj
@@ -344,7 +330,6 @@ internal static class Shader
             ["flags"] = v >> 20,
         };
     }
-
     private static JObj XeInterp(long v)
     {
         return new JObj
@@ -355,18 +340,15 @@ internal static class Shader
             ["flags"] = v >> 12,
         };
     }
-
     private static string Usage(long i)
     {
         return i < s_declUsage.Length ? s_declUsage[i] : throw new PyIndexException("list index out of range");
     }
-
     private static long UsageN(object? u)
     {
         int i = Array.IndexOf(s_declUsage, J.S(u));
         return i >= 0 ? i : throw new InvalidDataException($"'{u}' is not in list");
     }
-
     public static JObj DescribeX360(byte[] b)
     {
         uint[] h = Bin.U32s(b, 0, 7, true);
@@ -469,7 +451,6 @@ internal static class Shader
             ["disassembly"] = J.List(Xenos.Disasm(ucode, vs).Select(x => (object?)x)),
         };
     }
-
     private static byte[] XeCtab(JObj d)
     {
         List<object?> consts = J.A(d["constants"]);
@@ -519,7 +500,6 @@ internal static class Shader
         }
         return output.ToArray();
     }
-
     public static byte[] BuildX360(JObj d, byte[] ucode)
     {
         bool vs = J.S(d["kind"]) == "vertex";
@@ -613,7 +593,6 @@ internal static class Shader
         }
         return output.ToArray();
     }
-
     public static JObj DescribeDvlb(byte[] b)
     {
         int n = (int)Bin.U32(b, 4, false);
@@ -720,7 +699,6 @@ internal static class Shader
             ["disassembly"] = J.List(Pica200.Disasm(code, [.. opdesc.Select(x => x[0])], lab).Select(x => (object?)x)),
         };
     }
-
     private static Dictionary<long, string?> Labels(List<object?> entries)
     {
         Dictionary<long, string?> lab = [];
@@ -733,7 +711,6 @@ internal static class Shader
         }
         return lab;
     }
-
     public static byte[] BuildDvlb(JObj d, List<long> code, List<long[]> opdesc)
     {
         List<object?> entries = J.A(d["entries"]);
@@ -862,7 +839,6 @@ internal static class Shader
         }
         return output.ToArray();
     }
-
     public static bool IsShader(ReadOnlySpan<byte> b)
     {
         if (b.Length >= 4 && b[..4].SequenceEqual("DVLB"u8))
@@ -880,7 +856,6 @@ internal static class Shader
         uint magic = Bin.U32(b, 0, true);
         return magic is 0x102A1101 or 0x102A1100 or 7003 or 7004;
     }
-
     public static string Format(ReadOnlySpan<byte> b)
     {
         if (b.Length >= 4 && b[..4].SequenceEqual("DVLB"u8))
@@ -908,7 +883,6 @@ internal static class Shader
             _ => "unknown",
         };
     }
-
     public static JObj Describe(byte[] b)
     {
         if (b.Length >= 4 && b.AsSpan(0, 4).SequenceEqual("DVLB"u8))
@@ -935,7 +909,6 @@ internal static class Shader
         }
         return magic is 7003 or 7004 ? DescribeCg(b) : throw new InvalidDataException("unknown shader format");
     }
-
     public static byte[] Build(JObj doc)
     {
         string f = J.S(doc["format"]);

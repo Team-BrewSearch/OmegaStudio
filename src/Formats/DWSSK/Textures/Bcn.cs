@@ -1,12 +1,10 @@
 namespace DWSSK.Formats.Textures;
-
 internal static class Bcn
 {
     public static int Size(int w, int h, int n)
     {
         return Math.Max(1, (w + 3) / 4) * Math.Max(1, (h + 3) / 4) * (n == 1 ? 8 : 16);
     }
-
     private static (int R, int G, int B) Decode565(uint x)
     {
         int r = (int)((x & 0xF800) >> 8);
@@ -17,7 +15,6 @@ internal static class Bcn
         b |= b >> 5;
         return (r, g, b);
     }
-
     public static byte[] Decode(ReadOnlySpan<byte> data, int w, int h, int n)
     {
         int bw = Math.Max(1, (w + 3) / 4);
@@ -59,12 +56,10 @@ internal static class Bcn
         }
         return Pixels.Crop(Rows(full, pw, h), pw, w, h);
     }
-
     private static byte[] Rows(byte[] full, int pw, int h)
     {
         return full.Length == pw * h * 4 ? full : full.AsSpan(0, pw * h * 4).ToArray();
     }
-
     private static void Color(ReadOnlySpan<byte> src, Span<byte> px, bool separateAlpha)
     {
         uint c0 = (uint)(src[0] | (src[1] << 8));
@@ -112,7 +107,6 @@ internal static class Bcn
             px[(k * 4) + 3] = (byte)p[(cw * 4) + 3];
         }
     }
-
     private static void Bc2Alpha(ReadOnlySpan<byte> src, Span<byte> px)
     {
         for (int k = 0; k < 16; k++)
@@ -122,7 +116,6 @@ internal static class Bcn
             px[(k * 4) + 3] = (byte)((av << 4) | av);
         }
     }
-
     private static void Bc3Alpha(ReadOnlySpan<byte> src, Span<byte> px)
     {
         int a0 = src[0];
@@ -156,7 +149,6 @@ internal static class Bcn
             px[((8 + k) * 4) + 3] = (byte)a[7 & (lut2 >> (3 * k))];
         }
     }
-
     public static byte[] Encode(byte[] img, int w, int h, int n)
     {
         int pw = (w + 3) / 4 * 4;
@@ -194,12 +186,10 @@ internal static class Bcn
         }
         return output;
     }
-
     private static uint Encode565(ReadOnlySpan<byte> c)
     {
         return ((uint)(c[0] >> 3) << 11) | ((uint)(c[1] >> 2) << 5) | (uint)(c[2] >> 3);
     }
-
     private static void EncodeColor(ReadOnlySpan<byte> block, Span<byte> dst, bool separateAlpha)
     {
         uint min = 0;
@@ -302,7 +292,6 @@ internal static class Bcn
             dst[at++] = (byte)l;
         }
     }
-
     private static void EncodeBc2Alpha(ReadOnlySpan<byte> block, Span<byte> dst)
     {
         for (int row = 0; row < 4; row++)
@@ -317,7 +306,6 @@ internal static class Bcn
             dst[(row * 2) + 1] = (byte)(l >> 8);
         }
     }
-
     private static void EncodeBc3Alpha(ReadOnlySpan<byte> block, Span<byte> dst)
     {
         int min = 0;

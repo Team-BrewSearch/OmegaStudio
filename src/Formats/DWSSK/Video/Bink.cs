@@ -1,15 +1,11 @@
 using System.Buffers.Binary;
-
 namespace DWSSK.Formats.Video;
-
 internal sealed class LsbReader(byte[] data, int start, int length)
 {
     private readonly int _end = start + length;
-
     public int Size { get; } = length * 8;
     public int Pos { get; set; }
     public int Left => Size - Pos;
-
     public uint Peek(int n)
     {
         if (n <= 0)
@@ -31,22 +27,18 @@ internal sealed class LsbReader(byte[] data, int start, int length)
         }
         return (uint)((w >> (Pos & 7)) & ((1UL << n) - 1));
     }
-
     public uint Read(int n)
     {
         uint v = Peek(n);
         Pos += n;
         return v;
     }
-
     public int Bit()
     {
         return (int)Read(1);
     }
 }
-
 internal sealed record BinkTrack(int Rate, int Channels, bool Dct, uint Id);
-
 internal sealed class BinkFile
 {
     private BinkFile(byte[] data, char revision, int frames, int width, int height, int rateNum, int rateDen, uint flags, List<BinkTrack> tracks, int[] offsets, bool[] keys)
@@ -63,7 +55,6 @@ internal sealed class BinkFile
         Offsets = offsets;
         Keyframes = keys;
     }
-
     public byte[] Data { get; }
     public char Revision { get; }
     public int Frames { get; }
@@ -76,12 +67,10 @@ internal sealed class BinkFile
     public int[] Offsets { get; }
     public bool[] Keyframes { get; }
     public bool HasAlpha => (Flags & 0x00100000) != 0;
-
     public static bool IsBink(ReadOnlySpan<byte> b)
     {
         return b.Length >= 44 && b[..3].SequenceEqual("BIK"u8) && b[3] is (byte)'f' or (byte)'g' or (byte)'h' or (byte)'i' or (byte)'k';
     }
-
     public static BinkFile Read(byte[] b)
     {
         if (!IsBink(b))
@@ -135,7 +124,6 @@ internal sealed class BinkFile
         }
         return new BinkFile(b, revision, frames, width, height, rateNum, rateDen, flags, tracks, offsets, keys);
     }
-
     public (int Offset, int Length) Audio(int frame, int track)
     {
         int at = Offsets[frame];
@@ -155,7 +143,6 @@ internal sealed class BinkFile
         }
         return (at, 0);
     }
-
     public (int Offset, int Length) Video(int frame)
     {
         int at = Offsets[frame];
@@ -166,7 +153,6 @@ internal sealed class BinkFile
         return (at, Offsets[frame + 1] - at);
     }
 }
-
 internal sealed class BinkVideo
 {
     private const int SrcBlockTypes = 0;
@@ -179,10 +165,8 @@ internal sealed class BinkVideo
     private const int SrcInterDc = 7;
     private const int SrcRun = 8;
     private const int Sources = 9;
-
     private static readonly (int[] Table, int Bits)[] s_trees = [.. Enumerable.Range(0, 16).Select(Tree)];
     private static readonly int[] s_rleLens = [4, 8, 12, 32];
-
     private sealed class Bundle
     {
         public int Len;
@@ -193,7 +177,6 @@ internal sealed class BinkVideo
         public int CurDec;
         public int CurPtr;
     }
-
     private readonly BinkFile _file;
     private readonly Bundle[] _bundles = [.. Enumerable.Range(0, Sources).Select(_ => new Bundle())];
     private readonly (int Vlc, byte[] Syms)[] _colHigh = [.. Enumerable.Range(0, 16).Select(_ => (0, new byte[16]))];
@@ -208,7 +191,6 @@ internal sealed class BinkVideo
     private readonly short[] _residue = new short[64];
     private readonly byte[] _ublock = new byte[64];
     private readonly int[] _coefIdx = new int[64];
-
     public BinkVideo(BinkFile file)
     {
         _file = file;
@@ -228,15 +210,12 @@ internal sealed class BinkVideo
         _bundles[SrcIntraDc].Shorts = new short[blocks * 32];
         _bundles[SrcInterDc].Shorts = new short[blocks * 32];
     }
-
     private byte[][] Planes()
     {
         return [.. Enumerable.Range(0, _file.HasAlpha ? 4 : 3).Select(p => new byte[_strides[p] * _rows[p]])];
     }
-
     public byte[][] Frame => _last;
     public int[] Strides => _strides;
-
     private static (int[] Table, int Bits) Tree(int n)
     {
         int bits = BinkTables.TreeLens[(n * 16) + 15];
@@ -252,7 +231,6 @@ internal sealed class BinkVideo
         }
         return (table, bits);
     }
-
     private static int Huff(LsbReader gb, int vlc, byte[] syms)
     {
         (int[] table, int bits) = s_trees[vlc];
@@ -260,7 +238,6 @@ internal sealed class BinkVideo
         gb.Pos += e >> 8;
         return syms[e & 0xFF];
     }
-
     private static void ReadTree(LsbReader gb, ref int vlc, byte[] syms)
     {
         if (gb.Left < 4)
@@ -314,7 +291,6 @@ internal sealed class BinkVideo
             Array.Copy(input, syms, 16);
         }
     }
-
     private static void Merge(LsbReader gb, byte[] dst, int d, byte[] src, int s, int size)
     {
         int s2 = s + size;
@@ -342,7 +318,6 @@ internal sealed class BinkVideo
             dst[d++] = src[s2++];
         }
     }
-
     private void ReadBundle(LsbReader gb, int n)
     {
         if (n == SrcColors)
@@ -360,7 +335,6 @@ internal sealed class BinkVideo
         }
         b.CurDec = b.CurPtr = 0;
     }
-
     private static bool Count(LsbReader gb, Bundle b, out int t)
     {
         t = 0;
@@ -376,7 +350,6 @@ internal sealed class BinkVideo
         }
         return true;
     }
-
     private static void Room(Bundle b, int t, int capacity)
     {
         if (b.CurDec + t > capacity)
@@ -384,7 +357,6 @@ internal sealed class BinkVideo
             throw new InvalidDataException("a Bink bundle overflowed");
         }
     }
-
     private static void ReadRuns(LsbReader gb, Bundle b)
     {
         if (!Count(gb, b, out int t))
@@ -405,7 +377,6 @@ internal sealed class BinkVideo
             }
         }
     }
-
     private static void ReadMotion(LsbReader gb, Bundle b)
     {
         if (!Count(gb, b, out int t))
@@ -436,7 +407,6 @@ internal sealed class BinkVideo
             }
         }
     }
-
     private void ReadBlockTypes(LsbReader gb, Bundle b)
     {
         if (!Count(gb, b, out int t))
@@ -481,7 +451,6 @@ internal sealed class BinkVideo
             }
         }
     }
-
     private static void ReadPatterns(LsbReader gb, Bundle b)
     {
         if (!Count(gb, b, out int t))
@@ -496,7 +465,6 @@ internal sealed class BinkVideo
             b.Bytes[b.CurDec++] = (byte)v;
         }
     }
-
     private int Color(LsbReader gb, Bundle b)
     {
         _colLastVal = Huff(gb, _colHigh[_colLastVal].Vlc, _colHigh[_colLastVal].Syms);
@@ -508,7 +476,6 @@ internal sealed class BinkVideo
         }
         return v;
     }
-
     private void ReadColors(LsbReader gb, Bundle b)
     {
         if (!Count(gb, b, out int t))
@@ -529,7 +496,6 @@ internal sealed class BinkVideo
             }
         }
     }
-
     private static void ReadDcs(LsbReader gb, Bundle b, bool signed)
     {
         if (!Count(gb, b, out int len))
@@ -568,7 +534,6 @@ internal sealed class BinkVideo
             }
         }
     }
-
     private int Value(int n)
     {
         Bundle b = _bundles[n];
@@ -579,7 +544,6 @@ internal sealed class BinkVideo
             _ => b.Bytes[b.CurPtr++],
         };
     }
-
     private int DctCoeffs(LsbReader gb, int[] block, out int count)
     {
         Span<int> coefList = stackalloc int[128];
@@ -660,7 +624,6 @@ internal sealed class BinkVideo
         }
         return (int)gb.Read(4);
     }
-
     private static int Coefficient(LsbReader gb, int bits)
     {
         if (bits == 0)
@@ -670,7 +633,6 @@ internal sealed class BinkVideo
         int t = (int)gb.Read(bits) | (1 << bits);
         return gb.Bit() != 0 ? -t : t;
     }
-
     private void Unquantize(int[] block, int[] quant, int q, int count)
     {
         byte[] scan = BinkTables.Scan;
@@ -681,7 +643,6 @@ internal sealed class BinkVideo
             block[scan[idx]] = unchecked((int)((uint)block[scan[idx]] * (uint)quant[(q * 64) + idx])) >> 11;
         }
     }
-
     private static void ReadResidue(LsbReader gb, short[] block, int masksCount)
     {
         Span<int> coefList = stackalloc int[128];
@@ -778,12 +739,10 @@ internal sealed class BinkVideo
             }
         }
     }
-
     private static int Mul(int x, int y)
     {
         return unchecked((int)((uint)x * (uint)y)) >> 11;
     }
-
     private static void Transform(int[] d, int d0, int step, int[] s, int s0, int sstep, bool row)
     {
         int x0 = s[s0];
@@ -818,7 +777,6 @@ internal sealed class BinkVideo
         d[d0 + (6 * step)] = (a1 + a3 - a2 - b2 + r) >> sh;
         d[d0 + (7 * step)] = (a0 + a2 - b0 + r) >> sh;
     }
-
     private void Idct(int[] block)
     {
         for (int i = 0; i < 8; i++)
@@ -840,7 +798,6 @@ internal sealed class BinkVideo
             Transform(block, 8 * i, 1, _temp, 8 * i, 1, true);
         }
     }
-
     private void IdctPut(byte[] dst, int at, int stride, int[] block)
     {
         Idct(block);
@@ -852,7 +809,6 @@ internal sealed class BinkVideo
             }
         }
     }
-
     private void IdctAdd(byte[] dst, int at, int stride, int[] block)
     {
         Idct(block);
@@ -864,7 +820,6 @@ internal sealed class BinkVideo
             }
         }
     }
-
     private static void Copy8(byte[] dst, int at, byte[] src, int from, int stride)
     {
         for (int y = 0; y < 8; y++)
@@ -872,7 +827,6 @@ internal sealed class BinkVideo
             Buffer.BlockCopy(src, from + (y * stride), dst, at + (y * stride), 8);
         }
     }
-
     private static void Fill(byte[] dst, int at, int stride, int size, byte v)
     {
         for (int y = 0; y < size; y++)
@@ -880,7 +834,6 @@ internal sealed class BinkVideo
             dst.AsSpan(at + (y * stride), size).Fill(v);
         }
     }
-
     private void Motion(byte[] dst, int at, byte[] prev, int stride, int bw, int bh)
     {
         int xoff = Value(SrcXOff);
@@ -892,7 +845,6 @@ internal sealed class BinkVideo
         }
         Copy8(dst, at, prev, from, stride);
     }
-
     private void Plane(LsbReader gb, int plane, bool chroma)
     {
         int width = _file.Width >> (chroma ? 1 : 0);
@@ -1023,15 +975,12 @@ internal sealed class BinkVideo
         }
         Align(gb);
     }
-
     private int _lastCount;
-
     private int Quant(LsbReader gb)
     {
         int q = DctCoeffs(gb, _dct, out _lastCount);
         return q > 15 ? throw new InvalidDataException($"Bink quantizer {q} out of range") : q;
     }
-
     private static void Align(LsbReader gb)
     {
         if ((gb.Pos & 31) != 0)
@@ -1039,7 +988,6 @@ internal sealed class BinkVideo
             gb.Pos += 32 - (gb.Pos & 31);
         }
     }
-
     private void Run(LsbReader gb, byte[] dst, int at, ReadOnlySpan<int> coordmap)
     {
         int pattern = (int)gb.Read(4) * 64;
@@ -1075,7 +1023,6 @@ internal sealed class BinkVideo
             dst[at + coordmap[BinkTables.Patterns[pattern + s]]] = (byte)Value(SrcColors);
         }
     }
-
     private void Scaled(LsbReader gb, byte[] dst, int at, int stride)
     {
         int blk = Value(SrcSubBlockTypes);
@@ -1164,7 +1111,6 @@ internal sealed class BinkVideo
             }
         }
     }
-
     public void Decode(int frame)
     {
         (int offset, int length) = _file.Video(frame);
@@ -1190,7 +1136,6 @@ internal sealed class BinkVideo
         _haveLast = true;
     }
 }
-
 internal static class BinkColor
 {
     private static readonly int[] s_y = [.. Enumerable.Range(0, 256).Select(y => (int)Math.Round((y - 16) * 1.164383 * 65536))];
@@ -1198,13 +1143,11 @@ internal static class BinkColor
     private static readonly int[] s_gu = [.. Enumerable.Range(0, 256).Select(u => (int)Math.Round((u - 128) * -0.391762 * 65536))];
     private static readonly int[] s_gv = [.. Enumerable.Range(0, 256).Select(v => (int)Math.Round((v - 128) * -0.812968 * 65536))];
     private static readonly int[] s_bu = [.. Enumerable.Range(0, 256).Select(u => (int)Math.Round((u - 128) * 2.017232 * 65536))];
-
     private static byte Clip(int v)
     {
         v = (v + 32768) >> 16;
         return (byte)(v < 0 ? 0 : v > 255 ? 255 : v);
     }
-
     private static void Upsample(byte[] c, int stride, int cw, int ch, int y, Span<int> row, Span<int> output)
     {
         int cy = y >> 1;
@@ -1222,7 +1165,6 @@ internal static class BinkColor
             output[x] = ((3 * row[cx]) + row[nx] + 8) >> 4;
         }
     }
-
     public static void ToRgba(BinkFile file, byte[][] planes, int[] strides, byte[] rgba)
     {
         int w = file.Width;
@@ -1259,30 +1201,24 @@ internal static class BinkColor
         });
     }
 }
-
 internal sealed class BinkReader : Omega.Plugins.IVideoReader
 {
     private readonly BinkFile _file;
     private readonly BinkVideo _video;
-
     public BinkReader(BinkFile file)
     {
         _file = file;
         _video = new BinkVideo(file);
         Info = new Omega.Plugins.VideoInfo(file.Width, file.Height, file.RateNumerator, file.RateDenominator, file.Frames, $"Bink {file.Revision}");
     }
-
     public Omega.Plugins.VideoInfo Info { get; }
     public int Position { get; private set; }
     private int _decoded = -1;
-
     public void Seek(int frame)
     {
         Position = Math.Clamp(frame, 0, _file.Frames);
     }
-
     private byte[] _rgba = [];
-
     public bool ReadFrame(Span<byte> rgba)
     {
         if (Position >= _file.Frames)
@@ -1305,12 +1241,10 @@ internal sealed class BinkReader : Omega.Plugins.IVideoReader
         Position++;
         return true;
     }
-
     public void Dispose()
     {
     }
 }
-
 internal static class Bink
 {
     public static (short[] Samples, int Rate, int Channels)? Audio(BinkFile file, int track = 0)

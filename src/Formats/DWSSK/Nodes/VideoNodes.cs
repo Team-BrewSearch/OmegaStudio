@@ -2,19 +2,15 @@ using DWSSK.Formats.Audio;
 using DWSSK.Formats.Core;
 using DWSSK.Formats.Video;
 using Omega.Plugins;
-
 namespace DWSSK.Formats.Nodes;
-
 internal sealed class BinkNode : SlotNode, IVideoAsset
 {
     private (int Revision, BinkFile File)? _file;
     private (int Revision, byte[] Wav)? _soundtrack;
-
     public BinkNode(Slot slot, string name, string path)
         : base(slot, name, path, AssetKinds.Video)
     {
     }
-
     private BinkFile File
     {
         get
@@ -26,14 +22,11 @@ internal sealed class BinkNode : SlotNode, IVideoAsset
             return c.File;
         }
     }
-
     public VideoInfo Video => new(File.Width, File.Height, File.RateNumerator, File.RateDenominator, File.Frames, $"Bink {File.Revision}");
-
     public IVideoReader OpenVideo()
     {
         return new BinkReader(File);
     }
-
     public ReadOnlySpan<byte> Soundtrack
     {
         get
@@ -46,12 +39,10 @@ internal sealed class BinkNode : SlotNode, IVideoAsset
             return c.Wav;
         }
     }
-
     protected override void Check(byte[] payload)
     {
         _ = BinkFile.Read(payload);
     }
-
     public override IEnumerable<PropertyRow> Describe()
     {
         BinkFile f = File;

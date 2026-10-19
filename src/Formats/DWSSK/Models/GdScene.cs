@@ -2,14 +2,11 @@ using System.Numerics;
 using DWSSK.Formats.Anim;
 using DWSSK.Formats.Core;
 using Omega.Plugins;
-
 namespace DWSSK.Formats.Models;
-
 internal interface ITextureLookup
 {
     ImageData? Find(uint wadHash);
 }
-
 internal sealed class GdPrimArrays
 {
     public required float[] Positions { get; init; }
@@ -19,14 +16,12 @@ internal sealed class GdPrimArrays
     public byte[]? Color0 { get; init; }
     public byte[]? Color1 { get; init; }
 }
-
 internal sealed class GdDrawArrays
 {
     public required int[] Triangles { get; init; }
     public ushort[]? Joints { get; init; }
     public float[]? Weights { get; init; }
 }
-
 internal static class GdScene
 {
     public static GdPrimArrays Arrays(GdModel gd, GdPrim p)
@@ -59,7 +54,6 @@ internal static class GdScene
             Color1 = Colors(gd, vb, "COLOR_1"),
         };
     }
-
     private static float[] ToFloat(double[] v)
     {
         float[] f = new float[v.Length];
@@ -69,7 +63,6 @@ internal static class GdScene
         }
         return f;
     }
-
     private static byte[]? Colors(GdModel gd, GdVertices vb, string name)
     {
         if (GdLayouts.Attr(vb, gd.Big, name) is not { } c)
@@ -86,7 +79,6 @@ internal static class GdScene
         }
         return rgba;
     }
-
     private static byte[] ToBytes(double[] v)
     {
         byte[] f = new byte[v.Length];
@@ -96,7 +88,6 @@ internal static class GdScene
         }
         return f;
     }
-
     public static GdDrawArrays? DrawArrays(GdModel gd, GdPrim p, GdDraw d, bool skinned)
     {
         int count = p.Vb.Count;
@@ -158,10 +149,6 @@ internal static class GdScene
         }
         return new GdDrawArrays { Triangles = [.. kept], Joints = joints, Weights = weights };
     }
-
-    // Bone world matrices in the rest pose, built the way the game builds them (Wii 0x800cab00):
-    // each bone's pose as a local matrix, times its parent's world, in index order. The stored
-    // inverse binds undo these to within float error.
     public static Matrix4x4[] BoneWorlds(IReadOnlyList<GdBone> bones)
     {
         Matrix4x4[] world = new Matrix4x4[bones.Count];
@@ -174,7 +161,6 @@ internal static class GdScene
         }
         return world;
     }
-
     public static IReadOnlyList<SceneJoint> Joints(IReadOnlyList<GdBone> bones)
     {
         Matrix4x4[] world = BoneWorlds(bones);
@@ -187,17 +173,14 @@ internal static class GdScene
         }
         return joints;
     }
-
     public static string BoneName(uint hash)
     {
         return $"bone_{Py.Hex8(hash)}";
     }
-
     public static string MeshName(string stem, GdModel gd, int zone)
     {
         return gd.Kind == "gdw" ? $"{stem}_zone{zone}" : stem;
     }
-
     public static SceneGeometry Build(GdModel gd, string stem, ITextureLookup? textures, int lod = 0)
     {
         if (lod >= gd.Lods.Count)
@@ -293,12 +276,10 @@ internal static class GdScene
             Joints = skinned ? Joints(gd.Bones) : [],
         };
     }
-
     public static string MaterialName(GdModel gd, int material)
     {
         return material < gd.Materials.Count ? gd.Materials[material].Name : $"material{material}";
     }
-
     private static bool HasCutout(ImageData image)
     {
         byte[] px = image.Rgba;
@@ -311,7 +292,6 @@ internal static class GdScene
         }
         return false;
     }
-
     private static SceneMesh Mesh(string name, GdPrimArrays a, int[] indices, List<SceneSubmesh> subs, List<int>? used, ushort[]? joints, float[]? weights)
     {
         if (used is null)
@@ -341,7 +321,6 @@ internal static class GdScene
             Submeshes = subs,
         };
     }
-
     private static T[] Gather<T>(T[] src, List<int> used, int width)
     {
         T[] dst = new T[used.Count * width];
@@ -352,14 +331,12 @@ internal static class GdScene
         return dst;
     }
 }
-
 internal static class Mat
 {
     public static double[] Identity()
     {
         return [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1];
     }
-
     public static double[] Transpose(double[] m)
     {
         double[] t = new double[16];
@@ -372,7 +349,6 @@ internal static class Mat
         }
         return t;
     }
-
     public static double[] Mul(double[] a, double[] b)
     {
         double[] m = new double[16];
@@ -390,7 +366,6 @@ internal static class Mat
         }
         return m;
     }
-
     public static double[] Inverse(double[] m)
     {
         double[] a = (double[])m.Clone();

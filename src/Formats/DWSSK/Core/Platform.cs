@@ -1,5 +1,4 @@
 namespace DWSSK.Formats.Core;
-
 internal enum Platform
 {
     PS3,
@@ -7,7 +6,6 @@ internal enum Platform
     Wii,
     N3ds,
 }
-
 internal static class Platforms
 {
     public static string Name(this Platform p)
@@ -20,7 +18,6 @@ internal static class Platforms
             _ => "3DS",
         };
     }
-
     public static string Label(this Platform p)
     {
         return p switch
@@ -31,7 +28,6 @@ internal static class Platforms
             _ => "Nintendo 3DS",
         };
     }
-
     public static Platform Parse(string name)
     {
         return name switch
@@ -43,11 +39,9 @@ internal static class Platforms
             _ => throw new InvalidDataException($"unknown platform \"{name}\""),
         };
     }
-
     public static bool BigEndian(this Platform p)
     {
         return p != Platform.N3ds;
     }
-
     public static IReadOnlyList<string> Names { get; } = ["PS3", "XBOX360", "Wii", "3DS"];
 }

@@ -1,32 +1,24 @@
 using DWSSK.Formats.Core;
-
 namespace DWSSK.Formats.Textures;
-
 internal sealed record Ctpk(int Format, int Width, int Height, int Mips, string Name, int DataStart, int DataSize);
-
 internal static class Pica
 {
     private static readonly int[] s_bpp = [32, 24, 16, 16, 16, 16, 16, 8, 8, 8, 4, 4, 4, 8];
-
     public static readonly string[] Names =
         ["RGBA8", "RGB8", "RGBA5551", "RGB565", "RGBA4444", "LA8", "HILO8", "L8", "A8", "LA4", "L4", "A4", "ETC1", "ETC1A4"];
-
     private static readonly int[,] s_mod =
     {
         { 2, 8, -2, -8 }, { 5, 17, -5, -17 }, { 9, 29, -9, -29 }, { 13, 42, -13, -42 },
         { 18, 60, -18, -60 }, { 24, 80, -24, -80 }, { 33, 106, -33, -106 }, { 47, 183, -47, -183 },
     };
-
     public static int Bpp(int fmt)
     {
         return fmt >= 0 && fmt < s_bpp.Length ? s_bpp[fmt] : throw new InvalidDataException($"PICA format {fmt}");
     }
-
     public static int Size(int fmt, int w, int h)
     {
         return Bin.Align(w, 8) * Bin.Align(h, 8) * Bpp(fmt) / 8;
     }
-
     public static Ctpk ParseCtpk(ReadOnlySpan<byte> blob)
     {
         if (blob.Length < 4 || !blob[..4].SequenceEqual("CTPK"u8))
@@ -51,7 +43,6 @@ internal static class Pica
         int end = Math.Clamp(texOff + dataOff + size, start, blob.Length);
         return new Ctpk(fmt, w, h, mips, name, start, end - start);
     }
-
     public static (int Offset, int Size) LevelSpan(Ctpk c, int level)
     {
         int off = 0;
@@ -61,7 +52,6 @@ internal static class Pica
         }
         return (off, Size(c.Format, Math.Max(1, c.Width >> level), Math.Max(1, c.Height >> level)));
     }
-
     private static void Etc1Block(ulong word, Span<byte> rgb)
     {
         long hi = (long)(word >> 32);
@@ -104,7 +94,6 @@ internal static class Pica
             }
         }
     }
-
     public static byte[] Decode(int fmt, ReadOnlySpan<byte> data, int w, int h)
     {
         int pw = Bin.Align(w, 8);
@@ -181,7 +170,6 @@ internal static class Pica
         }
         return output;
     }
-
     private static void Texel(int fmt, ReadOnlySpan<byte> data, int i, int bpp, byte[] o)
     {
         uint v = bpp switch
@@ -233,7 +221,6 @@ internal static class Pica
                 throw new InvalidDataException($"PICA format {fmt}");
         }
     }
-
     public static byte[] Encode(int fmt, byte[] img, int w, int h)
     {
         int pw = Bin.Align(w, 8);
@@ -361,7 +348,6 @@ internal static class Pica
         }
         return o.ToArray();
     }
-
     private static void AddU64(ByteWriter o, ulong v)
     {
         for (int k = 0; k < 8; k++)
@@ -370,7 +356,6 @@ internal static class Pica
         }
     }
 }
-
 internal static class Etc1
 {
     private static readonly int[,] s_mod =
@@ -378,7 +363,6 @@ internal static class Etc1
         { 2, 8, -2, -8 }, { 5, 17, -5, -17 }, { 9, 29, -9, -29 }, { 13, 42, -13, -42 },
         { 18, 60, -18, -60 }, { 24, 80, -24, -80 }, { 33, 106, -33, -106 }, { 47, 183, -47, -183 },
     };
-
     public static ulong[] Encode(byte[][] blocks)
     {
         ulong[] output = new ulong[blocks.Length];

@@ -1,21 +1,16 @@
 using DWSSK.Formats.Core;
-
 namespace DWSSK.Formats.Audio;
-
 internal sealed record BnkChunk(string Id, int Offset, int Size);
-
 internal static class Bnk
 {
     public static bool IsBank(ReadOnlySpan<byte> b)
     {
         return b.Length >= 8 && b[..4].SequenceEqual("BKHD"u8);
     }
-
     public static bool Big(ReadOnlySpan<byte> b)
     {
         return b.Length >= 6 && b[4] == 0 && b[5] == 0;
     }
-
     public static (bool Big, List<BnkChunk> Chunks, byte[] Tail) Chunks(byte[] b)
     {
         bool big = Big(b);
@@ -30,7 +25,6 @@ internal static class Bnk
         }
         return (big, output, Bin.Slice(b, o, b.Length).ToArray());
     }
-
     public static (JObj Doc, Dictionary<long, byte[]> Media) Unpack(byte[] b, IReadOnlyDictionary<uint, string>? names)
     {
         (bool big, List<BnkChunk> cs, byte[] tail) = Chunks(b);
@@ -129,7 +123,6 @@ internal static class Bnk
         }
         return (doc, media);
     }
-
     private static List<object?> Gaps(ReadOnlySpan<byte> data, List<(long Id, long Off, long Size)> didx)
     {
         bool[] covered = new bool[data.Length];
@@ -164,7 +157,6 @@ internal static class Bnk
         }
         return gaps;
     }
-
     public static long Codec(ReadOnlySpan<byte> wem, bool big)
     {
         if (wem.Length < 16 || !wem[8..16].SequenceEqual("WAVEfmt "u8))
@@ -185,7 +177,6 @@ internal static class Bnk
             _ => 0,
         };
     }
-
     private static void MoveSource(JObj o, long bank, long dataAt, Dictionary<long, (long Off, long Size)> old, List<object?> didx, Dictionary<long, byte[]> media, bool big)
     {
         long sid = J.L(o["source"]);
@@ -210,7 +201,6 @@ internal static class Bnk
             o["size"] = nw["size"];
         }
     }
-
     public static byte[] Pack(JObj doc, IReadOnlyDictionary<long, byte[]> files)
     {
         bool big = J.S(doc["endian"]) == "big";
@@ -334,7 +324,6 @@ internal static class Bnk
         buf.Add(Bin.FromHex(J.S(doc["tail"])));
         return buf.ToArray();
     }
-
     public static Dictionary<uint, string> EventNames(IEnumerable<string> names)
     {
         Dictionary<uint, string> table = [];

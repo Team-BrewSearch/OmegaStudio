@@ -1,26 +1,21 @@
 using DWSSK.Formats.Core;
 using static DWSSK.Formats.Shaders.Bits;
-
 namespace DWSSK.Formats.Shaders;
-
 internal static class Rsx
 {
     public const string Xyzw = "xyzw";
-
     private static readonly Dictionary<long, string> s_vpVec = new()
     {
         [0] = "nop", [1] = "mov", [2] = "mul", [3] = "add", [4] = "mad", [5] = "dp3", [6] = "dph", [7] = "dp4", [8] = "dst",
         [9] = "min", [10] = "max", [11] = "slt", [12] = "sge", [13] = "arl", [14] = "frc", [15] = "flr", [16] = "seq",
         [17] = "sfl", [18] = "sgt", [19] = "sle", [20] = "sne", [21] = "str", [22] = "ssg", [25] = "txl",
     };
-
     private static readonly Dictionary<long, string> s_vpSca = new()
     {
         [0] = "nop", [1] = "mov", [2] = "rcp", [3] = "rcc", [4] = "rsq", [5] = "exp", [6] = "log", [7] = "lit", [8] = "bra",
         [9] = "bri", [10] = "cal", [11] = "cli", [12] = "ret", [13] = "lg2", [14] = "ex2", [15] = "sin", [16] = "cos",
         [17] = "brb", [18] = "clb", [19] = "psh", [20] = "pop",
     };
-
     private static readonly Dictionary<string, int[]> s_vpSrcs = new()
     {
         ["mov"] = [0], ["mul"] = [0, 1], ["add"] = [0, 2], ["mad"] = [0, 1, 2], ["dp3"] = [0, 1], ["dph"] = [0, 1],
@@ -28,35 +23,28 @@ internal static class Rsx
         ["arl"] = [0], ["frc"] = [0], ["flr"] = [0], ["seq"] = [0, 1], ["sfl"] = [0, 1], ["sgt"] = [0, 1], ["sle"] = [0, 1],
         ["sne"] = [0, 1], ["str"] = [0, 1], ["ssg"] = [0], ["txl"] = [0],
     };
-
     private static readonly string[] s_vpIn =
         ["pos", "weight", "normal", "color0", "color1", "fog", "psize", "attr7", "tc0", "tc1", "tc2", "tc3", "tc4", "tc5", "tc6", "tc7"];
-
     private static readonly string[] s_vpOut =
         ["HPOS", "COL0", "COL1", "BFC0", "BFC1", "FOGC", "PSZ", "TEX0", "TEX1", "TEX2", "TEX3", "TEX4", "TEX5", "TEX6", "TEX7", "CLIP"];
-
     private static readonly Dictionary<long, string> s_conds = new()
     {
         [1] = "lt", [2] = "eq", [3] = "le", [4] = "gt", [5] = "ne", [6] = "ge", [7] = "tr", [0] = "fl",
     };
-
     private static readonly Dictionary<string, long> s_vpVecN = s_vpVec.ToDictionary(kv => kv.Value, kv => kv.Key);
     private static readonly Dictionary<string, long> s_vpScaN = s_vpSca.ToDictionary(kv => kv.Value, kv => kv.Key);
     private static readonly Dictionary<string, long> s_condsN = s_conds.ToDictionary(kv => kv.Value, kv => kv.Key);
     private static readonly string[] s_branch = ["bra", "bri", "cal", "cli", "brb", "clb"];
     private static readonly string[] s_branchRet = ["bra", "bri", "cal", "cli", "brb", "clb", "ret"];
-
     public static string Swz4(long x, long y, long z, long w)
     {
         string s = $"{Xyzw[(int)x]}{Xyzw[(int)y]}{Xyzw[(int)z]}{Xyzw[(int)w]}";
         return s == "xyzw" ? string.Empty : "." + s;
     }
-
     private static string Out(long n)
     {
         return n < s_vpOut.Length ? s_vpOut[n] : D(n);
     }
-
     public static string VpText(long d0, long d1, long d2, long d3)
     {
         long[] srcs = [B(d2, 23, 9) | (B(d1, 0, 8) << 9), B(d2, 6, 17), B(d3, 21, 11) | (B(d2, 0, 6) << 11)];
@@ -159,7 +147,6 @@ internal static class Rsx
         string text = parts.Count > 0 ? string.Join(" ; ", parts) : "nop";
         return text + (B(d3, 0, 1) != 0 ? " ; end" : string.Empty);
     }
-
     public static List<string> VpDisasm(ReadOnlySpan<byte> ucode)
     {
         List<string> output = [];
@@ -174,12 +161,10 @@ internal static class Rsx
         }
         return output;
     }
-
     private static bool[] MaskBits(string mask)
     {
         return [.. Xyzw.Select(c => mask.Contains(c, StringComparison.Ordinal))];
     }
-
     private static (long Op, long Cc, bool Sat) OpName(string name, Dictionary<string, long> table)
     {
         bool sat = name.EndsWith("_sat", StringComparison.Ordinal);
@@ -195,27 +180,23 @@ internal static class Rsx
             ?? throw new InvalidDataException($"'{name}' is not an instruction");
         return (Rx.Int(m.Groups[1].Value), m.Groups[2].Value.Length > 0 ? 1 : 0, sat);
     }
-
     public static int[] SwzSel(string text)
     {
         string s = text.Length > 0 ? text[1..] : Xyzw;
         return [.. s.Select(c => Xyzw.IndexOf(c, StringComparison.Ordinal) is int i and >= 0 ? i : throw new InvalidDataException($"'{c}' is not a swizzle component"))];
     }
-
     private static List<string> PySlice(List<string> items, int stop)
     {
         int n = items.Count;
         int end = stop < 0 ? Math.Max(0, n + stop) : Math.Min(stop, n);
         return items.GetRange(0, end);
     }
-
     private static List<string> PySliceFrom(List<string> items, int start)
     {
         int n = items.Count;
         int s = start < 0 ? Math.Max(0, n + start) : Math.Min(start, n);
         return items.GetRange(s, n - s);
     }
-
     public static (long, long, long, long) VpParse(string text, long d0, long d1, long d2, long d3)
     {
         bool end = text.EndsWith(" ; end", StringComparison.Ordinal);
@@ -443,7 +424,6 @@ internal static class Rsx
         d3 = !branchRet ? Put(d3, 21, 11, srcv[2]) : d3;
         return (d0, d1, d2, d3);
     }
-
     public static byte[] VpAsm(IReadOnlyList<string> lines)
     {
         ByteWriter output = new();
@@ -463,7 +443,6 @@ internal static class Rsx
         }
         return output.ToArray();
     }
-
     public static readonly string[] FpOps =
     [
         "nop", "mov", "mul", "add", "mad", "dp3", "dp4", "dst", "min", "max", "slt", "sge", "sle", "sgt", "sne",
@@ -472,7 +451,6 @@ internal static class Rsx
         "upg", "dp2a", "txl", "op48", "txb", "op50", "texbem", "txpbem", "bemlum", "refl", "timeswtex", "dp2",
         "nrm", "div", "divsq", "lif", "fenct", "fencb", "op63", "brk", "cal", "ife", "loop", "rep", "ret",
     ];
-
     private static readonly Dictionary<string, int> s_fpSrcs = new()
     {
         ["mov"] = 1, ["mul"] = 2, ["add"] = 2, ["mad"] = 3, ["dp3"] = 2, ["dp4"] = 2, ["dst"] = 2, ["min"] = 2, ["max"] = 2,
@@ -483,37 +461,31 @@ internal static class Rsx
         ["txl"] = 1, ["txb"] = 1, ["texbem"] = 3, ["txpbem"] = 3, ["refl"] = 2, ["dp2"] = 2, ["nrm"] = 1, ["div"] = 2,
         ["divsq"] = 2, ["lif"] = 1,
     };
-
     private static readonly string[] s_fpIn = ["WPOS", "COL0", "COL1", "FOGC", "TEX0", "TEX1", "TEX2", "TEX3", "TEX4", "TEX5", "TEX6", "TEX7", "TEX8", "TEX9", "SSA"];
     private static readonly Dictionary<long, string> s_fpScale = new() { [1] = "_x2", [2] = "_x4", [3] = "_x8", [5] = "_d2", [6] = "_d4", [7] = "_d8" };
     private static readonly string[] s_fpPrec = ["r", "h", "x", "b"];
     private static readonly string[] s_fpControl = ["ife", "loop", "rep", "brk", "cal", "ret", "fenct", "fencb", "nop", "kil"];
     private static readonly string[] s_fpTex = ["tex", "txp", "txd", "txl", "txb", "texbem", "txpbem"];
     private static readonly string[] s_fpOpsByLen = [.. FpOps.Select((o, i) => (o, i)).OrderByDescending(t => t.o.Length).ThenBy(t => t.i).Select(t => t.o)];
-
     private static readonly Dictionary<(long, long, long), string> s_condNames = new()
     {
         [(1, 0, 0)] = "lt", [(0, 1, 0)] = "eq", [(1, 1, 0)] = "le", [(0, 0, 1)] = "gt", [(1, 0, 1)] = "ne",
         [(0, 1, 1)] = "ge", [(0, 0, 0)] = "fl",
     };
-
     private static readonly Dictionary<string, (long, long, long)> s_fpConds = new()
     {
         ["lt"] = (1, 0, 0), ["eq"] = (0, 1, 0), ["le"] = (1, 1, 0), ["gt"] = (0, 0, 1), ["ne"] = (1, 0, 1),
         ["ge"] = (0, 1, 1), ["fl"] = (0, 0, 0),
     };
-
     public static long FpWord(ReadOnlySpan<byte> b, int o)
     {
         long w = Bin.U32(b, o, true);
         return ((w << 16) | (w >> 16)) & 0xFFFFFFFF;
     }
-
     public static long Swap(long w)
     {
         return ((w << 16) | (w >> 16)) & 0xFFFFFFFF;
     }
-
     public static string F32(double x)
     {
         uint want = BitConverter.SingleToUInt32Bits((float)x);
@@ -527,12 +499,10 @@ internal static class Rsx
         }
         return Py.Repr(x);
     }
-
     private static string FpOp(long opN)
     {
         return opN < FpOps.Length ? FpOps[opN] : $"op{D(opN)}";
     }
-
     public static string FpText(long dst, long s0, long s1, long s2, double[]? cnst, string? uniform)
     {
         long opN = B(dst, 24, 6) | (B(s1, 31, 1) << 6);
@@ -601,7 +571,6 @@ internal static class Rsx
         }
         return text + (B(dst, 0, 1) != 0 ? " ; end" : string.Empty);
     }
-
     public static bool FpUsesConst(long dst, long s0, long s1, long s2)
     {
         long opN = B(dst, 24, 6) | (B(s1, 31, 1) << 6);
@@ -617,7 +586,6 @@ internal static class Rsx
         }
         return false;
     }
-
     public static ((long, long, long, long) Words, long[]? Const, string? Uniform) FpParse(string text, long dst, long s0, long s1, long s2, long[]? cnst)
     {
         string? uniform = null;
@@ -791,9 +759,7 @@ internal static class Rsx
         (long, long, long, long) words = (dst, s0, srcw[1], srcw[2]);
         return (words, FpUsesConst(dst, s0, srcw[1], srcw[2]) ? cnst : null, uniform);
     }
-
     private const string FpMods = @"([hxb]?)(c?)(_x2|_x4|_x8|_d2|_d4|_d8)?(_sat)?(_bx2)?";
-
     public static List<string> FpDisasm(ReadOnlySpan<byte> ucode, IReadOnlyDictionary<long, string?>? uniforms)
     {
         List<string> output = [];
@@ -820,12 +786,10 @@ internal static class Rsx
         }
         return output;
     }
-
     private static double Single(long bits)
     {
         return BitConverter.UInt32BitsToSingle((uint)bits);
     }
-
     public static (byte[] Ucode, Dictionary<string, List<long>> Uniforms) FpAsm(IReadOnlyList<string> lines)
     {
         ByteWriter output = new();

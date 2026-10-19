@@ -2,22 +2,17 @@ using System.Text.RegularExpressions;
 using DWSSK.Formats.Core;
 using DWSSK.Formats.Wad;
 using Omega.Plugins;
-
 namespace DWSSK.Formats.Nodes;
-
 internal sealed record RegionWad(string Name, Func<(Platform? Platform, IEnumerable<(int Type, string File, uint Hash)> Entries)> List, Func<string, byte[]> Read);
-
 internal sealed class RegionIndex
 {
     private static readonly Lock s_lock = new();
     private static readonly Dictionary<string, RegionIndex> s_cache = new(StringComparer.Ordinal);
-
     private readonly string _root;
     private readonly Func<IEnumerable<RegionWad>> _wads;
     private readonly IHostServices _host;
     private readonly Lazy<Dictionary<uint, (RegionWad Wad, string File, Platform? Platform)>> _index;
     private readonly Dictionary<uint, Slot?> _found = [];
-
     private RegionIndex(string root, Func<IEnumerable<RegionWad>> wads, IHostServices host)
     {
         _root = root;
@@ -25,20 +20,17 @@ internal sealed class RegionIndex
         _host = host;
         _index = new(Build);
     }
-
     public static RegionIndex For(string root, bool extracted, IHostServices host)
     {
         string full = Path.GetFullPath(root);
         return Cached((extracted ? "x:" : "w:") + full, () => new RegionIndex(full, () => OnDisk(full, extracted), host));
     }
-
     public static RegionIndex ForRows(string root, Func<IEnumerable<(string Path, Func<byte[]> Bytes)>> rows, IHostServices host)
     {
         return new RegionIndex(root, () => rows()
             .OrderBy(r => Relative(root, r.Path), StringComparer.Ordinal)
             .Select(r => FromBytes(r.Path, r.Bytes, Paths.PlatformOf(r.Path))), host);
     }
-
     private static RegionIndex Cached(string key, Func<RegionIndex> create)
     {
         lock (s_lock)
@@ -50,14 +42,12 @@ internal sealed class RegionIndex
             return index;
         }
     }
-
     private static string Relative(string root, string path)
     {
         string rel = path.Replace('\\', '/');
         string prefix = root.Replace('\\', '/').TrimEnd('/') + "/";
         return (rel.StartsWith(prefix, StringComparison.OrdinalIgnoreCase) ? rel[prefix.Length..] : rel).Replace('/', '\0');
     }
-
     private static IEnumerable<RegionWad> OnDisk(string root, bool extracted)
     {
         IEnumerable<string> found = extracted
@@ -74,7 +64,6 @@ internal sealed class RegionIndex
                 : FromBytes(wad, () => File.ReadAllBytes(wad), Paths.PlatformOf(wad));
         }
     }
-
     private static RegionWad FromBytes(string name, Func<byte[]> bytes, Platform? hint)
     {
         return new RegionWad(name, () =>
@@ -83,7 +72,6 @@ internal sealed class RegionIndex
             return (archive.Platform, archive.Entries.Select(e => (e.Type, e.File, e.Hash)));
         }, file => WadArchive.Read(bytes(), hint).Entries.First(e => e.File == file && !e.IsAlias).Data);
     }
-
     private Dictionary<uint, (RegionWad Wad, string File, Platform? Platform)> Build()
     {
         Dictionary<uint, (RegionWad, string, Platform?)> index = [];
@@ -110,7 +98,6 @@ internal sealed class RegionIndex
         _host.Log($"Indexed {index.Count} textures in {wads} containers under {(_root.Length == 0 ? "the disc's game folder" : _root)} for textures a model's own WAD and global.wad lack.");
         return index;
     }
-
     public Slot? Find(uint hash)
     {
         lock (_found)
@@ -131,7 +118,6 @@ internal sealed class RegionIndex
             return slot;
         }
     }
-
     public static string? WadRoot(string fullPath)
     {
         Match m = WadFiles.Pattern().Match(fullPath);

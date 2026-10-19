@@ -1,12 +1,9 @@
 using DWSSK.Formats.Core;
-
 namespace DWSSK.Formats.Wad;
-
 internal static class Tjzip
 {
     private const int MaxDist = 0x7FFF;
     private const int MaxLen = 0xFFFF;
-
     public static byte[] Decompress(ReadOnlySpan<byte> comp, int size)
     {
         byte[] output = new byte[size];
@@ -75,14 +72,12 @@ internal static class Tjzip
         }
         return output;
     }
-
     private static int At(ReadOnlySpan<byte> comp, int i)
     {
         return i < comp.Length
             ? comp[i]
             : throw new InvalidDataException($"TJZIP stream ends at 0x{comp.Length:X} in the middle of a code");
     }
-
     private static int Literal(ReadOnlySpan<byte> comp, int i, byte[] output, ref int n)
     {
         int count = At(comp, i);
@@ -105,7 +100,6 @@ internal static class Tjzip
         n += take;
         return i + count;
     }
-
     private static void DictCode(ByteWriter output, int length, int dist, int post)
     {
         if (length <= 9 && dist <= 0x3FF)
@@ -145,7 +139,6 @@ internal static class Tjzip
         output.Add((byte)lo);
         output.Add((byte)(dist & 0xFF));
     }
-
     private static void RawBlock(ByteWriter output, ReadOnlySpan<byte> lit)
     {
         while (lit.Length > 0xFFFF)
@@ -170,7 +163,6 @@ internal static class Tjzip
         }
         output.Add(lit);
     }
-
     public static byte[] Compress(ReadOnlySpan<byte> data)
     {
         int n = data.Length;
@@ -214,7 +206,6 @@ internal static class Tjzip
         Flush(output, data, litStart, n, pendingLength, pendingDist);
         return output.ToArray();
     }
-
     private static void Flush(ByteWriter output, ReadOnlySpan<byte> data, int litStart, int litEnd, int length, int dist)
     {
         ReadOnlySpan<byte> lit = data[litStart..litEnd];

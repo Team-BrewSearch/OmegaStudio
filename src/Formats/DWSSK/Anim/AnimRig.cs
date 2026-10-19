@@ -2,26 +2,16 @@ using System.Numerics;
 using DWSSK.Formats.Core;
 using DWSSK.Formats.Models;
 using Omega.Plugins;
-
 namespace DWSSK.Formats.Anim;
-
 internal sealed record AnimKey(double Time, Vector3? T, Quaternion? R, Vector3? S);
-
 internal sealed record AnimTrack(int Bone, List<AnimKey> Keys);
-
 internal sealed record AnimClipData(string Name, int Frames, List<AnimTrack> Tracks);
-
 internal sealed class AnimRig
 {
-    // Bone translations, in the skeleton's poses and in animation keys, are centimetres. The game's
-    // palette builder (Wii 0x800cab00, through 0x800ca970) scales them by 0.00125 into the space the
-    // skinned vertices are stored in; the mesh scale at mesh+4 (8.0) is applied when drawing.
     public const float TranslationScale = 0.00125f;
-
     private readonly int[] _parents;
     private readonly Matrix4x4[] _inverseBind;
     private readonly (Vector3 T, Quaternion R, Vector3 S)[] _bind;
-
     public AnimRig(IReadOnlyList<GdBone> bones)
     {
         _parents = [.. bones.Select(b => b.Parent ?? -1)];
@@ -29,9 +19,7 @@ internal sealed class AnimRig
         _bind = [.. bones.Select(Rest)];
         Names = [.. bones.Select(b => GdScene.BoneName(b.Hash))];
     }
-
     public IReadOnlyList<string> Names { get; }
-
     public static (Vector3 T, Quaternion R, Vector3 S) Rest(GdBone b)
     {
         return (
@@ -39,21 +27,14 @@ internal sealed class AnimRig
             new Quaternion((float)b.Rotation[0], (float)b.Rotation[1], (float)b.Rotation[2], (float)b.Rotation[3]),
             new Vector3((float)b.Scale[0], (float)b.Scale[1], (float)b.Scale[2]));
     }
-
-    // Broadway's single-precision float ops work in double and round the result to single, so fused
-    // and summed values are rounded twice; these two reproduce that.
     private static float Fma(float a, float b, float c)
     {
         return (float)Math.FusedMultiplyAdd(a, b, (double)c);
     }
-
     private static float Add(float a, float b)
     {
         return (float)((double)a + b);
     }
-
-    // The local matrix 0x800ca970 builds: the rotation 0x8000bd00 makes from the quaternion, each
-    // row scaled by S, then T on the bottom row. Row vectors throughout, as System.Numerics uses.
     public static Matrix4x4 Local((Vector3 T, Quaternion R, Vector3 S) p)
     {
         Quaternion q = p.R;
@@ -72,9 +53,6 @@ internal sealed class AnimRig
             2 * Add(xz, yw) * p.S.Z, 2 * Add(yz, -xw) * p.S.Z, Fma(-2, Add(xx, yy), 1) * p.S.Z, 0,
             p.T.X, p.T.Y, p.T.Z, 1);
     }
-
-    // The affine product a * b as 0x8008fc10 (bone worlds) and 0x800cab00 (skin palette) compute it:
-    // each element fma(a2, b2, fma(a0, b0, a1 * b1)), and the bottom row adds b's translation last.
     public static Matrix4x4 Mul(Matrix4x4 a, Matrix4x4 b)
     {
         static float E(float a0, float a1, float a2, float b0, float b1, float b2)
@@ -87,7 +65,6 @@ internal sealed class AnimRig
             E(a.M31, a.M32, a.M33, b.M11, b.M21, b.M31), E(a.M31, a.M32, a.M33, b.M12, b.M22, b.M32), E(a.M31, a.M32, a.M33, b.M13, b.M23, b.M33), 0,
             Add(b.M41, E(a.M41, a.M42, a.M43, b.M11, b.M21, b.M31)), Add(b.M42, E(a.M41, a.M42, a.M43, b.M12, b.M22, b.M32)), Add(b.M43, E(a.M41, a.M42, a.M43, b.M13, b.M23, b.M33)), 1);
     }
-
     private static Matrix4x4 Row(double[] m)
     {
         return new Matrix4x4(
@@ -96,9 +73,6 @@ internal sealed class AnimRig
             (float)m[8], (float)m[9], (float)m[10], (float)m[11],
             (float)m[12], (float)m[13], (float)m[14], (float)m[15]);
     }
-
-    // 0x80091210: the first quaternion is negated when the two point apart, and the blend falls back
-    // to linear weights, without renormalizing, when they are within 1e-4 of each other.
     private static Quaternion Slerp(Quaternion a, Quaternion b, float t)
     {
         float dot = Fma(a.W, b.W, Fma(a.Z, b.Z, Fma(a.X, b.X, a.Y * b.Y)));
@@ -118,13 +92,10 @@ internal sealed class AnimRig
         }
         return new Quaternion(Fma(wa, a.X, wb * b.X), Fma(wa, a.Y, wb * b.Y), Fma(wa, a.Z, wb * b.Z), Fma(wa, a.W, wb * b.W));
     }
-
-    // 0x80015ce0: a + t * (b - a), fused.
     private static Vector3 Lerp(Vector3 a, Vector3 b, float t)
     {
         return new Vector3(Fma(t, Add(b.X, -a.X), a.X), Fma(t, Add(b.Y, -a.Y), a.Y), Fma(t, Add(b.Z, -a.Z), a.Z));
     }
-
     public List<AnimClipData> Read(JObj doc)
     {
         List<AnimClipData> clips = [];
@@ -133,7 +104,6 @@ internal sealed class AnimRig
             JObj a = J.O(ao);
             List<AnimTrack> tracks = [];
             int maxFrame = 0;
-            // Key times are a byte scaled to the range at 0x48 (0x800c6dc0); the files use 255/30 s.
             float range = (float)J.D(a["unknown_48"]);
             foreach (object? to in J.A(a["tracks"]))
             {
@@ -182,13 +152,11 @@ internal sealed class AnimRig
         }
         return clips;
     }
-
     private Matrix4x4 Compose(int bone, AnimKey key)
     {
         (Vector3 bt, Quaternion br, Vector3 bs) = _bind[bone];
         return Local((key.T ?? bt, key.R ?? br, key.S ?? bs));
     }
-
     public AnimationClip ToClip(AnimClipData data)
     {
         List<AnimationTrack> tracks = [];
@@ -209,7 +177,6 @@ internal sealed class AnimRig
         }
         return new AnimationClip { Name = data.Name, Frames = data.Frames, Fps = (float)AnimPack.Fps, Tracks = tracks };
     }
-
     private static AnimKey Sample(List<AnimKey> keys, double t)
     {
         if (t <= keys[0].Time || keys.Count == 1)
@@ -234,7 +201,6 @@ internal sealed class AnimRig
             a.R is { } ar && c.R is { } cr ? Slerp(ar, cr, u) : a.R,
             a.S is { } asv && c.S is { } cs ? Lerp(asv, cs, u) : a.S);
     }
-
     public Matrix4x4[] Pose(AnimClipData clip, double seconds)
     {
         int n = _parents.Length;
@@ -267,7 +233,6 @@ internal sealed class AnimRig
         }
         return skin;
     }
-
     public static bool Skin(SceneGeometry scene, Matrix4x4[] skin, out float[] positions, out float[] normals)
     {
         int total = scene.VertexCount;

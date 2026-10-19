@@ -1,13 +1,9 @@
 using DWSSK.Formats.Core;
-
 namespace DWSSK.Formats.Textures;
-
 internal sealed record TplImage(int Header, int Height, int Width, int Format, int DataOffset);
-
 internal static class Tpl
 {
     public const uint Magic = 0x0020AF30;
-
     private static (int Tw, int Th, int Bits) Tiles(int fmt)
     {
         return fmt switch
@@ -19,14 +15,11 @@ internal static class Tpl
             _ => throw new NotSupportedException($"GX format {fmt}"),
         };
     }
-
     public static readonly string[] Names = ["I4", "I8", "IA4", "IA8", "RGB565", "RGB5A3", "RGBA8"];
-
     public static bool IsTpl(ReadOnlySpan<byte> b)
     {
         return b.Length >= 12 && Bin.U32(b, 0, true) == Magic;
     }
-
     public static List<TplImage> Images(ReadOnlySpan<byte> b)
     {
         if (Bin.U32(b, 0, true) != Magic)
@@ -52,13 +45,11 @@ internal static class Tpl
         }
         return output;
     }
-
     public static int Size(int fmt, int w, int h)
     {
         (int tw, int th, int bits) = Tiles(fmt);
         return Bin.CeilDiv(w, tw) * tw * (Bin.CeilDiv(h, th) * th) * bits / 8;
     }
-
     public static byte[] Decode(int fmt, ReadOnlySpan<byte> data, int w, int h)
     {
         (int tw, int th, int bits) = Tiles(fmt);
@@ -115,7 +106,6 @@ internal static class Tpl
         }
         return Pixels.Untile(units, 4, w, h, tw, th);
     }
-
     public static byte[] Encode(int fmt, byte[] rgba, int w, int h)
     {
         (int tw, int th, int bits) = Tiles(fmt);

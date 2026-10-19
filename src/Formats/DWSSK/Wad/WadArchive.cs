@@ -1,7 +1,5 @@
 using DWSSK.Formats.Core;
-
 namespace DWSSK.Formats.Wad;
-
 internal sealed class WadEntry
 {
     public required string File { get; set; }
@@ -23,7 +21,6 @@ internal sealed class WadEntry
     public int Revision { get; set; }
     public bool IsAlias => Type == WadArchive.AliasType;
     public string Extension => WadArchive.ExtensionOf(File);
-
     public JObj ToManifest()
     {
         JObj m = new()
@@ -61,7 +58,6 @@ internal sealed class WadEntry
         return m;
     }
 }
-
 internal sealed class WadArchive
 {
     public const int Header = 0x80;
@@ -69,7 +65,6 @@ internal sealed class WadArchive
     public const int Buckets = 1024;
     public const int First = Header + (4 * Buckets);
     public const int AliasType = 25;
-
     private WadArchive(Platform platform, uint alignment, List<WadEntry> entries, uint crc)
     {
         Platform = platform;
@@ -77,7 +72,6 @@ internal sealed class WadArchive
         Entries = entries;
         Crc = crc;
     }
-
     public Platform Platform { get; }
     public uint Alignment { get; }
     public List<WadEntry> Entries { get; private set; }
@@ -85,12 +79,10 @@ internal sealed class WadArchive
     public int Revision { get; private set; }
     public bool IsDirty { get; private set; }
     public event Action? Changed;
-
     public static bool IsWad(ReadOnlySpan<byte> head)
     {
         return head.Length >= 4 && head[..4].SequenceEqual("HIG!"u8);
     }
-
     public static string ExtensionOf(string file)
     {
         int slash = file.LastIndexOf('/');
@@ -98,7 +90,6 @@ internal sealed class WadArchive
         int dot = name.IndexOf('.', StringComparison.Ordinal);
         return dot < 0 ? string.Empty : name[dot..].ToLowerInvariant();
     }
-
     public static byte[] ReadImage(ReadOnlySpan<byte> raw)
     {
         if (!IsWad(raw))
@@ -116,7 +107,6 @@ internal sealed class WadArchive
             ? throw new InvalidDataException("HIG! container CRC mismatch: the payload is damaged")
             : image;
     }
-
     public static List<int> EntryOffsets(ReadOnlySpan<byte> img)
     {
         HashSet<int> found = [];
@@ -140,9 +130,7 @@ internal sealed class WadArchive
         sorted.Sort();
         return sorted;
     }
-
     private readonly record struct Raw(int Offset, uint Hash, string Path, int Type, int Size, int Index);
-
     private static Raw Parse(ReadOnlySpan<byte> img, int e)
     {
         Bin.Need(img, e, 0x78);
@@ -156,7 +144,6 @@ internal sealed class WadArchive
             (int)Bin.U32(img, e + 0x68, false),
             (int)Bin.U32(img, e + 0x74, false));
     }
-
     public static string RelPath(string path)
     {
         string[] parts = path.Split('\\');
@@ -164,7 +151,6 @@ internal sealed class WadArchive
             ? string.Join('/', parts[5..])
             : path.Replace(":", string.Empty, StringComparison.Ordinal).Replace('\\', '/');
     }
-
     public static uint PathHash(string path)
     {
         byte[] name = Bin.Latin1(RelPath(path));
@@ -179,7 +165,6 @@ internal sealed class WadArchive
         }
         return Hashes.Crc32(name);
     }
-
     private static string RecoverName(string path, uint want, List<string> known)
     {
         string rel = RelPath(path);
@@ -203,12 +188,10 @@ internal sealed class WadArchive
         }
         return path;
     }
-
     public static int Bucket(uint hash, int type)
     {
         return (int)((hash ^ (uint)(33 * type)) & (Buckets - 1));
     }
-
     public static (int Align, int Bias) DataAlignment(Platform platform, int type)
     {
         if (platform == Platform.PS3)
@@ -226,7 +209,6 @@ internal sealed class WadArchive
         }
         return (64, 0);
     }
-
     public static Platform? PlatformOfPath(string path)
     {
         string[] parts = path.Split('\\');
@@ -243,13 +225,11 @@ internal sealed class WadArchive
             _ => null,
         };
     }
-
     public static WadArchive Read(ReadOnlySpan<byte> file, Platform? hint = null)
     {
         byte[] img = ReadImage(file);
         return FromImage(img, hint);
     }
-
     public static WadArchive FromImage(byte[] img, Platform? hint = null)
     {
         Dictionary<int, int> bucketOf = [];
@@ -318,7 +298,6 @@ internal sealed class WadArchive
             };
         return new WadArchive(platform, alignment, entries, Bin.U32(img, 0x48, false));
     }
-
     public JObj Manifest()
     {
         WadArchive fresh = FromImage(BuildImage(), Platform);
@@ -329,7 +308,6 @@ internal sealed class WadArchive
             ["entries"] = J.List(fresh.Entries.Select(e => (object?)e.ToManifest())),
         };
     }
-
     public static List<WadEntry> EntriesFromManifest(JObj man, Func<string, byte[]> read)
     {
         List<WadEntry> list = [];
@@ -367,13 +345,11 @@ internal sealed class WadArchive
         }
         return list;
     }
-
     public static WadArchive FromManifest(JObj man, Func<string, byte[]> read)
     {
         return new WadArchive(
             Platforms.Parse(J.S(man["platform"])), J.U(man["alignment"]), EntriesFromManifest(man, read), 0);
     }
-
     public string PathPrefix()
     {
         if (Entries.Count == 0)
@@ -383,7 +359,6 @@ internal sealed class WadArchive
         WadEntry first = Entries[0];
         return first.Path[..(first.Path.Length - first.File.Length)];
     }
-
     public int? TypeForName(string fileName)
     {
         Dictionary<string, int> exts = [];
@@ -405,7 +380,6 @@ internal sealed class WadArchive
         }
         return null;
     }
-
     public WadEntry NewEntry(string relative, byte[] data)
     {
         string name = relative[(relative.LastIndexOf('/') + 1)..];
@@ -415,12 +389,10 @@ internal sealed class WadArchive
         string path = PathPrefix() + relative.Replace('/', '\\');
         return new WadEntry { File = relative, Path = path, Hash = PathHash(path), Type = type, Data = data };
     }
-
     public byte[] BuildImage()
     {
         return BuildImage(Platform, Alignment, Entries);
     }
-
     public static byte[] BuildImage(Platform platform, uint alignment, IReadOnlyList<WadEntry> ents)
     {
         int n = ents.Count;
@@ -490,7 +462,6 @@ internal sealed class WadArchive
         Bin.PutU32(img, 0x48, Hashes.Crc32(img.AsSpan(Header), 0xFFFFFFFF), false);
         return img;
     }
-
     public static byte[] CompressImage(byte[] img)
     {
         byte[] comp = Tjzip.Compress(img.AsSpan(Header));
@@ -500,14 +471,12 @@ internal sealed class WadArchive
         comp.CopyTo(file, Header);
         return file;
     }
-
     public byte[] Build()
     {
         byte[] img = BuildImage();
         Crc = Bin.U32(img, 0x48, false);
         return CompressImage(img);
     }
-
     public void Replace(WadEntry entry, byte[] data)
     {
         if (entry.IsAlias)
@@ -518,26 +487,22 @@ internal sealed class WadArchive
         entry.Revision++;
         Touch();
     }
-
     public void Add(WadEntry entry)
     {
         Entries.Add(entry);
         Touch();
     }
-
     public void ReplaceAll(List<WadEntry> entries)
     {
         Entries = entries;
         Touch();
     }
-
     public void Touch()
     {
         Revision++;
         IsDirty = true;
         Changed?.Invoke();
     }
-
     public void MarkSaved()
     {
         IsDirty = false;

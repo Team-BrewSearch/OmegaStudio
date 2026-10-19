@@ -7,9 +7,7 @@ using DWSSK.Formats.Models;
 using DWSSK.Formats.Textures;
 using DWSSK.Formats.Wad;
 using Omega.Plugins;
-
 namespace DWSSK.Formats.Nodes;
-
 internal static class NodeFactory
 {
     public static IAssetNode Create(Slot slot, string name, string path)
@@ -42,13 +40,11 @@ internal static class NodeFactory
             _ => new RawNode(slot, name, path),
         };
     }
-
     public static IEnumerable<IAssetNode> Tree<T>(IEnumerable<T> slots, Func<T, string> pathOf, string root)
         where T : Slot
     {
         return PathTree.Build(slots, pathOf, (n, p, s) => Create(s, n, p), root).GetChildren();
     }
-
     public static string Inside(string dir, string relative)
     {
         string root = Path.GetFullPath(dir);
@@ -57,20 +53,17 @@ internal static class NodeFactory
             ? full
             : throw new InvalidDataException($"'{relative}' points outside {dir}");
     }
-
     public static void Save(string dir, string relative, byte[] data)
     {
         string full = Inside(dir, relative);
         Directory.CreateDirectory(Path.GetDirectoryName(full)!);
         File.WriteAllBytes(full, data);
     }
-
     public static byte[] Utf8(string text)
     {
         return new UTF8Encoding(false).GetBytes(text);
     }
 }
-
 internal sealed class WadNode : AssetNode, IDescribable, ICommandSource
 {
     public WadNode(WadSession session, string name)
@@ -79,15 +72,12 @@ internal sealed class WadNode : AssetNode, IDescribable, ICommandSource
         Session = session;
         ChildFactory = () => NodeFactory.Tree(Session.Slots, s => s.File, name);
     }
-
     public WadSession Session { get; }
     private WadArchive Archive => Session.Archive;
-
     private static string Describe(WadArchive a)
     {
         return $"{a.Entries.Count} entries, {a.Platform.Label()}";
     }
-
     public IEnumerable<PropertyRow> Describe()
     {
         yield return PropertyRow.Of("Platform", Archive.Platform.Label());
@@ -101,7 +91,6 @@ internal sealed class WadNode : AssetNode, IDescribable, ICommandSource
         yield return PropertyRow.Of("Writable", Session.Writable ? "yes" : "no: the container it sits in cannot be written back");
         yield return PropertyRow.Of("Unsaved changes", Archive.IsDirty ? "yes" : "no");
     }
-
     public IEnumerable<AssetCommand> GetCommands()
     {
         yield return new AssetCommand
@@ -137,7 +126,6 @@ internal sealed class WadNode : AssetNode, IDescribable, ICommandSource
             Execute = Rebuild,
         };
     }
-
     private void Rebuild(AssetCommandContext context)
     {
         string dir = Path.GetDirectoryName(Path.GetFullPath(context.Path!))!;
@@ -177,7 +165,6 @@ internal sealed class WadNode : AssetNode, IDescribable, ICommandSource
         context.Changed = SlotNode.Everything;
     }
 }
-
 internal sealed class ArcNode : SlotNode
 {
     public ArcNode(Slot slot, string name, string path)
@@ -190,7 +177,6 @@ internal sealed class ArcNode : SlotNode
             return NodeFactory.Tree(files, s => s.Inner, Name);
         };
     }
-
     private static string Label(Slot slot)
     {
         try
@@ -203,12 +189,10 @@ internal sealed class ArcNode : SlotNode
             return Sizes.Describe(slot.Data.Length);
         }
     }
-
     protected override string DescribeSize()
     {
         return Label(Slot);
     }
-
     private ChildSlot Member(U8Node n)
     {
         string path = n.Path;
@@ -223,12 +207,10 @@ internal sealed class ArcNode : SlotNode
             return U8.Pack(U8.Manifest(b), p => p == path ? data : Bin.Slice(b, (int)files[p].A, (int)(files[p].A + files[p].C)).ToArray());
         });
     }
-
     protected override void Check(byte[] payload)
     {
         _ = U8.Read(payload);
     }
-
     public override IEnumerable<PropertyRow> Describe()
     {
         (List<U8Node> nodes, uint data, uint size) = U8.Read(Slot.Data);
@@ -243,7 +225,6 @@ internal sealed class ArcNode : SlotNode
             yield return row;
         }
     }
-
     public override IEnumerable<AssetCommand> GetCommands()
     {
         yield return new AssetCommand
@@ -299,7 +280,6 @@ internal sealed class ArcNode : SlotNode
         };
     }
 }
-
 internal sealed class TplFileNode : SlotNode
 {
     public TplFileNode(Slot slot, string name, string path)
@@ -308,12 +288,10 @@ internal sealed class TplFileNode : SlotNode
         ChildFactory = () => Enumerable.Range(0, Tpl.Images(Slot.Data).Count)
             .Select(k => (IAssetNode)new TplNode(() => Slot.Data, Slot.CanWrite ? ReplaceBytes : null, k, $"{Slot.Name}.{k}", $"{PathText}/{k}"));
     }
-
     protected override void Check(byte[] payload)
     {
         _ = Tpl.Images(payload);
     }
-
     public override IEnumerable<PropertyRow> Describe()
     {
         List<TplImage> images = Tpl.Images(Slot.Data);
@@ -325,17 +303,14 @@ internal sealed class TplFileNode : SlotNode
         }
     }
 }
-
 internal sealed class SwfNode : SlotNode
 {
     private (int Revision, byte[] Fws)? _fws;
-
     public SwfNode(Slot slot, string name, string path)
         : base(slot, name, path, AssetKinds.Container)
     {
         ChildFactory = Images;
     }
-
     private byte[] Fws
     {
         get
@@ -347,7 +322,6 @@ internal sealed class SwfNode : SlotNode
             return c.Fws;
         }
     }
-
     private IEnumerable<IAssetNode> Images()
     {
         byte[] fws = Fws;
@@ -360,31 +334,26 @@ internal sealed class SwfNode : SlotNode
             }
         }
     }
-
     private SwfTag Tag(int id)
     {
         byte[] fws = Fws;
         return Swf.Tags(fws).Tags.FirstOrDefault(t => Swf.IsImage(t) && Swf.ImageId(t, fws) == id)
             ?? throw new InvalidDataException($"{Slot.Name} no longer holds image {id}");
     }
-
     public ImageData DecodeImage(int id, string label)
     {
         return (Swf.Image(Tag(id), Fws) ?? throw new InvalidDataException($"image {id} is in a bitmap format this reader does not decode"))
             .Decode(b => Host.Images.Load(b, label));
     }
-
     public void ReplaceImage(int id, ImageData image)
     {
         byte[] fws = Swf.ReplaceImage(Fws, Tag(id), image, im => Host.Images.Encode(im, ".jpg"));
         Store(Slot.Data.AsSpan(0, 3).SequenceEqual("CWS"u8) ? Swf.Compress(fws) : fws);
     }
-
     protected override void Check(byte[] payload)
     {
         _ = Swf.Tags(Swf.Decompress(payload));
     }
-
     public override IEnumerable<PropertyRow> Describe()
     {
         JObj info = Swf.Info(Fws);
@@ -401,7 +370,6 @@ internal sealed class SwfNode : SlotNode
             yield return row;
         }
     }
-
     public override IEnumerable<AssetCommand> GetCommands()
     {
         string stem = Path.GetFileNameWithoutExtension(Slot.Name);
@@ -429,7 +397,6 @@ internal sealed class SwfNode : SlotNode
             Execute = context => Extract(context, stem),
         };
     }
-
     private void Extract(AssetCommandContext context, string stem)
     {
         string dir = Path.GetDirectoryName(Path.GetFullPath(context.Path!))!;
@@ -460,12 +427,10 @@ internal sealed class SwfNode : SlotNode
         context.Log($"Extracted {Slot.Name} to {dir}: {stem}.fws.swf, {Path.GetFileName(context.Path!)} and {n} image(s).");
     }
 }
-
 internal sealed class SwfImageNode(SwfNode movie, int id, string name, string path, string tag)
     : AssetNode(name, path, AssetKinds.Texture, tag), IImageAsset, IDescribable
 {
     private (int Revision, ImageData Image)? _image;
-
     public ImageData Image
     {
         get
@@ -477,15 +442,12 @@ internal sealed class SwfImageNode(SwfNode movie, int id, string name, string pa
             return c.Image;
         }
     }
-
     public bool CanReplaceImage => movie.Slot.CanWrite;
-
     public void ReplaceImage(ImageData image)
     {
         ArgumentNullException.ThrowIfNull(image);
         movie.ReplaceImage(id, image);
     }
-
     public IEnumerable<PropertyRow> Describe()
     {
         yield return PropertyRow.Of("Character id", id);
@@ -500,11 +462,9 @@ internal sealed class SwfImageNode(SwfNode movie, int id, string name, string pa
         });
     }
 }
-
 internal sealed class BankNode : SlotNode
 {
     private (int Revision, JObj Doc, Dictionary<long, byte[]> Media)? _unpacked;
-
     public BankNode(Slot slot, string name, string path)
         : base(slot, name, path, AssetKinds.Container)
     {
@@ -514,12 +474,10 @@ internal sealed class BankNode : SlotNode
             return media.Keys.Select(id => (IAssetNode)new WemNode(MediaSlot(id), $"{id}.wem", $"{PathText}/media/{id}.wem"));
         };
     }
-
     private Dictionary<uint, string> Names()
     {
         return Bnk.EventNames(NameBook.Section("event").Concat(Group.LevelNames()));
     }
-
     private (JObj Doc, Dictionary<long, byte[]> Media) Unpacked()
     {
         if (_unpacked is not { } c || c.Revision != Slot.Revision)
@@ -529,7 +487,6 @@ internal sealed class BankNode : SlotNode
         }
         return (c.Doc, c.Media);
     }
-
     private ChildSlot MediaSlot(long id)
     {
         return new ChildSlot(Slot, $"media/{id}.wem", () => Unpacked().Media[id], data =>
@@ -539,12 +496,10 @@ internal sealed class BankNode : SlotNode
             return Bnk.Pack(doc, media);
         });
     }
-
     protected override void Check(byte[] payload)
     {
         _ = Bnk.Unpack(payload, null);
     }
-
     public override IEnumerable<PropertyRow> Describe()
     {
         (JObj doc, Dictionary<long, byte[]> media) = Unpacked();
@@ -577,7 +532,6 @@ internal sealed class BankNode : SlotNode
             yield return row;
         }
     }
-
     public override IEnumerable<AssetCommand> GetCommands()
     {
         yield return ExportText("Export JSON", "JSON document", "*.json", "bank.json", () => PyJson.Dumps(Unpacked().Doc, 1));

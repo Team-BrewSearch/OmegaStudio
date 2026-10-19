@@ -2,18 +2,14 @@ using System.Globalization;
 using DWSSK.Formats.Audio;
 using DWSSK.Formats.Core;
 using Omega.Plugins;
-
 namespace DWSSK.Formats.Nodes;
-
 internal sealed class WemNode : SlotNode, IAudioAsset
 {
     private (int Revision, byte[] Audio)? _audio;
-
     public WemNode(Slot slot, string name, string path)
         : base(slot, name, path, AssetKinds.Audio, Label(slot))
     {
     }
-
     private static string Label(Slot slot)
     {
         if (!slot.Loaded)
@@ -30,12 +26,10 @@ internal sealed class WemNode : SlotNode, IAudioAsset
             return Sizes.Describe(slot.Data.Length);
         }
     }
-
     protected override string DescribeSize()
     {
         return Label(Slot);
     }
-
     public ReadOnlySpan<byte> EncodedAudio
     {
         get
@@ -48,18 +42,15 @@ internal sealed class WemNode : SlotNode, IAudioAsset
             return c.Audio;
         }
     }
-
     private static byte[] Wav(byte[] wem)
     {
         (short[] samples, int rate, int nch) = Wem.Decode(wem);
         return Wem.ToWav(samples, rate, nch);
     }
-
     protected override void Check(byte[] payload)
     {
         _ = Wem.Info(payload);
     }
-
     public override IEnumerable<PropertyRow> Describe()
     {
         WemInfo i = Wem.Info(Slot.Data);
@@ -88,7 +79,6 @@ internal sealed class WemNode : SlotNode, IAudioAsset
             yield return row;
         }
     }
-
     public override IEnumerable<AssetCommand> GetCommands()
     {
         yield return new AssetCommand

@@ -1,29 +1,22 @@
 using System.Text.RegularExpressions;
 using DWSSK.Formats.Core;
-
 namespace DWSSK.Formats.Anim;
-
 internal static partial class AnimPack
 {
     public static readonly string[] Channels = ["rotation", "translation", "scale"];
-
     public static readonly string[] ExtraNames =
     [
         "idleBreathe", "idle_sitting", "squished_front", "squished_side", "LostControl",
         "LostControl_w_item", "LostControlIdle", "lookAround", "idleWFlag", "wavingTwoHands",
         "item_switch_up_balloon", "item_takeout_balloon", "item_holdingidle_balloon",
     ];
-
     public const double Fps = 30;
     private static readonly float s_qmax = GameSqrt(0.5f);
     private static readonly float s_qstep = (s_qmax + s_qmax) / 1023f;
-
     [GeneratedRegex(@"\[\s+([^\[\]{}]+?)\s+\]")]
     private static partial Regex FlatList();
-
     [GeneratedRegex("\\{\\s+(\"frame\"[^{}]+?)\\s+\\}")]
     private static partial Regex KeyObject();
-
     public static bool IsAnimPack(ReadOnlySpan<byte> b)
     {
         if (b.Length < 12)
@@ -33,16 +26,10 @@ internal static partial class AnimPack
         bool big = b[0] == 0;
         return Bin.U32(b, 0, big) == 12;
     }
-
-    // Nine significant digits give back the exact single-precision value the game decodes.
     private static double Short(double x)
     {
         return Py.ParseFloat(Py.FormatG(x, 9));
     }
-
-    // A sign-magnitude key component as the game decodes it (Wii 0x800c6f60 for translations,
-    // 0x800c7430 for scales): the low bits over their maximum, then times the range, in single
-    // precision; the top bit makes it negative.
     private static double SmRead(ReadOnlySpan<byte> b, int o, int width, float rng)
     {
         if (width == 0)
@@ -59,12 +46,10 @@ internal static partial class AnimPack
         float x = SmValue(v & top, top, rng);
         return Short(v > top ? -x : x);
     }
-
     private static float SmValue(long n, long top, float rng)
     {
         return rng * (float)((double)(float)n / (float)top);
     }
-
     private static byte[] SmWrite(double x, float rng, int width)
     {
         long top = (1L << ((8 * width) - 1)) - 1;
@@ -74,8 +59,6 @@ internal static partial class AnimPack
         }
         double r = Py.Round(Math.Abs(x) / rng * top);
         long n = Math.Min(top, (long)r);
-        // In single precision a 3-byte step can round to the neighbouring one; take the step the
-        // game decodes to this exact value (one per value at these widths), so keys rebuild unchanged.
         for (long m = Math.Max(0, n - 2); m <= Math.Min(top, n + 2); m++)
         {
             if (SmValue(m, top, rng) == (float)Math.Abs(x))
@@ -95,7 +78,6 @@ internal static partial class AnimPack
         }
         return o;
     }
-
     public static double[] QuatDecode(uint v)
     {
         float[] c = new float[3];
@@ -114,14 +96,12 @@ internal static partial class AnimPack
         float inv = 1f / (len == 0 ? 0f : GameSqrt(len));
         return [.. q.Select(x => (double)(x * inv))];
     }
-
     private static float GameSqrt(float x)
     {
         double y = 1.0 / Math.Sqrt(x);
         float t = (float)(3.0 - ((double)x * (float)(y * y)));
         return x * ((float)(0.5 * y) * t);
     }
-
     public static uint QuatEncode(IReadOnlyList<double> q0)
     {
         double sum = 0;
@@ -170,7 +150,6 @@ internal static partial class AnimPack
         }
         return best;
     }
-
     public static JObj Read(ReadOnlySpan<byte> b)
     {
         bool big = Bin.U8(b, 0) == 0;
@@ -289,7 +268,6 @@ internal static partial class AnimPack
         }
         return doc;
     }
-
     public static byte[] Write(JObj doc)
     {
         bool big = J.S(doc["endian"]) == "big";
@@ -417,14 +395,12 @@ internal static partial class AnimPack
         }
         return [.. buf];
     }
-
     public static string Dumps(JObj doc)
     {
         string s = PyJson.Dumps(doc, 1);
         s = FlatList().Replace(s, m => "[" + string.Join(' ', Py.SplitWhitespace(m.Groups[1].Value)) + "]");
         return KeyObject().Replace(s, m => "{" + string.Join(' ', Py.SplitWhitespace(m.Groups[1].Value)) + "}");
     }
-
     public static void AddNames(JObj doc, IEnumerable<string> names)
     {
         Dictionary<uint, string> table = [];

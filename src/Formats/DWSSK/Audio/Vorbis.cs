@@ -1,15 +1,12 @@
 using System.Numerics;
 using DWSSK.Formats.Core;
-
 namespace DWSSK.Formats.Audio;
-
 internal sealed class BitStream(byte[]? data = null)
 {
     private readonly byte[] _data = data ?? [];
     private readonly List<byte> _out = [];
     private long _pos;
     private long _n;
-
     public long Read(int width)
     {
         long v = 0;
@@ -25,7 +22,6 @@ internal sealed class BitStream(byte[]? data = null)
         }
         return v;
     }
-
     public void Write(long v, int width)
     {
         for (int k = 0; k < width; k++)
@@ -40,14 +36,12 @@ internal sealed class BitStream(byte[]? data = null)
             _n++;
         }
     }
-
     public long Copy(BitStream src, int width)
     {
         long v = src.Read(width);
         Write(v, width);
         return v;
     }
-
     public byte[] Bytes()
     {
         int len = (int)((_n + 7) / 8);
@@ -59,11 +53,9 @@ internal sealed class BitStream(byte[]? data = null)
         return o;
     }
 }
-
 internal static class Vorbis
 {
     private static readonly Lazy<(byte[] Lib, uint[] Offs)> s_codebooks = new(LoadCodebooks);
-
     private static (byte[], uint[]) LoadCodebooks()
     {
         using Stream stream = typeof(Vorbis).Assembly.GetManifestResourceStream("DWSSK.packed_codebooks_aoTuV_603.bin")
@@ -75,7 +67,6 @@ internal static class Vorbis
         int n = (lib.Length - table) / 4;
         return (lib, Bin.U32s(lib, table, n, false));
     }
-
     internal static byte[] Codebook(long i)
     {
         (byte[] lib, uint[] offs) = s_codebooks.Value;
@@ -85,12 +76,10 @@ internal static class Vorbis
         }
         return Bin.Slice(lib, (int)offs[i], (int)offs[i + 1]).ToArray();
     }
-
     public static int Ilog(long v)
     {
         return v <= 0 ? 0 : 64 - BitOperations.LeadingZeroCount((ulong)v);
     }
-
     public static long Quantvals(long entries, long dims)
     {
         long vals = entries >> (int)((Ilog(entries) - 1) * (dims - 1) / dims);
@@ -105,7 +94,6 @@ internal static class Vorbis
             vals += lo > entries ? -1 : 1;
         }
     }
-
     private static void RebuildCodebook(byte[] cb, BitStream output)
     {
         BitStream src = new(cb);
@@ -151,7 +139,6 @@ internal static class Vorbis
             }
         }
     }
-
     internal static BitStream Header(int kind)
     {
         BitStream w = new();
@@ -162,7 +149,6 @@ internal static class Vorbis
         }
         return w;
     }
-
     public static (byte[] Setup, List<long> Modes) RebuildSetup(byte[] pkt, int channels)
     {
         BitStream src = new(pkt);

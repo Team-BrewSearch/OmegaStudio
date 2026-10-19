@@ -2,18 +2,14 @@ using System.Globalization;
 using System.IO.Compression;
 using System.Text;
 using DWSSK.Formats.Core;
-
 namespace DWSSK.Formats.Data;
-
 internal static class Lcl
 {
     private static readonly UTF8Encoding s_utf8 = new(false, true);
-
     public static bool Big(ReadOnlySpan<byte> b)
     {
         return Bin.U8(b, 0) == 0;
     }
-
     public static JObj Read(byte[] b)
     {
         bool big = Big(b);
@@ -39,7 +35,6 @@ internal static class Lcl
         }
         return new JObj { ["endian"] = big ? "big" : "little", ["strings"] = strings };
     }
-
     public static byte[] Write(JObj doc)
     {
         bool big = J.S(doc["endian"]) != "little";
@@ -49,8 +44,6 @@ internal static class Lcl
         ByteWriter data = new();
         int baseOff = 4 + (16 * recs.Count);
         Dictionary<string, int> seen = new(StringComparer.Ordinal);
-        // The game finds a string by binary search with the hashes in descending order (Wii
-        // 0x800f5370); the files already are, so they rebuild unchanged.
         foreach (object? ro in recs.OrderByDescending(r => Py.ParseHex(J.S(J.O(r)["hash"]))))
         {
             JObj r = J.O(ro);
@@ -71,14 +64,12 @@ internal static class Lcl
         return head.ToArray();
     }
 }
-
 internal static class Fkd
 {
     public static bool IsFkd(ReadOnlySpan<byte> b)
     {
         return b.Length >= 0x38 && b[..4].SequenceEqual("FKD."u8);
     }
-
     public static JObj Read(byte[] b)
     {
         float v = Bin.F32(b, 0x10, true);
@@ -127,7 +118,6 @@ internal static class Fkd
             ["glyphs"] = glyphs,
         };
     }
-
     public static byte[] Write(JObj doc)
     {
         bool big = J.S(doc["endian"]) == "big";
@@ -160,11 +150,9 @@ internal static class Fkd
         return o.ToArray();
     }
 }
-
 internal static class Cam
 {
     private static readonly (string Name, int N)[] s_tracks = [("position", 4), ("direction", 4), ("fov", 2)];
-
     public static JObj Read(byte[] b)
     {
         bool big = b.Length >= 8 && b[4] == 0 && b[5] == 0 && b[6] == 0 && b[7] == 0x1C;
@@ -184,7 +172,6 @@ internal static class Cam
         }
         return o;
     }
-
     public static byte[] Write(JObj doc)
     {
         bool big = J.S(doc["endian"]) == "big";
@@ -213,14 +200,12 @@ internal static class Cam
         return head.ToArray();
     }
 }
-
 internal static class Csd
 {
     public static bool IsCsd(ReadOnlySpan<byte> b)
     {
         return b.Length >= 12 && b[..4].SequenceEqual("STD "u8);
     }
-
     public static JObj Read(byte[] b)
     {
         bool big = b.Length >= 6 && b[4] == 0 && b[5] == 0;
@@ -240,7 +225,6 @@ internal static class Csd
         }
         return new JObj { ["endian"] = big ? "big" : "little", ["version"] = (long)ver, ["surfaces"] = surfaces };
     }
-
     public static byte[] Write(JObj doc)
     {
         bool big = J.S(doc["endian"]) == "big";
@@ -249,8 +233,6 @@ internal static class Csd
         o.Add("STD "u8);
         o.U32(J.U(doc["version"]), big);
         o.U32((uint)surfaces.Count, big);
-        // The game finds a surface by binary search on its name hash (Wii 0x8008f030), so the
-        // table stays sorted; the files already are, so they rebuild unchanged.
         foreach (object? s in surfaces.OrderBy(s => Py.ParseHex(J.S(J.O(s)["name"]))))
         {
             JObj x = J.O(s);
@@ -262,14 +244,12 @@ internal static class Csd
         return o.ToArray();
     }
 }
-
 internal static class Nav
 {
     public static bool IsNav(ReadOnlySpan<byte> b)
     {
         return b.Length >= 12 && b[..4].SequenceEqual("Nav\0"u8);
     }
-
     public static JObj Read(byte[] b)
     {
         bool big = b.Length >= 6 && b[4] == 0 && b[5] == 0;
@@ -313,7 +293,6 @@ internal static class Nav
         }
         return new JObj { ["endian"] = big ? "big" : "little", ["version"] = (long)ver, ["meshes"] = meshes };
     }
-
     public static byte[] Write(JObj doc)
     {
         bool big = J.S(doc["endian"]) == "big";
@@ -386,7 +365,6 @@ internal static class Nav
         head.Add(data.Span);
         return head.ToArray();
     }
-
     public static string ToObj(JObj doc)
     {
         StringBuilder sb = new();
@@ -415,14 +393,12 @@ internal static class Nav
         return sb.ToString();
     }
 }
-
 internal static class Col
 {
     public static bool IsCol(ReadOnlySpan<byte> b)
     {
         return b.Length >= 16 && b[..4].SequenceEqual("PCOL"u8);
     }
-
     private static object? F(double v)
     {
         if (double.IsFinite(v))
@@ -433,7 +409,6 @@ internal static class Col
         Bin.PutU32(bits, 0, BitConverter.SingleToUInt32Bits((float)v), true);
         return new JObj { ["bits"] = Bin.Hex(bits) };
     }
-
     private static byte[] Fb(object? x)
     {
         if (x is JObj o)
@@ -444,7 +419,6 @@ internal static class Col
         Bin.PutF32(bits, 0, J.D(x), true);
         return bits;
     }
-
     private static List<object?> Floats(byte[] b, int o, int n, bool big)
     {
         List<object?> v = new(n);
@@ -454,7 +428,6 @@ internal static class Col
         }
         return v;
     }
-
     private static void PackFloats(ByteWriter o, List<object?> vals, bool big)
     {
         foreach (object? v in vals)
@@ -462,7 +435,6 @@ internal static class Col
             o.U32(Bin.U32(Fb(v), 0, true), big);
         }
     }
-
     public static JObj Read(byte[] b)
     {
         bool big = b.Length >= 6 && b[4] == 0 && b[5] == 0;
@@ -533,7 +505,6 @@ internal static class Col
         }
         return doc;
     }
-
     public static byte[] Write(JObj doc)
     {
         bool big = J.S(doc["endian"]) == "big";
@@ -663,7 +634,6 @@ internal static class Col
         output.PatchU32(12, (uint)objs, big);
         return output.ToArray();
     }
-
     private static void Place(byte[] body, int at, ByteWriter data, int size)
     {
         if (data.Length != size)
@@ -672,7 +642,6 @@ internal static class Col
         }
         data.Span.CopyTo(body.AsSpan(at));
     }
-
     public static string ToObj(JObj doc)
     {
         if (doc["mesh"] is not JObj m || m.Count == 0)
@@ -707,25 +676,21 @@ internal static class Col
         }
         return string.Join('\n', lines) + "\n";
     }
-
     private static string Repr(object? v)
     {
         return v is JObj o ? PyDictRepr(o) : Py.Repr(J.D(v));
     }
-
     private static string PyDictRepr(JObj o)
     {
         return "{" + string.Join(", ", o.Select(kv => $"'{kv.Key}': '{kv.Value}'")) + "}";
     }
 }
-
 internal static class Nog
 {
     public static bool IsNog(ReadOnlySpan<byte> b)
     {
         return b.Length >= 16 && b[..4].SequenceEqual("NOG "u8);
     }
-
     public static JObj Read(byte[] b)
     {
         uint zero = Bin.U32(b, 4, false);
@@ -739,7 +704,6 @@ internal static class Nog
         parts.RemoveAt(parts.Count - 1);
         return new JObj { ["level_hash"] = (long)level, ["names"] = J.List(parts.Select(p => (object?)p)) };
     }
-
     public static byte[] Write(JObj doc)
     {
         ByteWriter body = new();
@@ -756,24 +720,19 @@ internal static class Nog
         o.Add(body.Span);
         return o.ToArray();
     }
-
     public static IEnumerable<string> Strings(ReadOnlySpan<byte> b)
     {
         return Bin.Latin1(b[Math.Min(16, b.Length)..]).Split('\0').Where(s => s.Length > 0);
     }
 }
-
 internal sealed record U8Node(int Type, string Name, uint A, uint C, string Path);
-
 internal static class U8
 {
     public const uint Magic = 0x55AA382D;
-
     public static bool IsU8(ReadOnlySpan<byte> b)
     {
         return b.Length >= 0x20 && Bin.U32(b, 0, true) == Magic;
     }
-
     public static (List<U8Node> Nodes, uint Data, uint Size) Read(byte[] b)
     {
         if (Bin.U32(b, 0, true) != Magic)
@@ -811,7 +770,6 @@ internal static class U8
         }
         return (nodes, data, size);
     }
-
     public static JObj Manifest(byte[] b)
     {
         (List<U8Node> nodes, uint data, uint size) = Read(b);
@@ -831,7 +789,6 @@ internal static class U8
             ["tail"] = Bin.Hex(Bin.Slice(b, (int)Math.Min(tailStart, int.MaxValue), b.Length)),
         };
     }
-
     public static byte[] Pack(JObj man, Func<string, byte[]> read)
     {
         List<object?> nodes = J.A(man["nodes"]);
@@ -884,9 +841,7 @@ internal static class U8
         return buf.ToArray();
     }
 }
-
 internal sealed record SwfTag(int Code, int Offset, int Length, int Start);
-
 internal static class Swf
 {
     private static readonly Dictionary<int, string> s_tags = new()
@@ -908,17 +863,14 @@ internal static class Swf
         [1005] = "GFx_DefineCompactedFont", [1006] = "GFx_DefineExternalSound", [1007] = "GFx_DefineExternalStreamSound",
         [1008] = "GFx_DefineSubImage", [1009] = "GFx_DefineExternalImage2",
     };
-
     public static string TagName(int code)
     {
         return s_tags.TryGetValue(code, out string? n) ? n : $"tag{code}";
     }
-
     public static bool IsSwf(ReadOnlySpan<byte> b)
     {
         return b.Length >= 8 && (b[..3].SequenceEqual("CWS"u8) || b[..3].SequenceEqual("FWS"u8));
     }
-
     public static byte[] Decompress(byte[] b)
     {
         if (b.AsSpan(0, 3).SequenceEqual("FWS"u8))
@@ -937,7 +889,6 @@ internal static class Swf
         z.CopyTo(output);
         return output.ToArray();
     }
-
     public static byte[] Compress(byte[] fws)
     {
         using MemoryStream output = new();
@@ -949,7 +900,6 @@ internal static class Swf
         }
         return output.ToArray();
     }
-
     public static (double Rate, int Frames, List<SwfTag> Tags) Tags(byte[] fws)
     {
         int nbits = Bin.U8(fws, 8) >> 3;
@@ -979,7 +929,6 @@ internal static class Swf
         }
         return (rate / 256.0, frames, tags);
     }
-
     private static (string, int) CStr(ReadOnlySpan<byte> b, int o)
     {
         int e = b[o..].IndexOf((byte)0);
@@ -989,7 +938,6 @@ internal static class Swf
         }
         return (Bin.Latin1(b.Slice(o, e)), o + e + 1);
     }
-
     public static JObj Info(byte[] fws)
     {
         (double rate, int frames, List<SwfTag> ts) = Tags(fws);
@@ -1067,17 +1015,14 @@ internal static class Swf
         }
         return info;
     }
-
     public static bool IsImage(SwfTag t)
     {
         return t.Code is 20 or 21 or 35 or 36;
     }
-
     public static int ImageId(SwfTag t, byte[] fws)
     {
         return Bin.U16(fws, t.Offset, false);
     }
-
     public static byte[] ReplaceImage(byte[] fws, SwfTag t, Omega.Plugins.ImageData image, Func<Omega.Plugins.ImageData, byte[]> jpeg)
     {
         ByteWriter body = new(image.Rgba.Length + 64);
@@ -1131,7 +1076,6 @@ internal static class Swf
         o.PatchU32(4, (uint)o.Length, false);
         return o.ToArray();
     }
-
     private static byte[] ZlibCompress(byte[] data)
     {
         using MemoryStream output = new();
@@ -1141,7 +1085,6 @@ internal static class Swf
         }
         return output.ToArray();
     }
-
     public static byte[] ZlibDecompress(ReadOnlySpan<byte> data)
     {
         using MemoryStream input = new(data.ToArray());
@@ -1150,7 +1093,6 @@ internal static class Swf
         z.CopyTo(output);
         return output.ToArray();
     }
-
     public static (int Id, string Kind, Func<Func<byte[], Omega.Plugins.ImageData>, Omega.Plugins.ImageData> Decode)? Image(SwfTag t, byte[] fws)
     {
         if (t.Code is not (20 or 21 or 35 or 36))

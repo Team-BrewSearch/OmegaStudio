@@ -1,18 +1,13 @@
 using System.Collections;
 using System.Globalization;
 using System.Text;
-
 namespace DWSSK.Formats.Core;
-
 internal sealed class JObj : IEnumerable<KeyValuePair<string, object?>>
 {
     private readonly List<string> _keys = [];
     private readonly Dictionary<string, object?> _values = new(StringComparer.Ordinal);
-
     public int Count => _keys.Count;
-
     public IReadOnlyList<string> Keys => _keys;
-
     public object? this[string key]
     {
         get => _values.TryGetValue(key, out object? v)
@@ -27,24 +22,20 @@ internal sealed class JObj : IEnumerable<KeyValuePair<string, object?>>
             _values[key] = value;
         }
     }
-
     public bool Has(string key)
     {
         return _values.ContainsKey(key);
     }
-
     public object? Get(string key, object? fallback = null)
     {
         return _values.TryGetValue(key, out object? v) ? v : fallback;
     }
-
     public object? Pop(string key)
     {
         object? v = this[key];
         Remove(key);
         return v;
     }
-
     public bool Remove(string key)
     {
         if (!_values.Remove(key))
@@ -54,7 +45,6 @@ internal sealed class JObj : IEnumerable<KeyValuePair<string, object?>>
         _ = _keys.Remove(key);
         return true;
     }
-
     public void SetDefault(string key, object? value)
     {
         if (!Has(key))
@@ -62,7 +52,6 @@ internal sealed class JObj : IEnumerable<KeyValuePair<string, object?>>
             this[key] = value;
         }
     }
-
     public JObj Copy()
     {
         JObj c = [];
@@ -72,12 +61,10 @@ internal sealed class JObj : IEnumerable<KeyValuePair<string, object?>>
         }
         return c;
     }
-
     public void Add(string key, object? value)
     {
         this[key] = value;
     }
-
     public IEnumerator<KeyValuePair<string, object?>> GetEnumerator()
     {
         foreach (string k in _keys)
@@ -85,13 +72,11 @@ internal sealed class JObj : IEnumerable<KeyValuePair<string, object?>>
             yield return new KeyValuePair<string, object?>(k, _values[k]);
         }
     }
-
     IEnumerator IEnumerable.GetEnumerator()
     {
         return GetEnumerator();
     }
 }
-
 internal static class J
 {
     public static long L(object? v)
@@ -106,12 +91,10 @@ internal static class J
             _ => throw new StructException($"expected an integer, found {Describe(v)}"),
         };
     }
-
     public static int I(object? v)
     {
         return checked((int)L(v));
     }
-
     public static uint U(object? v)
     {
         long l = L(v);
@@ -119,7 +102,6 @@ internal static class J
             ? throw new StructException($"{l} does not fit in an unsigned 32-bit field")
             : (uint)l;
     }
-
     public static uint U16(object? v)
     {
         long l = L(v);
@@ -127,13 +109,11 @@ internal static class J
             ? throw new StructException($"{l} does not fit in an unsigned 16-bit field")
             : (uint)l;
     }
-
     public static byte U8(object? v)
     {
         long l = L(v);
         return l is < 0 or > 255 ? throw new StructException($"{l} does not fit in a byte") : (byte)l;
     }
-
     public static int I32(object? v)
     {
         long l = L(v);
@@ -141,7 +121,6 @@ internal static class J
             ? throw new StructException($"{l} does not fit in a signed 32-bit field")
             : (int)l;
     }
-
     public static short I16(object? v)
     {
         long l = L(v);
@@ -149,7 +128,6 @@ internal static class J
             ? throw new StructException($"{l} does not fit in a signed 16-bit field")
             : (short)l;
     }
-
     public static double D(object? v)
     {
         return v switch
@@ -162,22 +140,18 @@ internal static class J
             _ => throw new StructException($"expected a number, found {Describe(v)}"),
         };
     }
-
     public static string S(object? v)
     {
         return v as string ?? throw new InvalidDataException($"expected a string, found {Describe(v)}");
     }
-
     public static JObj O(object? v)
     {
         return v as JObj ?? throw new InvalidDataException($"expected an object, found {Describe(v)}");
     }
-
     public static List<object?> A(object? v)
     {
         return v as List<object?> ?? throw new InvalidDataException($"expected a list, found {Describe(v)}");
     }
-
     public static bool Truthy(object? v)
     {
         return v switch
@@ -192,27 +166,22 @@ internal static class J
             _ => true,
         };
     }
-
     public static List<object?> List(IEnumerable<object?> items)
     {
         return [.. items];
     }
-
     public static List<object?> Longs(IEnumerable<long> items)
     {
         return [.. items.Select(x => (object?)x)];
     }
-
     public static List<object?> Longs(IEnumerable<uint> items)
     {
         return [.. items.Select(x => (object?)(long)x)];
     }
-
     public static List<object?> Longs(IEnumerable<int> items)
     {
         return [.. items.Select(x => (object?)(long)x)];
     }
-
     public static List<object?> Longs(ReadOnlySpan<byte> items)
     {
         List<object?> list = new(items.Length);
@@ -222,17 +191,14 @@ internal static class J
         }
         return list;
     }
-
     public static List<object?> Doubles(IEnumerable<float> items)
     {
         return [.. items.Select(x => (object?)(double)x)];
     }
-
     public static List<object?> Doubles(IEnumerable<double> items)
     {
         return [.. items.Select(x => (object?)x)];
     }
-
     public static bool Equal(object? a, object? b)
     {
         switch (a)
@@ -273,7 +239,6 @@ internal static class J
                 return Equals(a, b);
         }
     }
-
     public static string Describe(object? v)
     {
         return v switch
@@ -286,7 +251,6 @@ internal static class J
         };
     }
 }
-
 internal static class PyJson
 {
     public static string Dumps(object? value, int? indent = null, bool ensureAscii = true)
@@ -295,12 +259,10 @@ internal static class PyJson
         Write(sb, value, indent, ensureAscii, 0);
         return sb.ToString();
     }
-
     public static byte[] DumpBytes(object? value, int? indent = 1, bool ensureAscii = true)
     {
         return new UTF8Encoding(false).GetBytes(Dumps(value, indent, ensureAscii));
     }
-
     private static void Write(StringBuilder sb, object? v, int? indent, bool ascii, int level)
     {
         switch (v)
@@ -369,7 +331,6 @@ internal static class PyJson
                 throw new InvalidDataException($"cannot write {v.GetType().Name} as JSON");
         }
     }
-
     private static void NewLine(StringBuilder sb, int? indent, int level)
     {
         if (indent is { } n)
@@ -378,7 +339,6 @@ internal static class PyJson
             sb.Append(' ', n * level);
         }
     }
-
     private static void WriteString(StringBuilder sb, string s, bool ascii)
     {
         sb.Append('"');
@@ -421,7 +381,6 @@ internal static class PyJson
         }
         sb.Append('"');
     }
-
     public static object? Loads(string text)
     {
         Parser p = new(text);
@@ -430,18 +389,14 @@ internal static class PyJson
         p.Skip();
         return p.AtEnd ? v : throw p.Error("extra data after the JSON value");
     }
-
     public static object? Loads(ReadOnlySpan<byte> utf8)
     {
         return Loads(Encoding.UTF8.GetString(utf8));
     }
-
     private sealed class Parser(string s)
     {
         private int _i;
-
         public bool AtEnd => _i >= s.Length;
-
         public InvalidDataException Error(string what)
         {
             int line = 1;
@@ -460,7 +415,6 @@ internal static class PyJson
             }
             return new InvalidDataException($"JSON: {what} at line {line} column {col}");
         }
-
         public void Skip()
         {
             while (_i < s.Length && s[_i] is ' ' or '\t' or '\n' or '\r')
@@ -468,7 +422,6 @@ internal static class PyJson
                 _i++;
             }
         }
-
         private bool Lit(string word)
         {
             if (string.CompareOrdinal(s, _i, word, 0, word.Length) == 0)
@@ -478,7 +431,6 @@ internal static class PyJson
             }
             return false;
         }
-
         public object? Value()
         {
             if (AtEnd)
@@ -510,7 +462,6 @@ internal static class PyJson
                     return Number();
             }
         }
-
         private JObj Object()
         {
             _i++;
@@ -555,7 +506,6 @@ internal static class PyJson
                 throw Error("expected ',' or '}'");
             }
         }
-
         private List<object?> Array()
         {
             _i++;
@@ -588,7 +538,6 @@ internal static class PyJson
                 throw Error("expected ',' or ']'");
             }
         }
-
         private string String()
         {
             _i++;
@@ -653,7 +602,6 @@ internal static class PyJson
                 }
             }
         }
-
         private object Number()
         {
             int start = _i;

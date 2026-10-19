@@ -1,7 +1,5 @@
 using DWSSK.Formats.Core;
-
 namespace DWSSK.Formats.Data;
-
 internal static class P2b
 {
     private static byte[] AsciiUpper(byte[] s)
@@ -16,7 +14,6 @@ internal static class P2b
         }
         return o;
     }
-
     private static byte[] AsciiLower(byte[] s)
     {
         byte[] o = (byte[])s.Clone();
@@ -29,7 +26,6 @@ internal static class P2b
         }
         return o;
     }
-
     public static uint Scheme(string scheme, byte[] s)
     {
         return scheme switch
@@ -41,9 +37,7 @@ internal static class P2b
             _ => throw new KeyNotFoundException($"hash scheme '{scheme}'"),
         };
     }
-
     private static readonly string[] s_schemes = ["crc", "upper", "path", "wwise"];
-
     public static string SchemeOf(string name, uint h)
     {
         byte[] e = Bin.Latin1(name);
@@ -56,7 +50,6 @@ internal static class P2b
         }
         throw new InvalidDataException($"no hash scheme gives 0x{h:x} for '{name}'");
     }
-
     public static int EnumWidth(bool big, IReadOnlyList<long> values)
     {
         if (big || values.Count == 0)
@@ -71,21 +64,16 @@ internal static class P2b
         }
         return lo >= -32768 && hi <= 65535 ? 2 : 4;
     }
-
     public static bool IsP2b(ReadOnlySpan<byte> b)
     {
         return b.Length >= 0x24 && ((b[0] == 0 && b[1] == 0x0A) || (b[0] == 0x0A && b[1] == 0));
     }
-
     private sealed record Rec(int Kind, byte[] Junk, uint Type, uint Name, uint Offset);
-
     private sealed record Desc(Rec Rec, Desc? Sub);
-
     public static JObj Read(byte[] b)
     {
         return new Reader(b).ToJson();
     }
-
     private sealed class Reader
     {
         private readonly byte[] _b;
@@ -102,7 +90,6 @@ internal static class P2b
         private readonly int _version;
         private readonly int _no;
         private readonly int _oo;
-
         public Reader(byte[] b)
         {
             _b = b;
@@ -155,18 +142,15 @@ internal static class P2b
                 _enumOrder.Add(eh);
             }
         }
-
         private uint U(int o)
         {
             return Bin.U32(_b, o, _big);
         }
-
         private Rec Record(int o)
         {
             Bin.Need(_b, o, 16);
             return new Rec(_b[o], _b[(o + 1)..(o + 4)], U(o + 4), U(o + 8), U(o + 12));
         }
-
         private static List<Desc> Descs(List<Rec> recs)
         {
             List<Desc> output = [];
@@ -178,7 +162,6 @@ internal static class P2b
             }
             return output;
         }
-
         private static (Desc, int) DescAt(List<Rec> recs, int j)
         {
             Rec r = recs[j];
@@ -193,7 +176,6 @@ internal static class P2b
             }
             return (new Desc(r, null), j + 1);
         }
-
         private Desc DescAtOffset(int o)
         {
             List<Rec> recs = [];
@@ -209,17 +191,14 @@ internal static class P2b
             }
             return DescAt(recs, 0).Item1;
         }
-
         private string? Name(uint h)
         {
             return h == 0 ? null : _names.TryGetValue(h, out string? s) ? s : $"#{Py.Hex8(h)}";
         }
-
         private List<Desc> Fields(uint th)
         {
             return _fields.TryGetValue(th, out List<Desc>? f) ? f : throw new KeyNotFoundException($"type {Py.Hex8(th)} is not defined");
         }
-
         private int TypeSize(uint th)
         {
             if (!_sizes.TryGetValue(th, out (int Size, int Align) s))
@@ -235,7 +214,6 @@ internal static class P2b
             }
             return s.Size;
         }
-
         private int TypeAlign(uint th)
         {
             int al = 1;
@@ -248,12 +226,10 @@ internal static class P2b
             }
             return al;
         }
-
         private int EnumWidthOf(uint t)
         {
             return EnumWidth(_big, _enums.TryGetValue(t, out (int, List<(uint, int)> Values) e) ? [.. e.Values.Select(x => (long)x.Item2)] : []);
         }
-
         private (int Size, int Align) DescSize(Desc d)
         {
             int k = d.Rec.Kind;
@@ -273,7 +249,6 @@ internal static class P2b
             }
             return k is 8 or 9 ? (1, 1) : (4, 4);
         }
-
         private object? Value(Desc d, int addr)
         {
             Rec r = d.Rec;
@@ -365,7 +340,6 @@ internal static class P2b
                     return v;
             }
         }
-
         private JObj RecJson(Rec r)
         {
             return new JObj
@@ -377,7 +351,6 @@ internal static class P2b
                 ["offset"] = (long)r.Offset,
             };
         }
-
         private JObj DescJson(Desc d)
         {
             JObj o = RecJson(d.Rec);
@@ -387,7 +360,6 @@ internal static class P2b
             }
             return o;
         }
-
         public JObj ToJson()
         {
             List<object?> types = [];
@@ -445,17 +417,14 @@ internal static class P2b
             return doc;
         }
     }
-
     public static byte[] Write(JObj doc)
     {
         return new Writer(doc).Build();
     }
-
     private sealed class Buf(int size)
     {
         public byte[] Data { get; } = new byte[size];
     }
-
     private sealed class Writer
     {
         private readonly JObj _doc;
@@ -466,7 +435,6 @@ internal static class P2b
         private readonly Dictionary<string, uint> _known = new(StringComparer.Ordinal);
         private List<(Buf? B, int O, Func<int> Fn)> _queue = [];
         private List<(Buf? B, int O, string N)> _refFixups = [];
-
         public Writer(JObj doc)
         {
             _doc = doc;
@@ -487,12 +455,10 @@ internal static class P2b
                 _known.TryAdd(name, Scheme(sch, Bin.Latin1(name)));
             }
         }
-
         private static string Key(object? name)
         {
             return name as string ?? "\u0000null";
         }
-
         private uint H(object? name, int kind = 0)
         {
             if (name is null || (name is long l && l == 0) || (name is bool b && !b))
@@ -517,22 +483,18 @@ internal static class P2b
             }
             return h;
         }
-
         private void Pad(int a = 0x20)
         {
             _out.Pad(a);
         }
-
         private void Put32(uint v)
         {
             _out.U32(v, _big);
         }
-
         private void Patch32(int at, uint v)
         {
             _out.PatchU32(at, v, _big);
         }
-
         private void RecOut(JObj r)
         {
             _out.Add(J.U8(r["kind"]));
@@ -541,9 +503,7 @@ internal static class P2b
             Put32(H(r["name"]));
             Put32(J.U(r["offset"]));
         }
-
         private sealed record WDesc(JObj Rec, WDesc? Sub);
-
         private static List<WDesc> Descs(List<object?> recs)
         {
             List<WDesc> output = [];
@@ -555,7 +515,6 @@ internal static class P2b
             }
             return output;
         }
-
         private static (WDesc, int) DescAt(List<object?> recs, int j)
         {
             JObj r = J.O(recs[j]);
@@ -570,26 +529,22 @@ internal static class P2b
             }
             return (new WDesc(r, null), j + 1);
         }
-
         private static WDesc FromJson(JObj d)
         {
             return new WDesc(d, d.Has("target") ? FromJson(J.O(d["target"])) : null);
         }
-
         private List<WDesc> TypeFields(object? name)
         {
             return _types.TryGetValue(Key(name), out JObj? t)
                 ? Descs(J.A(t["records"]))
                 : throw new KeyNotFoundException($"type '{name}' is not defined");
         }
-
         private int EnumWidthOf(object? name)
         {
             return _enums.TryGetValue(Key(name), out JObj? e)
                 ? EnumWidth(_big, [.. J.A(e["values"]).Select(v => J.L(J.A(v)[1]))])
                 : EnumWidth(_big, []);
         }
-
         private int Size(WDesc d)
         {
             long k = J.L(d.Rec["kind"]);
@@ -602,7 +557,6 @@ internal static class P2b
                 _ => 4,
             };
         }
-
         private int Align(WDesc d)
         {
             long k = J.L(d.Rec["kind"]);
@@ -613,7 +567,6 @@ internal static class P2b
             }
             return k == 14 ? EnumWidthOf(d.Rec["type"]) : k is 8 or 9 ? 1 : 4;
         }
-
         private int TypeSize(object? name)
         {
             List<WDesc> fs = TypeFields(name);
@@ -621,7 +574,6 @@ internal static class P2b
             int al = fs.Count == 0 ? 1 : fs.Max(Align);
             return Bin.CeilDiv(end, al) * al;
         }
-
         private void Encode(WDesc d, object? v, Buf buf, int off)
         {
             long k = J.L(d.Rec["kind"]);
@@ -746,7 +698,6 @@ internal static class P2b
                     throw new KeyNotFoundException($"{k}");
             }
         }
-
         private int WriteArray(WDesc sub, List<object?> items)
         {
             int stride = Size(sub);
@@ -761,7 +712,6 @@ internal static class P2b
             Attach(buf, start);
             return start;
         }
-
         private int WriteBlock(WDesc d, object? v)
         {
             Pad(Math.Max(4, Align(d)));
@@ -772,7 +722,6 @@ internal static class P2b
             Attach(buf, start);
             return start;
         }
-
         private int WriteChars(string s)
         {
             Pad(4);
@@ -781,13 +730,11 @@ internal static class P2b
             _out.Add(0);
             return start;
         }
-
         private void Attach(Buf buf, int start)
         {
             _queue = [.. _queue.Select(q => ReferenceEquals(q.B, buf) ? (null, q.O + start, q.Fn) : q)];
             _refFixups = [.. _refFixups.Select(q => ReferenceEquals(q.B, buf) ? (null, q.O + start, q.N) : q)];
         }
-
         private void Drain()
         {
             while (_queue.Count > 0)
@@ -801,7 +748,6 @@ internal static class P2b
                 Patch32(o, (uint)fn());
             }
         }
-
         public byte[] Build()
         {
             List<object?> types = J.A(_doc["types"]);

@@ -1,12 +1,9 @@
 using System.Text.RegularExpressions;
 using DWSSK.Formats.Core;
-
 namespace DWSSK.Formats.Data;
-
 internal static partial class Bog
 {
     private sealed record Section(string Key, int Size, string Fmt, string[] Names);
-
     private static readonly SortedDictionary<int, Section> s_layout = new()
     {
         [0] = new("lights", 24, "3fIII", ["direction:3", "unknown_0c", "colour", "colour_2"]),
@@ -25,7 +22,6 @@ internal static partial class Bog
         [16] = new("shrub_cells", 8, "2I", ["start", "end"]),
         [17] = new("shrubs", 80, "16f3If", ["matrix:16", "unknown_40", "unknown_44", "hash", "unknown_4c"]),
     };
-
     private static readonly Dictionary<object, string> s_componentWords = new()
     {
         ["AnimCamera"] = "BIII", ["AnimGraph"] = "I", ["Animation"] = "If", ["Attach"] = "II", ["Bloom"] = "tfffff",
@@ -38,14 +34,12 @@ internal static partial class Bog
         [0x1EB373B4u] = "BtIII", [0x7B295B5Bu] = "eBffffI", [0x4D51CAADu] = "effB", [0xEA48DC4Cu] = "tBeII",
         [0xC146BC77u] = "BffffffII", [0x5F003DF1u] = "I",
     };
-
     private static readonly Dictionary<char, (int Section, string Key)> s_links = new()
     {
         ['e'] = (5, "entity"),
         ['t'] = (10, "trigger"),
         ['s'] = (12, "spline"),
     };
-
     private static readonly Dictionary<int, (string Field, int Section)[]> s_pointers = new()
     {
         [1] = [("template", 4)],
@@ -57,18 +51,14 @@ internal static partial class Bog
         [15] = [("shrubs", 17), ("cells", 16)],
         [16] = [("start", 17), ("end", 17)],
     };
-
     private static readonly Dictionary<int, string[]> s_floats = new() { [14] = ["unknown_48", "unknown_4c", "unknown_50"] };
-
     private static readonly Dictionary<uint, string> s_words = BuildWords();
-
     private static readonly Dictionary<uint, string[]> s_fields = new()
     {
         [Hashes.UpperCrc("Rotator")] = ["localXAxisSpinRate", "localYAxisSpinRate", "localZAxisSpinRate", "worldXAxisSpinRate", "worldYAxisSpinRate", "worldZAxisSpinRate", "rotMode"],
         [Hashes.UpperCrc("DieOnTimer")] = ["lifetime", "fadetime", "unknown_08"],
         [Hashes.UpperCrc("AnimGraph")] = ["initialState"],
     };
-
     private static Dictionary<uint, string> BuildWords()
     {
         Dictionary<uint, string> d = [];
@@ -78,12 +68,10 @@ internal static partial class Bog
         }
         return d;
     }
-
     public static bool IsBog(ReadOnlySpan<byte> b)
     {
         return b.Length >= 0xB0 && b[..4].SequenceEqual("BOG "u8);
     }
-
     private static List<(char Type, int Count)> Fmt(string fmt)
     {
         List<(char, int)> o = [];
@@ -101,7 +89,6 @@ internal static partial class Bog
         }
         return o;
     }
-
     private static List<object?> UnpackValues(bool big, string fmt, ReadOnlySpan<byte> b, int o)
     {
         List<object?> vals = [];
@@ -115,7 +102,6 @@ internal static partial class Bog
         }
         return vals;
     }
-
     private static JObj UnpackRecord(bool big, int sec, ReadOnlySpan<byte> b, int o)
     {
         Section s = s_layout[sec];
@@ -145,7 +131,6 @@ internal static partial class Bog
         }
         return rec;
     }
-
     private static byte[] PackRecord(bool big, int sec, JObj rec)
     {
         Section s = s_layout[sec];
@@ -194,12 +179,10 @@ internal static partial class Bog
         }
         return o.ToArray();
     }
-
     private static int Align(int n, int a = 16)
     {
         return Bin.CeilDiv(n, a) * a;
     }
-
     private static (List<int> Offs, int Total) BlobLayout(IEnumerable<int> sizes)
     {
         List<int> offs = [];
@@ -212,12 +195,10 @@ internal static partial class Bog
         }
         return (offs, Align(o));
     }
-
     private static string? Words(JObj comp)
     {
         return s_words.TryGetValue(J.U(comp["hash"]), out string? w) && 4 * w.Length <= J.L(comp["size"]) ? w : null;
     }
-
     private static List<object?> Typed(ReadOnlySpan<byte> raw, string words, bool big, Dictionary<int, Dictionary<long, int>> links)
     {
         List<object?> output = [];
@@ -250,7 +231,6 @@ internal static partial class Bog
         }
         return output;
     }
-
     private static byte[] Untyped(object? vals, string? words, bool big, Func<int, object?, uint> ptr)
     {
         if (vals is string hex)
@@ -291,7 +271,6 @@ internal static partial class Bog
         }
         return o.ToArray();
     }
-
     private static int TieExtra(ReadOnlySpan<byte> b, int o)
     {
         ReadOnlySpan<byte> f = Bin.Slice(b, o + 0x64, o + 0x68);
@@ -301,7 +280,6 @@ internal static partial class Bog
         }
         return f[3] == 0xFF ? f[2] : f[0] == 0xFF ? f[1] : 0;
     }
-
     private static long? Index(long ptr, List<int> starts, int end)
     {
         int i = starts.IndexOf((int)ptr);
@@ -315,7 +293,6 @@ internal static partial class Bog
         }
         return ptr == 0 ? null : throw new InvalidDataException($"offset 0x{ptr:x} is not a record");
     }
-
     public static JObj Read(byte[] b)
     {
         bool big = b.Length > 4 && b[4] == 0;
@@ -468,7 +445,6 @@ internal static partial class Bog
         }
         return doc;
     }
-
     private static List<int> ClassComponents(List<object?> classes, Dictionary<int, int> owner, int entity, long at)
     {
         if (!owner.TryGetValue(entity, out int ci))
@@ -477,7 +453,6 @@ internal static partial class Bog
         }
         return [.. J.A(J.O(classes[ci])["components"]).Select(J.I)];
     }
-
     private static JObj Zip(string[] names, List<object?> vals)
     {
         JObj o = [];
@@ -487,7 +462,6 @@ internal static partial class Bog
         }
         return o;
     }
-
     public static byte[] Write(JObj doc)
     {
         bool big = J.S(doc["endian"]) == "big";
@@ -699,7 +673,6 @@ internal static partial class Bog
         }
         return buf;
     }
-
     private static void Splice(byte[] buf, int at, int size, byte[] raw)
     {
         if (raw.Length != size)
@@ -708,16 +681,13 @@ internal static partial class Bog
         }
         raw.CopyTo(buf, at);
     }
-
     [GeneratedRegex(@"\[\s+((?:[^\[\]{}]|\[[^\[\]{}]*\])+?)\s+\]")]
     private static partial Regex Lists();
-
     public static string Dumps(JObj doc)
     {
         string s = PyJson.Dumps(doc, 1);
         return Lists().Replace(s, m => "[" + string.Join(' ', Py.SplitWhitespace(m.Groups[1].Value)) + "]");
     }
-
     private static readonly (string Key, string[] Fields)[] s_hashes =
     [
         ("spawners", ["hash", "kind"]), ("components", ["hash"]), ("classes", ["hash"]),
@@ -725,7 +695,6 @@ internal static partial class Bog
         ("triggers", ["hash"]), ("splines", ["hash"]), ("tie_groups", ["hash", "model"]),
         ("shrub_layers", ["hash", "model"]),
     ];
-
     public static void AddNames(JObj doc, IEnumerable<string> names)
     {
         Dictionary<long, string> table = [];
@@ -793,7 +762,6 @@ internal static partial class Bog
             }
         }
     }
-
     public static JObj ToGltf(JObj doc)
     {
         List<object?> nodes = [];

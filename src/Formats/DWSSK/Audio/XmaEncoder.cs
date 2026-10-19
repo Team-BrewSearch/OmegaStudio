@@ -1,7 +1,5 @@
 using DWSSK.Formats.Core;
-
 namespace DWSSK.Formats.Audio;
-
 internal static class XmaEncoder
 {
     private const int FrameSize = 512;
@@ -11,7 +9,6 @@ internal static class XmaEncoder
     private const double Precision = 6;
     private const double Mask = 30;
     private const double Silence = 8;
-
     public static byte[] Encode(byte[] orig, short[] x, int rate, int nch)
     {
         if (rate is not (24000 or 32000 or 44100 or 48000))
@@ -61,7 +58,6 @@ internal static class XmaEncoder
         (byte[] data, int[] counts, long endBit) = Pack(encoded);
         return Assemble(orig, info, data, counts, endBit, frames, length, rate, nch);
     }
-
     private static MsbWriter Frame(double[][] coeffs, int nch, int bands, int[] offsets, bool first, bool last, int trimEnd, double boost)
     {
         MsbWriter w = new(4096);
@@ -157,9 +153,7 @@ internal static class XmaEncoder
         w.Put(1, 1);
         return w;
     }
-
     private sealed record ChannelPlan(bool Transmit, int Step, int[] ScaleFactors, int[] Values, int Vectors);
-
     private static double[] Targets(double[] coeffs, int bands, int[] offsets, double boost)
     {
         double[] target = new double[bands];
@@ -181,7 +175,6 @@ internal static class XmaEncoder
         }
         return target;
     }
-
     private static ChannelPlan Plan(double[] coeffs, double[] target, int quantStep, int[] offsets)
     {
         int bands = target.Length;
@@ -208,7 +201,6 @@ internal static class XmaEncoder
         int vectors = Math.Min(FrameSize, (lastNonZero + 4) & ~3);
         return new ChannelPlan(lastNonZero >= 0, step, sf, values, vectors);
     }
-
     private static void WriteQuantStep(MsbWriter w, int quantStep)
     {
         int step = quantStep - 90;
@@ -227,12 +219,10 @@ internal static class XmaEncoder
         }
         w.Put((uint)rest, 5);
     }
-
     private static int LargeBits(uint v)
     {
         return v < 256 ? 9 : v < 65536 ? 18 : v < 16777216 ? 27 : 34;
     }
-
     private static void Large(MsbWriter w, uint v)
     {
         if (v < 256)
@@ -256,12 +246,10 @@ internal static class XmaEncoder
             w.Put(v, 31);
         }
     }
-
     private static int Vec1Cost(int v)
     {
         return v < 100 ? WmaProStream.Vec1Vlc.Length(v) : WmaProStream.Vec1Vlc.Length(100) + LargeBits((uint)(v - 100));
     }
-
     private static void Vec1(MsbWriter w, int v)
     {
         if (v < 100)
@@ -272,7 +260,6 @@ internal static class XmaEncoder
         WmaProStream.Vec1Vlc.Write(w, 100);
         Large(w, (uint)(v - 100));
     }
-
     private static int PairCost(int a, int b)
     {
         int sym = (a << 4) | b;
@@ -280,7 +267,6 @@ internal static class XmaEncoder
             ? WmaProStream.Vec2Vlc.Length(sym)
             : WmaProStream.Vec2Vlc.Length(-1) + Vec1Cost(a) + Vec1Cost(b);
     }
-
     private static void Pair(MsbWriter w, int a, int b)
     {
         int sym = (a << 4) | b;
@@ -293,7 +279,6 @@ internal static class XmaEncoder
         Vec1(w, a);
         Vec1(w, b);
     }
-
     private static void Coefficients(MsbWriter w, int[] values, int vectors)
     {
         Vlc eob0 = WmaProStream.CoefVlc(0);
@@ -333,7 +318,6 @@ internal static class XmaEncoder
             WmaProStream.CoefVlc(table).Write(w, 1);
         }
     }
-
     private static (byte[] Data, int[] Counts, long EndBit) Pack(List<MsbWriter> frames)
     {
         long[] starts = new long[frames.Count];
@@ -408,7 +392,6 @@ internal static class XmaEncoder
         long endBit = ((end / PayloadBits) * Xma.PacketSize * 8) + 32 + (end % PayloadBits);
         return (data, counts, endBit);
     }
-
     private static byte[] Assemble(byte[] orig, WemInfo info, byte[] data, int[] counts, long endBit, int frames, int length, int rate, int nch)
     {
         bool big = info.Big;

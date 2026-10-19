@@ -1,7 +1,5 @@
 using DWSSK.Formats.Core;
-
 namespace DWSSK.Formats.Audio;
-
 internal sealed class VorbisBook
 {
     public int Dims { get; init; }
@@ -12,7 +10,6 @@ internal sealed class VorbisBook
     public float[]? Grid { get; init; }
     public required int[] Used { get; init; }
     public float MaxAbs { get; init; }
-
     public void Write(BitStream w, int entry)
     {
         if (Lengths[entry] == 0)
@@ -21,7 +18,6 @@ internal sealed class VorbisBook
         }
         w.Write(Codes[entry], Lengths[entry]);
     }
-
     public int Nearest(ReadOnlySpan<float> target)
     {
         if (Grid is { } grid)
@@ -66,7 +62,6 @@ internal sealed class VorbisBook
         return best;
     }
 }
-
 internal sealed class VorbisFloor
 {
     public required int[] PartitionClass { get; init; }
@@ -79,7 +74,6 @@ internal sealed class VorbisFloor
     public required int[] X { get; init; }
     public int Range => Multiplier switch { 1 => 256, 2 => 128, 3 => 86, _ => 64 };
 }
-
 internal sealed class VorbisResidue
 {
     public int Type { get; init; }
@@ -90,7 +84,6 @@ internal sealed class VorbisResidue
     public int ClassBook { get; init; }
     public required int[][] Books { get; init; }
 }
-
 internal sealed class VorbisMapping
 {
     public required (int Magnitude, int Angle)[] Coupling { get; init; }
@@ -98,7 +91,6 @@ internal sealed class VorbisMapping
     public required int[] SubmapFloor { get; init; }
     public required int[] SubmapResidue { get; init; }
 }
-
 internal sealed class VorbisSetup
 {
     public required VorbisBook[] Books { get; init; }
@@ -106,7 +98,6 @@ internal sealed class VorbisSetup
     public required VorbisResidue[] Residues { get; init; }
     public required VorbisMapping[] Mappings { get; init; }
     public required (bool Long, int Mapping)[] Modes { get; init; }
-
     public static VorbisSetup Parse(byte[] packet, int channels)
     {
         BitStream r = new(packet);
@@ -153,7 +144,6 @@ internal sealed class VorbisSetup
         }
         return new VorbisSetup { Books = books, Floors = floors, Residues = residues, Mappings = mappings, Modes = modes };
     }
-
     private static float Float32(uint x)
     {
         double mantissa = x & 0x1fffff;
@@ -163,7 +153,6 @@ internal sealed class VorbisSetup
         }
         return (float)Math.ScaleB(mantissa, (int)((x & 0x7fe00000) >> 21) - 788);
     }
-
     private static VorbisBook Book(BitStream r)
     {
         if (r.Read(24) != 0x564342)
@@ -248,7 +237,6 @@ internal sealed class VorbisSetup
         }
         return new VorbisBook { Dims = dims, Entries = entries, Lengths = lengths, Codes = Words(lengths), Values = values, Grid = grid, Used = used, MaxAbs = maxAbs };
     }
-
     private static uint[] Words(int[] lengths)
     {
         uint[] marker = new uint[33];
@@ -299,7 +287,6 @@ internal sealed class VorbisSetup
         }
         return words;
     }
-
     private static VorbisFloor Floor(BitStream r)
     {
         int[] partitionClass = new int[r.Read(5)];
@@ -339,7 +326,6 @@ internal sealed class VorbisSetup
             Multiplier = multiplier, RangeBits = rangeBits, X = [.. x],
         };
     }
-
     private static VorbisResidue Residue(BitStream r)
     {
         int type = (int)r.Read(16);
@@ -365,7 +351,6 @@ internal sealed class VorbisSetup
         }
         return new VorbisResidue { Type = type, Begin = begin, End = end, PartitionSize = size, Classifications = classifications, ClassBook = classBook, Books = books };
     }
-
     private static VorbisMapping Mapping(BitStream r, int channels)
     {
         _ = r.Read(16);
@@ -400,7 +385,6 @@ internal sealed class VorbisSetup
         return new VorbisMapping { Coupling = coupling, Mux = mux, SubmapFloor = floor, SubmapResidue = residue };
     }
 }
-
 internal static class VorbisEncoder
 {
     private static readonly float[] s_inverseDb =
@@ -438,11 +422,9 @@ internal static class VorbisEncoder
         0.38890521f, 0.41417847f, 0.44109412f, 0.46975890f, 0.50028648f, 0.53279791f, 0.56742212f, 0.60429640f,
         0.64356699f, 0.68538959f, 0.72993007f, 0.77736504f, 0.82788260f, 0.88168307f, 0.9389798f, 1f,
     ];
-
     private const double Precision = 6;
     private const double Mask = 30;
     private const double Silence = 3e-5;
-
     public static byte[] Encode(byte[] orig, short[] x, int rate, int nch)
     {
         WemInfo i = Wem.Info(orig);
@@ -459,7 +441,6 @@ internal static class VorbisEncoder
         bool modPackets = Bin.U32(orig, v + 4, big) is not (0x4A or 0x4B or 0x69 or 0x70);
         byte[] setupRaw = i.Data.AsSpan(setupOff + 2, Bin.U16(i.Data, setupOff, big)).ToArray();
         VorbisSetup setup = VorbisSetup.Parse(Vorbis.RebuildSetup(setupRaw, nch).Setup, nch);
-        // ponytail: long blocks only, so sharp attacks can pre-echo; add a transient detector that switches to the short-block mode if that is audible.
         int mode = Array.FindIndex(setup.Modes, m => m.Long);
         mode = mode < 0 ? 0 : mode;
         int blocksize = 1 << (setup.Modes[mode].Long ? bs1 : bs0);
@@ -519,7 +500,6 @@ internal static class VorbisEncoder
         }
         return Assemble(orig, i, setupRaw, packets, frames, rate, blocks, n);
     }
-
     private static int RenderPoint(int x0, int y0, int x1, int y1, int x)
     {
         int dy = y1 - y0;
@@ -527,7 +507,6 @@ internal static class VorbisEncoder
         int off = Math.Abs(dy) * (x - x0) / adx;
         return dy < 0 ? y0 - off : y0 + off;
     }
-
     private static void RenderLine(int x0, int y0, int x1, int y1, int[] v, int n)
     {
         int dy = y1 - y0;
@@ -556,7 +535,6 @@ internal static class VorbisEncoder
             v[x] = y;
         }
     }
-
     private static (float[] Residue, bool Used) WriteFloor(BitStream w, VorbisSetup setup, VorbisFloor floor, double[] spectrum, int n)
     {
         int[] xs = floor.X;
@@ -706,12 +684,10 @@ internal static class VorbisEncoder
         }
         return (residue, true);
     }
-
     private static int Index(int type, int offset, int psize, int dims, int vector, int d)
     {
         return type == 0 ? offset + vector + (d * (psize / dims)) : offset + (vector * dims) + d;
     }
-
     private static (int Bits, double Error, int[][] Entries) Quantize(VorbisSetup setup, VorbisResidue residue, int cls, float[] values, int type, int offset)
     {
         int psize = residue.PartitionSize;
@@ -756,7 +732,6 @@ internal static class VorbisEncoder
         }
         return (bits, error, entries);
     }
-
     private static void WriteResidue(BitStream w, VorbisSetup setup, VorbisResidue residue, List<(float[] Residue, bool Used)> channels, int n)
     {
         List<float[]> vectors;
@@ -850,7 +825,6 @@ internal static class VorbisEncoder
             }
         }
     }
-
     private static byte[] Assemble(byte[] orig, WemInfo i, byte[] setupRaw, List<byte[]> packets, int frames, int rate, int blocks, int n)
     {
         bool big = i.Big;

@@ -1,7 +1,5 @@
 using DWSSK.Formats.Core;
-
 namespace DWSSK.Formats.Audio;
-
 internal sealed class WemInfo
 {
     public bool Big { get; init; }
@@ -15,7 +13,6 @@ internal sealed class WemInfo
     public required byte[] Data { get; init; }
     public required Dictionary<string, (int Offset, int Size)> Chunks { get; init; }
 }
-
 internal static class Wem
 {
     public static bool IsWem(ReadOnlySpan<byte> b)
@@ -32,7 +29,6 @@ internal static class Wem
         int tag = Bin.U16(b, 20, big);
         return big || tag is 0xFFFE or 0x0002 or 0x0166 or 0xFFFF;
     }
-
     public static Dictionary<string, (int Offset, int Size)> ChunkMap(ReadOnlySpan<byte> b, out bool big)
     {
         bool riff = b.Length >= 4 && b[..4].SequenceEqual("RIFF"u8);
@@ -52,7 +48,6 @@ internal static class Wem
         }
         return output;
     }
-
     public static WemInfo Info(byte[] b)
     {
         Dictionary<string, (int Offset, int Size)> ch = ChunkMap(b, out bool big);
@@ -78,7 +73,6 @@ internal static class Wem
             Chunks = ch,
         };
     }
-
     public static string CodecName(WemInfo i)
     {
         return i.Tag switch
@@ -91,7 +85,6 @@ internal static class Wem
             _ => $"codec 0x{i.Tag:x}",
         };
     }
-
     public static short[] DspDecode(ReadOnlySpan<byte> data, ReadOnlySpan<byte> header, bool big, int nsamples)
     {
         short[] coef = new short[16];
@@ -130,7 +123,6 @@ internal static class Wem
         }
         return output[..n];
     }
-
     private static readonly int[] s_imaStep =
     [
         7, 8, 9, 10, 11, 12, 13, 14, 16, 17, 19, 21, 23, 25, 28, 31, 34, 37, 41, 45, 50, 55, 60, 66, 73,
@@ -139,9 +131,7 @@ internal static class Wem
         2749, 3024, 3327, 3660, 4026, 4428, 4871, 5358, 5894, 6484, 7132, 7845, 8630, 9493, 10442, 11487,
         12635, 13899, 15289, 16818, 18500, 20350, 22385, 24623, 27086, 29794, 32767,
     ];
-
     private static readonly int[] s_imaIndex = [-1, -1, -1, -1, 2, 4, 6, 8];
-
     public static short[] ImaDecode(ReadOnlySpan<byte> data, bool big, int align)
     {
         if (align <= 4)
@@ -164,13 +154,11 @@ internal static class Wem
         }
         return [.. output];
     }
-
     private static int ImaStep(int pred, int idx, int nib)
     {
         int diff = s_imaStep[idx] * (((nib & 7) * 2) + 1) >> 3;
         return Math.Clamp((nib & 8) != 0 ? pred - diff : pred + diff, -32768, 32767);
     }
-
     public static (short[] Samples, int Rate, int Channels) Decode(byte[] b)
     {
         WemInfo i = Info(b);
@@ -212,7 +200,6 @@ internal static class Wem
         }
         throw new NotSupportedException($"codec 0x{i.Tag:x}");
     }
-
     public static byte[] ToWav(ReadOnlySpan<short> samples, int rate, int nch)
     {
         ByteWriter o = new(44 + (samples.Length * 2));
@@ -236,7 +223,6 @@ internal static class Wem
         }
         return o.ToArray();
     }
-
     public static byte[] ImaEncode(short[] x0, bool big, int align)
     {
         int per = (align - 4) * 2;
@@ -272,7 +258,6 @@ internal static class Wem
         }
         return output.ToArray();
     }
-
     public static long[,] DspCoefficients(short[] x0)
     {
         double[] x = [.. x0.Select(v => (double)v)];
@@ -358,7 +343,6 @@ internal static class Wem
         }
         return coefs;
     }
-
     public static (byte[] Frames, List<(int Ps, long Yn1, long Yn2)> States) DspEncode(short[] x0, long[,] coefs)
     {
         long[] x = new long[x0.Length + Bin.Mod(-x0.Length, 14)];
@@ -427,7 +411,6 @@ internal static class Wem
         }
         return (output.ToArray(), states);
     }
-
     public static byte[] Encode(byte[] orig, short[] x, int rate, int nch)
     {
         WemInfo i = Info(orig);
@@ -519,7 +502,6 @@ internal static class Wem
         nw["data"] = data;
         return Rebuild(orig, nw);
     }
-
     public static byte[] Rebuild(byte[] orig, IReadOnlyDictionary<string, byte[]> chunks)
     {
         bool big = orig[3] == (byte)'X';
@@ -543,7 +525,6 @@ internal static class Wem
         output.Add(body.Span);
         return output.ToArray();
     }
-
     public static (short[] Samples, int Rate, int Channels) ReadWav(byte[] b)
     {
         Dictionary<string, (int Offset, int Size)> ch = ChunkMap(b, out bool big);
@@ -578,7 +559,6 @@ internal static class Wem
         return (s, rate, nch);
     }
 }
-
 internal static class LeastSquares
 {
     public static double[] Solve2(double[] c1, double[] c2, double[] y)
@@ -612,7 +592,6 @@ internal static class LeastSquares
         double t = b1 / ((n1 * n1) + (r12 * r12));
         return [n1 * t, r12 * t];
     }
-
     private static double Dot(double[] a, double[] b)
     {
         double s = 0;
@@ -622,7 +601,6 @@ internal static class LeastSquares
         }
         return s;
     }
-
     private static double Norm(double[] a)
     {
         return Math.Sqrt(Dot(a, a));

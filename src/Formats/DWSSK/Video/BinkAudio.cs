@@ -2,9 +2,7 @@ using System.Numerics;
 using System.Runtime.InteropServices;
 using DWSSK.Formats.Audio;
 using DWSSK.Formats.Core;
-
 namespace DWSSK.Formats.Video;
-
 internal sealed class BinkAudio
 {
     private const int Powers = 0;
@@ -17,7 +15,6 @@ internal sealed class BinkAudio
         3150, 3700, 4400, 5300, 6400, 7700, 9500, 12000, 15500,
     ];
     private static readonly Lazy<float[]> s_tables = new(LoadTables);
-
     private readonly int _channels;
     private readonly int _frameLen;
     private readonly int _overlap;
@@ -29,7 +26,6 @@ internal sealed class BinkAudio
     private readonly short[] _block;
     private readonly short[] _previous;
     private bool _first = true;
-
     public BinkAudio(BinkTrack track)
     {
         if (!track.Dct)
@@ -59,9 +55,7 @@ internal sealed class BinkAudio
         _block = new short[_frameLen * _channels];
         _previous = new short[_overlap];
     }
-
     public int Channels => _channels;
-
     private static float[] LoadTables()
     {
         using Stream stream = typeof(BinkAudio).Assembly.GetManifestResourceStream("DWSSK.bink_audio_tables.bin")
@@ -70,7 +64,6 @@ internal sealed class BinkAudio
         stream.ReadExactly(raw);
         return MemoryMarshal.Cast<byte, float>(raw).ToArray();
     }
-
     public void Packet(byte[] data, int offset, int length, List<short> output)
     {
         int end = offset + length;
@@ -84,7 +77,6 @@ internal sealed class BinkAudio
             remaining -= n;
         }
     }
-
     private int Block(byte[] data, int pos, int end)
     {
         float[] tables = s_tables.Value;
@@ -119,7 +111,6 @@ internal sealed class BinkAudio
         _block.AsSpan(_block.Length - _overlap).CopyTo(_previous);
         return r.Pos;
     }
-
     private bool Coefficients(Reader r, Span<float> c, float[] tables)
     {
         Span<float> quant = stackalloc float[s_freqs.Length];
@@ -188,14 +179,11 @@ internal sealed class BinkAudio
         }
         return true;
     }
-
     private sealed class Reader(byte[] data, int pos, int end)
     {
         private uint _buf = Bin.U32(data, pos, false) >> 2;
         private int _bits = 30;
-
         public int Pos { get; private set; } = pos + 4;
-
         public bool Read(int n, out uint v)
         {
             if (_bits >= n)
@@ -217,7 +205,6 @@ internal sealed class BinkAudio
             _bits += 32 - n;
             return true;
         }
-
         public uint Bit()
         {
             if (_bits == 0)

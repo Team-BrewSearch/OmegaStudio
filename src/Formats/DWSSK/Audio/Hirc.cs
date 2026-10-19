@@ -1,29 +1,19 @@
 using DWSSK.Formats.Core;
-
 namespace DWSSK.Formats.Audio;
-
 internal abstract class HircCodec(bool big)
 {
     public bool Big { get; } = big;
-
     public abstract long Val(JObj d, string k, char fmt);
-
     public abstract long Count(JObj d, string k, char fmt);
-
     public abstract List<object?> Items(JObj d, string k, long n, Action<HircCodec, JObj> fn);
-
     public abstract object? Prop(JObj d, string k);
-
     public abstract long Enum(JObj d, string k, char fmt, IReadOnlyDictionary<long, string> table);
 }
-
 internal sealed class HircReader(byte[] b, bool big) : HircCodec(big)
 {
     public byte[] B { get; } = b;
     public int O { get; set; }
-
     public bool Done => O == B.Length;
-
     private static int Size(char fmt)
     {
         return fmt switch
@@ -35,7 +25,6 @@ internal sealed class HircReader(byte[] b, bool big) : HircCodec(big)
             _ => throw new StructException($"bad format char '{fmt}'"),
         };
     }
-
     public object Get(char fmt)
     {
         int n = Size(fmt);
@@ -56,24 +45,20 @@ internal sealed class HircReader(byte[] b, bool big) : HircCodec(big)
         O += n;
         return v;
     }
-
     public long GetLong(char fmt)
     {
         return J.L(Get(fmt));
     }
-
     public override long Val(JObj d, string k, char fmt)
     {
         object v = Get(fmt);
         d[k] = v;
         return v is long l ? l : 0;
     }
-
     public override long Count(JObj d, string k, char fmt)
     {
         return GetLong(fmt);
     }
-
     public override List<object?> Items(JObj d, string k, long n, Action<HircCodec, JObj> fn)
     {
         List<object?> list = [];
@@ -86,7 +71,6 @@ internal sealed class HircReader(byte[] b, bool big) : HircCodec(big)
         }
         return list;
     }
-
     public override object? Prop(JObj d, string k)
     {
         long raw = GetLong('I');
@@ -96,7 +80,6 @@ internal sealed class HircReader(byte[] b, bool big) : HircCodec(big)
         d[k] = v;
         return v;
     }
-
     public override long Enum(JObj d, string k, char fmt, IReadOnlyDictionary<long, string> table)
     {
         long v = GetLong(fmt);
@@ -104,11 +87,9 @@ internal sealed class HircReader(byte[] b, bool big) : HircCodec(big)
         return v;
     }
 }
-
 internal sealed class HircWriter(bool big) : HircCodec(big)
 {
     public ByteWriter Out { get; } = new();
-
     public void Put(char fmt, object? v)
     {
         switch (fmt)
@@ -138,21 +119,18 @@ internal sealed class HircWriter(bool big) : HircCodec(big)
                 throw new StructException($"bad format char '{fmt}'");
         }
     }
-
     public override long Val(JObj d, string k, char fmt)
     {
         object? v = d[k];
         Put(fmt, v);
         return v is long or bool or int ? J.L(v) : 0;
     }
-
     public override long Count(JObj d, string k, char fmt)
     {
         long n = J.A(d[k]).Count;
         Put(fmt, n);
         return n;
     }
-
     public override List<object?> Items(JObj d, string k, long n, Action<HircCodec, JObj> fn)
     {
         List<object?> list = J.A(d[k]);
@@ -162,14 +140,12 @@ internal sealed class HircWriter(bool big) : HircCodec(big)
         }
         return list;
     }
-
     public override object? Prop(JObj d, string k)
     {
         object? v = d[k];
         Put(v is double ? 'f' : 'I', v);
         return v;
     }
-
     public override long Enum(JObj d, string k, char fmt, IReadOnlyDictionary<long, string> table)
     {
         object? v = d[k];
@@ -188,23 +164,18 @@ internal sealed class HircWriter(bool big) : HircCodec(big)
         return value;
     }
 }
-
 internal static class Hirc
 {
     public static readonly Dictionary<long, string> Codecs = new()
     {
         [0x10001] = "PCM", [0x20001] = "IMA ADPCM", [0x30001] = "XMA2", [0x40001] = "Vorbis", [0x50001] = "DSP ADPCM",
     };
-
     private static readonly Dictionary<long, string> s_props = Table(
         "Volume", "LFE", "Pitch", "LPF", "Priority", "PriorityDistanceOffset", "Loop", "FeedbackVolume", "FeedbackLPF",
         "MuteRatio", "PAN_LR", "PAN_FR", "CenterPCT", "DelayTime", "TransitionTime", "Probability");
-
     private static readonly Dictionary<long, string> s_interp = Table(
         "Log3", "Sine", "Log1", "InvSCurve", "Linear", "SCurve", "Exp1", "SineRecip", "Exp3", "Constant");
-
     private static readonly Dictionary<long, string> s_scaling = Table("None", "db_255", "dB_96_3", "Frequency_20_20000", "dB_96_3_NoCheck");
-
     private static readonly Dictionary<long, string> s_rtpcParams = new()
     {
         [0] = "Volume", [1] = "LFE", [2] = "Pitch", [3] = "LPF", [8] = "Priority", [9] = "MaxNumInstances",
@@ -214,7 +185,6 @@ internal static class Hirc
         [23] = "Position_Radius_SIM_Attenuation", [24] = "BypassFX0", [25] = "BypassFX1", [26] = "BypassFX2",
         [27] = "BypassFX3", [28] = "BypassAllFX", [29] = "FeedbackVolume", [30] = "FeedbackLowpass", [31] = "FeedbackPitch",
     };
-
     private static readonly Dictionary<long, string> s_actions = new()
     {
         [0x0000] = "None", [0x1204] = "SetState", [0x1A02] = "BypassFX_M", [0x1A03] = "BypassFX_O", [0x1B02] = "ResetBypassFX_M",
@@ -240,19 +210,16 @@ internal static class Hirc
         [0x1302] = "SetGameParameter", [0x1303] = "SetGameParameter_O", [0x1402] = "ResetGameParameter",
         [0x1403] = "ResetGameParameter_O", [0x1F02] = "Release", [0x1F03] = "Release_O",
     };
-
     public static readonly Dictionary<long, string> Types = new()
     {
         [1] = "settings", [2] = "sound", [3] = "action", [4] = "event", [5] = "random_sequence", [6] = "switch",
         [7] = "actor_mixer", [8] = "bus", [9] = "blend", [10] = "music_segment", [11] = "music_track",
         [12] = "music_switch", [13] = "music_playlist", [14] = "attenuation",
     };
-
     private static Dictionary<long, string> Table(params string[] names)
     {
         return names.Select((n, i) => (n, (long)i)).ToDictionary(t => t.Item2, t => t.n);
     }
-
     private static void Vals(HircCodec c, JObj d, params (string K, char F)[] fields)
     {
         foreach ((string k, char f) in fields)
@@ -260,12 +227,10 @@ internal static class Hirc
             c.Val(d, k, f);
         }
     }
-
     private static void Ids(HircCodec c, JObj d, string k, char fmt = 'I')
     {
         c.Items(d, k, c.Count(d, k, fmt), (c2, x) => c2.Val(x, "id", 'I'));
     }
-
     private static void Bundle(HircCodec c, JObj d, string k, bool ranged = false)
     {
         long n = c.Count(d, k, 'B');
@@ -284,7 +249,6 @@ internal static class Hirc
             }
         }
     }
-
     private static void Graph(HircCodec c, JObj d, string k, char fmt)
     {
         c.Items(d, k, c.Count(d, k, fmt), (c2, x) =>
@@ -294,7 +258,6 @@ internal static class Hirc
             c2.Enum(x, "interp", 'I', s_interp);
         });
     }
-
     private static void Rtpcs(HircCodec c, JObj d)
     {
         c.Items(d, "rtpcs", c.Count(d, "rtpcs", 'H'), (c2, x) =>
@@ -306,7 +269,6 @@ internal static class Hirc
             Graph(c2, x, "points", 'H');
         });
     }
-
     private static void States(HircCodec c, JObj d)
     {
         c.Items(d, "state_groups", c.Count(d, "state_groups", 'I'), (c2, x) =>
@@ -320,7 +282,6 @@ internal static class Hirc
             });
         });
     }
-
     private static void Fx(HircCodec c, JObj d)
     {
         long nfx = c.Count(d, "fx", 'B');
@@ -330,7 +291,6 @@ internal static class Hirc
         }
         c.Items(d, "fx", nfx, (c2, x) => Vals(c2, x, ("index", 'B'), ("fx", 'I'), ("share_set", 'B'), ("rendered", 'B')));
     }
-
     private static void NodeBase(HircCodec c, JObj d)
     {
         c.Val(d, "override_fx", 'B');
@@ -379,7 +339,6 @@ internal static class Hirc
         States(c, d);
         Rtpcs(c, d);
     }
-
     private static void Source(HircCodec c, JObj d)
     {
         c.Enum(d, "codec", 'I', Codecs);
@@ -393,18 +352,15 @@ internal static class Hirc
         }
         c.Val(d, "bits", 'B');
     }
-
     private static void Sound(HircCodec c, JObj d)
     {
         Source(c, d);
         NodeBase(c, d);
     }
-
     private static void Children(HircCodec c, JObj d)
     {
         Ids(c, d, "children");
     }
-
     private static void RandomSequence(HircCodec c, JObj d)
     {
         NodeBase(c, d);
@@ -415,7 +371,6 @@ internal static class Hirc
         Children(c, d);
         c.Items(d, "playlist", c.Count(d, "playlist", 'H'), (c2, x) => Vals(c2, x, ("id", 'I'), ("weight", 'i')));
     }
-
     private static void Switch(HircCodec c, JObj d)
     {
         NodeBase(c, d);
@@ -429,13 +384,11 @@ internal static class Hirc
         c.Items(d, "params", c.Count(d, "params", 'I'), (c2, x) => Vals(c2, x, ("node", 'I'), ("first_only", 'B'),
             ("continue_playback", 'B'), ("on_switch", 'I'), ("fade_out", 'i'), ("fade_in", 'i')));
     }
-
     private static void ActorMixer(HircCodec c, JObj d)
     {
         NodeBase(c, d);
         Children(c, d);
     }
-
     private static void Blend(HircCodec c, JObj d)
     {
         NodeBase(c, d);
@@ -452,12 +405,10 @@ internal static class Hirc
             });
         });
     }
-
     private static void Event(HircCodec c, JObj d)
     {
         Ids(c, d, "actions");
     }
-
     private static void Action(HircCodec c, JObj d)
     {
         long t = c.Enum(d, "action", 'H', s_actions);
@@ -503,7 +454,6 @@ internal static class Hirc
             Ids(c, d, "exceptions");
         }
     }
-
     private static void Bus(HircCodec c, JObj d)
     {
         c.Val(d, "override_bus", 'I');
@@ -517,7 +467,6 @@ internal static class Hirc
         Rtpcs(c, d);
         States(c, d);
     }
-
     private static void Attenuation(HircCodec c, JObj d)
     {
         if (c.Val(d, "cone", 'B') != 0)
@@ -535,7 +484,6 @@ internal static class Hirc
         });
         Rtpcs(c, d);
     }
-
     private static void MusicNode(HircCodec c, JObj d)
     {
         NodeBase(c, d);
@@ -544,14 +492,12 @@ internal static class Hirc
         c.Items(d, "stingers", c.Count(d, "stingers", 'I'), (c2, x) => Vals(c2, x, ("trigger", 'I'), ("segment", 'I'),
             ("sync", 'I'), ("no_repeat", 'i'), ("look_ahead", 'I')));
     }
-
     private static void MusicSegment(HircCodec c, JObj d)
     {
         MusicNode(c, d);
         c.Val(d, "duration", 'd');
         c.Items(d, "markers", c.Count(d, "markers", 'I'), (c2, x) => Vals(c2, x, ("id", 'I'), ("position", 'd')));
     }
-
     private static void MusicTrack(HircCodec c, JObj d)
     {
         c.Items(d, "sources", c.Count(d, "sources", 'I'), Source);
@@ -566,7 +512,6 @@ internal static class Hirc
         c.Val(d, "rs_type", 'I');
         c.Val(d, "look_ahead", 'i');
     }
-
     private static void Transitions(HircCodec c, JObj d)
     {
         MusicNode(c, d);
@@ -578,14 +523,12 @@ internal static class Hirc
             ("fade_out_time", 'i'), ("fade_out_curve", 'I'), ("fade_out_offset", 'i'),
             ("pre_entry", 'B'), ("post_exit", 'B')));
     }
-
     private static void MusicSwitch(HircCodec c, JObj d)
     {
         Transitions(c, d);
         Vals(c, d, ("group_type", 'I'), ("group", 'I'), ("default", 'I'), ("continuous", 'B'));
         c.Items(d, "switches", c.Count(d, "switches", 'I'), (c2, x) => Vals(c2, x, ("switch", 'I'), ("node", 'I')));
     }
-
     private static void PlaylistItem(HircCodec c, JObj x)
     {
         c.Val(x, "segment", 'I');
@@ -594,14 +537,12 @@ internal static class Hirc
         Vals(c, x, ("rs_type", 'I'), ("loop", 'h'), ("weight", 'I'), ("avoid_repeat", 'H'), ("use_weight", 'B'), ("shuffle", 'B'));
         c.Items(x, "children", n, PlaylistItem);
     }
-
     private static void MusicPlaylist(HircCodec c, JObj d)
     {
         Transitions(c, d);
         c.Val(d, "playlist_count", 'I');
         c.Items(d, "root", 1, PlaylistItem);
     }
-
     private static void FxObject(HircCodec c, JObj d)
     {
         c.Val(d, "plugin", 'I');
@@ -656,19 +597,16 @@ internal static class Hirc
             throw new StructException("effect media or RTPCs are not described");
         }
     }
-
     private static void Settings(HircCodec c, JObj d)
     {
         Bundle(c, d, "props");
     }
-
     private static readonly Dictionary<long, Action<HircCodec, JObj>> s_types = new()
     {
         [1] = Settings, [2] = Sound, [3] = Action, [4] = Event, [5] = RandomSequence, [6] = Switch, [7] = ActorMixer, [9] = Blend,
         [8] = Bus, [10] = MusicSegment, [11] = MusicTrack, [12] = MusicSwitch, [13] = MusicPlaylist, [14] = Attenuation,
         [18] = FxObject, [19] = FxObject,
     };
-
     private static void Bkhd(HircCodec c, JObj d)
     {
         Vals(c, d, ("version", 'I'), ("bank", 'I'), ("language", 'I'), ("feedback", 'I'));
@@ -687,7 +625,6 @@ internal static class Hirc
             ((HircWriter)c).Out.Zeros((int)J.L(d["padding"]));
         }
     }
-
     private static void Stid(HircCodec c, JObj d)
     {
         c.Val(d, "type", 'I');
@@ -712,7 +649,6 @@ internal static class Hirc
             }
         });
     }
-
     private static void Stmg(HircCodec c, JObj d)
     {
         c.Val(d, "volume_threshold", 'f');
@@ -731,7 +667,6 @@ internal static class Hirc
         });
         c.Items(d, "params", c.Count(d, "params", 'I'), (c2, x) => Vals(c2, x, ("rtpc", 'I'), ("value", 'f')));
     }
-
     private static void Envs(HircCodec c, JObj d)
     {
         c.Items(d, "curves", 4, (c2, x) =>
@@ -741,7 +676,6 @@ internal static class Hirc
             Graph(c2, x, "points", 'H');
         });
     }
-
     private static readonly Dictionary<string, Action<HircCodec, JObj>> s_chunks = new()
     {
         ["BKHD"] = Bkhd,
@@ -749,12 +683,10 @@ internal static class Hirc
         ["STMG"] = Stmg,
         ["ENVS"] = Envs,
     };
-
     public static bool IsDescribedChunk(string cid)
     {
         return s_chunks.ContainsKey(cid);
     }
-
     public static JObj? DecodeChunk(string cid, byte[] body, bool big)
     {
         JObj d = [];
@@ -769,14 +701,12 @@ internal static class Hirc
         }
         return r.Done && EncodeChunk(cid, d, big).AsSpan().SequenceEqual(body) ? d : null;
     }
-
     public static byte[] EncodeChunk(string cid, JObj d, bool big)
     {
         HircWriter w = new(big);
         s_chunks[cid](w, d);
         return w.Out.ToArray();
     }
-
     public static JObj? Decode(long t, byte[] body, bool big)
     {
         if (!s_types.TryGetValue(t, out Action<HircCodec, JObj>? fn))
@@ -795,7 +725,6 @@ internal static class Hirc
         }
         return r.Done && Encode(t, d, big).AsSpan().SequenceEqual(body) ? d : null;
     }
-
     public static byte[] Encode(long t, JObj d, bool big)
     {
         HircWriter w = new(big);

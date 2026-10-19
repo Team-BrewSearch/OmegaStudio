@@ -2,9 +2,7 @@ using System.Text;
 using DWSSK.Formats.Core;
 using DWSSK.Formats.Wad;
 using Omega.Plugins;
-
 namespace DWSSK.Formats.Nodes;
-
 internal abstract class SlotNode : BinaryAssetNode, IDescribable, ICommandSource
 {
     protected SlotNode(Slot slot, string name, string path, string kind = AssetKinds.Auto, string? detail = null)
@@ -12,7 +10,6 @@ internal abstract class SlotNode : BinaryAssetNode, IDescribable, ICommandSource
     {
         Slot = slot;
     }
-
     public Slot Slot { get; }
     protected SlotGroup Group => Slot.Group;
     protected IHostServices Host => Slot.Group.Host;
@@ -21,37 +18,30 @@ internal abstract class SlotNode : BinaryAssetNode, IDescribable, ICommandSource
     public override string Extension => Path.GetExtension(Name) is { Length: > 1 } e ? e : ".bin";
     public override string FileStem => Path.GetFileNameWithoutExtension(Name);
     public override bool CanReplaceBytes => Slot.CanWrite;
-
     protected override void Write(byte[] payload)
     {
         Check(payload);
         Slot.Replace(payload);
         Invalidate();
     }
-
     protected virtual void Check(byte[] payload)
     {
     }
-
     public void Validate(byte[] payload)
     {
         Check(payload);
     }
-
     protected virtual void Invalidate()
     {
     }
-
     protected void Store(byte[] payload)
     {
         ReplaceBytes(payload);
     }
-
     public virtual IEnumerable<PropertyRow> Describe()
     {
         return SlotRows();
     }
-
     protected IEnumerable<PropertyRow> SlotRows()
     {
         yield return PropertyRow.Of("File", Slot.File);
@@ -74,7 +64,6 @@ internal abstract class SlotNode : BinaryAssetNode, IDescribable, ICommandSource
             }
         }
     }
-
     public static string TypeName(int type)
     {
         return type switch
@@ -95,12 +84,10 @@ internal abstract class SlotNode : BinaryAssetNode, IDescribable, ICommandSource
             _ => "unknown",
         };
     }
-
     public virtual IEnumerable<AssetCommand> GetCommands()
     {
         return [];
     }
-
     protected AssetCommand ExportText(string title, string filterLabel, string pattern, string suggested, Func<string> text)
     {
         return new AssetCommand
@@ -118,12 +105,10 @@ internal abstract class SlotNode : BinaryAssetNode, IDescribable, ICommandSource
             },
         };
     }
-
     protected AssetCommand ExportJson(Func<string> text)
     {
         return ExportText("Export JSON", "JSON document", "*.json", Name + ".json", text);
     }
-
     protected AssetCommand ImportJson(Func<JObj, byte[]> build, string what = "JSON")
     {
         return new AssetCommand
@@ -148,11 +133,9 @@ internal abstract class SlotNode : BinaryAssetNode, IDescribable, ICommandSource
             },
         };
     }
-
     public const AssetChange Everything = AssetChange.Bytes | AssetChange.Scene | AssetChange.Image
         | AssetChange.Children | AssetChange.Properties | AssetChange.Dirty;
 }
-
 internal sealed class RawNode(Slot slot, string name, string path)
     : SlotNode(slot, name, path, KindOf(slot))
 {
@@ -161,7 +144,6 @@ internal sealed class RawNode(Slot slot, string name, string path)
         return slot.Extension is ".txt" or ".csv" ? AssetKinds.Text : AssetKinds.Auto;
     }
 }
-
 internal sealed class AliasNode : SlotNode
 {
     public AliasNode(WadSlot slot, string name, string path)
@@ -169,15 +151,12 @@ internal sealed class AliasNode : SlotNode
     {
         Wad = slot;
     }
-
     private WadSlot Wad { get; }
-
     private static string DetailOf(WadSlot slot)
     {
         WadEntry e = slot.Entry;
         return e.AliasEntry >= 0 ? $"alias of {e.AliasFile}" : $"alias pointer 0x{e.AliasPointer ?? 0:X8} names no entry";
     }
-
     public override IEnumerable<PropertyRow> Describe()
     {
         WadEntry e = Wad.Entry;

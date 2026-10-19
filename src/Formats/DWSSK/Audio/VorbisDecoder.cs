@@ -1,9 +1,7 @@
 using System.Numerics;
 using System.Runtime.InteropServices;
 using DWSSK.Formats.Core;
-
 namespace DWSSK.Formats.Audio;
-
 internal static class VorbisDecoder
 {
     private const int Lookup1 = 1026;
@@ -17,7 +15,6 @@ internal static class VorbisDecoder
     private static readonly float s_pi3 = BitConverter.Int32BitsToSingle(0x3EC3EF15);
     private static readonly byte[] s_bitrev = [0, 8, 4, 12, 2, 10, 6, 14, 1, 9, 5, 13, 3, 11, 7, 15];
     private static readonly Lazy<float[]> s_tables = new(LoadTables);
-
     private static float[] LoadTables()
     {
         using Stream stream = typeof(VorbisDecoder).Assembly.GetManifestResourceStream("DWSSK.vorbis_tables.bin")
@@ -26,9 +23,7 @@ internal static class VorbisDecoder
         stream.ReadExactly(raw);
         return MemoryMarshal.Cast<byte, float>(raw).ToArray();
     }
-
     private static ReadOnlySpan<float> Trig => s_tables.Value.AsSpan(TrigTable, 2050);
-
     public static short[] Decode(WemInfo info, byte[] wem)
     {
         (int fo, int fs) = info.Fmt;
@@ -69,20 +64,16 @@ internal static class VorbisDecoder
         Array.Resize(ref pcm, frames * nch);
         return pcm;
     }
-
     private sealed class Reader(byte[] data, int start, int size)
     {
         private int _at = start;
         private int _bit;
-
         public int Left { get; private set; } = size;
-
         private uint Byte(int k)
         {
             int i = _at + k;
             return (uint)i < (uint)data.Length ? data[i] : 0u;
         }
-
         public uint Look(int n)
         {
             int end = n + _bit;
@@ -105,7 +96,6 @@ internal static class VorbisDecoder
             }
             return n >= 32 ? v : v & ((1u << n) - 1);
         }
-
         public void Skip(int n)
         {
             n += _bit;
@@ -113,7 +103,6 @@ internal static class VorbisDecoder
             Left -= n >> 3;
             _bit = n & 7;
         }
-
         public int Read(int n)
         {
             uint v = Look(n);
@@ -121,7 +110,6 @@ internal static class VorbisDecoder
             return (int)v;
         }
     }
-
     private sealed class Book
     {
         public int Dim;
@@ -136,7 +124,6 @@ internal static class VorbisDecoder
         public int[] QVal = [];
         public uint[] Tree = [];
     }
-
     private sealed class Floor
     {
         public required int[] Partitions;
@@ -150,7 +137,6 @@ internal static class VorbisDecoder
         public required int[] Low;
         public required int[] High;
     }
-
     private sealed class Residue
     {
         public int Type;
@@ -163,7 +149,6 @@ internal static class VorbisDecoder
         public required byte[] StageMasks;
         public required byte[] StageBooks;
     }
-
     private sealed class Mapping
     {
         public int Submaps = 1;
@@ -173,7 +158,6 @@ internal static class VorbisDecoder
         public required int[] SubFloor;
         public required int[] SubResidue;
     }
-
     private sealed class Setup
     {
         public required int[] Blocks;
@@ -183,7 +167,6 @@ internal static class VorbisDecoder
         public required Mapping[] Mappings;
         public required (int BlockFlag, int Mapping)[] Modes;
     }
-
     private sealed class Dsp(Setup setup, int channels, int trim)
     {
         public Setup Setup { get; } = setup;
@@ -196,33 +179,27 @@ internal static class VorbisDecoder
         public int Current = -1;
         public int SkipSamples;
         public int Trim = trim;
-
         public Span<float> Floats(int c)
         {
             return MemoryMarshal.Cast<int, float>(Pcm[c].AsSpan());
         }
     }
-
     private static int Ilog(int v)
     {
         return 32 - BitOperations.LeadingZeroCount((uint)v);
     }
-
     private static int Sraw(int x, int s)
     {
         return (s & 63) >= 32 ? x >> 31 : x >> (s & 63);
     }
-
     private static int Slw(int x, int s)
     {
         return (s & 63) >= 32 ? 0 : x << (s & 63);
     }
-
     private static int Shift(int x, int s)
     {
         return s > 0 ? Sraw(x, s) : Slw(x, -s);
     }
-
     private static (int Mantissa, int Point) Unpack(uint x)
     {
         int mant = (int)(x & 0x1FFFFF);
@@ -238,7 +215,6 @@ internal static class VorbisDecoder
         }
         return ((x & 0x80000000) != 0 ? -mant : mant, point);
     }
-
     private static int Quantvals(int entries, int dim)
     {
         int vals = entries >> ((Ilog(entries) - 1) * (dim - 1) / dim);
@@ -258,7 +234,6 @@ internal static class VorbisDecoder
             vals += acc > entries ? -1 : 1;
         }
     }
-
     private static Setup ReadSetup(Reader r, int channels, int block0, int block1)
     {
         if (block0 < 64 || block1 < block0 || block1 > 0x2000)
@@ -301,7 +276,6 @@ internal static class VorbisDecoder
         }
         return new Setup { Blocks = [block0, block1], Books = books, Floors = floors, Residues = residues, Mappings = mappings, Modes = modes };
     }
-
     private static Book ReadBook(Reader r)
     {
         Book b = new() { Dim = r.Read(4) };
@@ -372,7 +346,6 @@ internal static class VorbisDecoder
         b.Tree = MakeTree(b, lengths, quantvals, packed);
         return b;
     }
-
     private static uint Pack(Book b, int entry, int quantvals, ushort[] packed)
     {
         int ret = 0;
@@ -384,7 +357,6 @@ internal static class VorbisDecoder
         }
         return (uint)(b.Type == 0 ? entry : ret);
     }
-
     private static uint[] MakeTree(Book b, byte[] lengths, int quantvals, ushort[] packed)
     {
         int used = lengths.Count(l => l != 0);
@@ -454,7 +426,6 @@ internal static class VorbisDecoder
         }
         return r;
     }
-
     private static uint Entry(Book b, Reader r)
     {
         uint bits = r.Look(b.MaxLength);
@@ -471,12 +442,10 @@ internal static class VorbisDecoder
         r.Skip(i + 1);
         return chase & 0x7FFFFFFF;
     }
-
     private static int Scalar(Book b, Reader r)
     {
         return b.Type != 0 ? -1 : (int)Entry(b, r);
     }
-
     private static void Map(Book b, Reader r, Span<int> v)
     {
         uint entry = Entry(b, r);
@@ -505,7 +474,6 @@ internal static class VorbisDecoder
             v[i] = add + Shift(b.QDel * v[i], shift);
         }
     }
-
     private static Floor ReadFloor(Reader r, int books)
     {
         int[] partitions = new int[r.Read(5)];
@@ -572,7 +540,6 @@ internal static class VorbisDecoder
             Mult = mult, Posts = posts, Order = order, Low = low, High = high,
         };
     }
-
     private static Residue ReadResidue(Reader r, int books)
     {
         Residue res = new()
@@ -609,7 +576,6 @@ internal static class VorbisDecoder
         }
         return res;
     }
-
     private static Mapping ReadMapping(Reader r, int channels, int floors, int residues)
     {
         int submaps = r.Read(1) != 0 ? r.Read(4) + 1 : 1;
@@ -657,7 +623,6 @@ internal static class VorbisDecoder
         }
         return new Mapping { Submaps = submaps, Mux = mux, Magnitude = magnitude, Angle = angle, SubFloor = subFloor, SubResidue = subResidue };
     }
-
     private static void Synthesis(Dsp d, Reader r, bool last)
     {
         int[] blocks = d.Setup.Blocks;
@@ -710,7 +675,6 @@ internal static class VorbisDecoder
         }
         MappingInverse(d, r, d.Setup.Mappings[d.Setup.Modes[mode].Mapping]);
     }
-
     private static void MappingInverse(Dsp d, Reader r, Mapping map)
     {
         Setup s = d.Setup;
@@ -788,7 +752,6 @@ internal static class VorbisDecoder
             Mdct(n, d.Floats(i));
         }
     }
-
     private static int[]? FloorFit(Floor f, Setup s, Reader r, int[] fit)
     {
         int quant = s_quant[f.Mult - 1];
@@ -859,7 +822,6 @@ internal static class VorbisDecoder
         }
         return fit;
     }
-
     private static void FloorApply(Floor f, int[] pcm, int[]? fit, int n)
     {
         if (fit is null)
@@ -908,7 +870,6 @@ internal static class VorbisDecoder
             ly = hy;
         }
     }
-
     private static void ResidueInverse(Dsp d, Reader r, Residue res, List<int[]> input, List<bool> nonzero)
     {
         Book[] books = d.Setup.Books;
@@ -1025,7 +986,6 @@ internal static class VorbisDecoder
             }
         }
     }
-
     private static void Divisors(byte[] word, int i, int per, int partitions)
     {
         word[i + per - 1] = 1;
@@ -1034,7 +994,6 @@ internal static class VorbisDecoder
             word[i + k] = (byte)(word[i + k + 1] * partitions);
         }
     }
-
     private static void Split(byte[] word, int i, int per, int temp)
     {
         for (int k = 0; k < per; k++)
@@ -1045,7 +1004,6 @@ internal static class VorbisDecoder
             temp -= div * (sbyte)word[i + k];
         }
     }
-
     private static void Mdct(int n, Span<float> x)
     {
         int shift = 4;
@@ -1061,7 +1019,6 @@ internal static class VorbisDecoder
         Step7(x, n, step);
         Step8(x, n, step >> 2);
     }
-
     private static void Presymmetry(Span<float> x, int n2, int step)
     {
         ReadOnlySpan<float> t = Trig;
@@ -1107,7 +1064,6 @@ internal static class VorbisDecoder
         }
         while (a >= n4);
     }
-
     private static void Butterflies(Span<float> x, int points, int shift)
     {
         int stages = 8 - shift;
@@ -1123,7 +1079,6 @@ internal static class VorbisDecoder
             Butterfly32(x[j..]);
         }
     }
-
     private static void ButterflyGeneric(Span<float> x, int points, int step)
     {
         ReadOnlySpan<float> t = Trig;
@@ -1169,7 +1124,6 @@ internal static class VorbisDecoder
         }
         while (k > 0);
     }
-
     private static void Butterfly8(Span<float> x)
     {
         float r0 = x[0] + x[1];
@@ -1189,7 +1143,6 @@ internal static class VorbisDecoder
         x[6] = r4 + r0;
         x[7] = r6 + r2;
     }
-
     private static void Butterfly16(Span<float> x)
     {
         float r0 = x[8] - x[9];
@@ -1219,7 +1172,6 @@ internal static class VorbisDecoder
         Butterfly8(x);
         Butterfly8(x[8..]);
     }
-
     private static void Butterfly32(Span<float> x)
     {
         float r0 = x[16] - x[17];
@@ -1273,7 +1225,6 @@ internal static class VorbisDecoder
         Butterfly16(x);
         Butterfly16(x[16..]);
     }
-
     private static void BitReverse(Span<float> x, int n, int shift)
     {
         int bit = 0;
@@ -1292,7 +1243,6 @@ internal static class VorbisDecoder
         }
         while (w > 0);
     }
-
     private static void Step7(Span<float> x, int n, int step)
     {
         ReadOnlySpan<float> t = Trig;
@@ -1325,7 +1275,6 @@ internal static class VorbisDecoder
         }
         while (w0 < w1);
     }
-
     private static void Lap7(Span<float> x, int w0, int w1, float r2, float r3)
     {
         float r0 = 0.5f * (x[w0 + 1] + x[w1 + 1]);
@@ -1337,7 +1286,6 @@ internal static class VorbisDecoder
         x[w1] = r0 - r2;
         x[w1 + 1] = r3 - r1;
     }
-
     private static void Step8(Span<float> x, int n, int step)
     {
         ReadOnlySpan<float> t = Trig;
@@ -1379,12 +1327,10 @@ internal static class VorbisDecoder
             x[i + 3] = (r1 * v0) - (r0 * v1);
         }
     }
-
     private static int Window(int n)
     {
         return WindowTable + (n >> 1) - 128;
     }
-
     private static void Lap(Dsp d, int c, Span<short> output, int step, int start, int end)
     {
         int n0 = d.Setup.Blocks[0];
@@ -1463,7 +1409,6 @@ internal static class VorbisDecoder
             }
         }
     }
-
     internal static short Pcm(float v)
     {
         return (short)Math.Clamp(float.IsNaN(v) ? int.MinValue : (int)v, short.MinValue, short.MaxValue);

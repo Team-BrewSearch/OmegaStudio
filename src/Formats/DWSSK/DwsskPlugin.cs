@@ -6,11 +6,8 @@ using DWSSK.Formats.Data;
 using DWSSK.Formats.Nodes;
 using DWSSK.Formats.Wad;
 using Omega.Plugins;
-
 [assembly: OmegaPlugin(typeof(DwsskPlugin))]
-
 namespace DWSSK.Formats;
-
 public sealed class DwsskPlugin : IFormatPlugin
 {
     public FormatPluginInfo Info { get; } = new()
@@ -22,7 +19,6 @@ public sealed class DwsskPlugin : IFormatPlugin
         Description = "WAD containers, textures, models, animations, level data, shaders, Wwise audio and Bink video "
             + "from the PS3, Xbox 360, Wii and 3DS releases, on disk or inside a disc image.",
     };
-
     public IEnumerable<IArchiveFormat> Archives { get; } =
     [
         new WadFormat(),
@@ -33,34 +29,27 @@ public sealed class DwsskPlugin : IFormatPlugin
         new LooseFormat("dwssk.bik", "Bink video (.bik)", new FileFilter("Bink video", "*.bik"), [".bik"], b => Video.BinkFile.IsBink(b)),
         new LooseFormat("dwssk.extracted", "DWSSK file extracted from a WAD", new FileFilter("DWSSK file", [.. LooseFormat.Extracted.Select(e => "*" + e)]), LooseFormat.Extracted, null),
     ];
-
     public IEnumerable<IContainerRecognizer> Containers { get; } = [new DwsskContainerRecognizer()];
 }
-
 internal static partial class WadFiles
 {
     [GeneratedRegex(@"^(.*\.wad)(\.mem1|\.vram)?$", RegexOptions.IgnoreCase)]
     public static partial Regex Pattern();
-
     public static readonly string[] Suffixes = [string.Empty, ".mem1", ".vram"];
-
     public static bool IsGlobal(string basePath)
     {
         return Path.GetFileName(basePath).Equals("global.wad", StringComparison.OrdinalIgnoreCase);
     }
 }
-
 public sealed class WadFormat : IArchiveFormat
 {
     public string Id => "dwssk.wad";
     public string DisplayName => "DWSSK WAD (.wad, .wad.mem1, .wad.vram)";
     public FileFilter Filter { get; } = new("DWSSK WAD", "*.wad", "*.wad.mem1", "*.wad.vram");
-
     public bool CanOpen(string path, ReadOnlySpan<byte> head)
     {
         return WadFiles.Pattern().IsMatch(Path.GetFileName(path)) && WadArchive.IsWad(head);
     }
-
     public IArchive Open(string path, IHostServices host)
     {
         ArgumentNullException.ThrowIfNull(host);
@@ -90,7 +79,6 @@ public sealed class WadFormat : IArchiveFormat
             + $"{group.Platform.Label()}{(global is null ? string.Empty : ", textures also looked up in global.wad")}.");
         return new WadArchiveHandle(Path.GetFileName(basePath), parts, group);
     }
-
     private static byte[] Head(string path)
     {
         using FileStream f = File.OpenRead(path);
@@ -99,7 +87,6 @@ public sealed class WadFormat : IArchiveFormat
         return head;
     }
 }
-
 internal static class WadRoots
 {
     public static IAssetNode Build(string name, WadGroup group)
@@ -111,23 +98,19 @@ internal static class WadRoots
                 () => sessions.Select(s => (IAssetNode)new WadNode(s, s.Name)));
     }
 }
-
 internal sealed class WadArchiveHandle : IArchive
 {
     private readonly List<(string Path, WadSession Session)> _parts;
-
     public WadArchiveHandle(string name, List<(string Path, WadSession Session)> parts, WadGroup group)
     {
         _parts = parts;
         DisplayName = name;
         Root = WadRoots.Build(name, group);
     }
-
     public string DisplayName { get; }
     public IAssetNode Root { get; }
     public bool IsDirty => _parts.Any(p => p.Session.Archive.IsDirty);
     public IReadOnlyList<string> BackupPaths => [.. _parts.Select(p => p.Path)];
-
     public void Save()
     {
         List<(string Path, WadSession Session)> dirty = [.. _parts.Where(p => p.Session.Archive.IsDirty)];
@@ -151,12 +134,10 @@ internal sealed class WadArchiveHandle : IArchive
             session.Archive.MarkSaved();
         }
     }
-
     public void Dispose()
     {
     }
 }
-
 internal sealed class LooseFormat(string id, string name, FileFilter filter, string[] extensions, Func<byte[], bool>? magic) : IArchiveFormat
 {
     public static readonly string[] Extracted =
@@ -164,11 +145,9 @@ internal sealed class LooseFormat(string id, string name, FileFilter filter, str
         ".htx", ".gdw", ".gds", ".gdi", ".gdt", ".piece", ".animpack", ".p2b", ".lcl", ".fkd", ".cam", ".csd",
         ".nav", ".col", ".vs_bin", ".ps_bin", ".bog", ".arc", ".tpl",
     ];
-
     public string Id => id;
     public string DisplayName => name;
     public FileFilter Filter => filter;
-
     public bool CanOpen(string path, ReadOnlySpan<byte> head)
     {
         string ext = Path.GetExtension(path).ToLowerInvariant();
@@ -178,7 +157,6 @@ internal sealed class LooseFormat(string id, string name, FileFilter filter, str
         }
         return magic is not null ? magic(head.ToArray()) : Paths.PlatformOf(Path.GetFullPath(path)) is not null || Extract.Manifest(path) is not null;
     }
-
     public IArchive Open(string path, IHostServices host)
     {
         ArgumentNullException.ThrowIfNull(host);
@@ -193,14 +171,12 @@ internal sealed class LooseFormat(string id, string name, FileFilter filter, str
         return new LooseArchive(full, slot);
     }
 }
-
 internal sealed class LooseArchive(string path, LooseSlot slot) : IArchive
 {
     public string DisplayName { get; } = Path.GetFileName(path);
     public IAssetNode Root { get; } = NodeFactory.Create(slot, Path.GetFileName(path), Path.GetFileName(path));
     public bool IsDirty => slot.IsDirty;
     public IReadOnlyList<string> BackupPaths => [path];
-
     public void Save()
     {
         List<(string Path, byte[] Rebuilt)> files = [(path, slot.Data)];
@@ -212,12 +188,10 @@ internal sealed class LooseArchive(string path, LooseSlot slot) : IArchive
         });
         slot.MarkSaved();
     }
-
     public void Dispose()
     {
     }
 }
-
 internal static class Extract
 {
     public static string? Manifest(string path)
@@ -234,7 +208,6 @@ internal static class Extract
         }
         return null;
     }
-
     public static IArchive Open(string full, IHostServices host)
     {
         string? manifest = Manifest(full);
@@ -272,13 +245,11 @@ internal static class Extract
             ?? throw new InvalidDataException($"{self} is not listed in {manifest}");
         return new ExtractedArchive(full, slot, group);
     }
-
     private static WadSession Session(string dir, JObj man, bool writable)
     {
         WadArchive archive = WadArchive.FromManifest(man, f => File.Exists(Path.Combine(dir, f)) ? File.ReadAllBytes(Path.Combine(dir, f)) : []);
         return new WadSession(archive, Path.GetFileName(dir), writable);
     }
-
     private static string? GlobalFolder(string wadDir)
     {
         string? dir = Path.GetDirectoryName(wadDir);
@@ -294,16 +265,13 @@ internal static class Extract
         return null;
     }
 }
-
 internal sealed class ExtractedArchive(string path, WadSlot slot, WadGroup group) : IArchive
 {
     public string DisplayName { get; } = Path.GetFileName(path);
     public IAssetNode Root { get; } = NodeFactory.Create(slot, Path.GetFileName(path), slot.File);
     public bool IsDirty => slot.Session.Archive.IsDirty;
     public IReadOnlyList<string> BackupPaths => [path];
-
     public WadGroup Group { get; } = group;
-
     public void Save()
     {
         List<(string Path, byte[] Rebuilt)> files = [(path, slot.Data)];
@@ -315,18 +283,14 @@ internal sealed class ExtractedArchive(string path, WadSlot slot, WadGroup group
         });
         slot.Session.Archive.MarkSaved();
     }
-
     public void Dispose()
     {
     }
 }
-
 public sealed class DwsskContainerRecognizer : IContainerRecognizer
 {
     public string Id => "dwssk.container";
-
     private static readonly string[] s_loose = [".bnk", ".wem", ".swf", ".nog", ".bik"];
-
     public IReadOnlyList<IAssetNode>? Claim(IReadOnlyList<IAssetNode> children, IHostServices host)
     {
         ArgumentNullException.ThrowIfNull(children);
@@ -407,25 +371,21 @@ public sealed class DwsskContainerRecognizer : IContainerRecognizer
         }
         return output;
     }
-
     private static IBinaryAsset? Row(IAssetNode node)
     {
         return (node is RecognizedAsset r ? r.Inner : node) as IBinaryAsset;
     }
-
     private static byte[] Copy(IBinaryAsset row)
     {
         byte[] bytes = row.Data.ToArray();
         (row as StreamingAssetNode)?.ReleasePayload();
         return bytes;
     }
-
     private static string Folder(string path)
     {
         int cut = path.LastIndexOfAny(['/', '\\']);
         return cut < 0 ? string.Empty : path[..cut];
     }
-
     private static IEnumerable<(string Path, Func<byte[]> Bytes)> WadRows(IEnumerable<IAssetNode> nodes)
     {
         foreach (IAssetNode node in nodes)
@@ -446,7 +406,6 @@ public sealed class DwsskContainerRecognizer : IContainerRecognizer
             }
         }
     }
-
     private static WadGroup? OpenWad(string key, List<(string Suffix, IAssetNode Row)> rows, IHostServices host)
     {
         try
@@ -482,24 +441,19 @@ public sealed class DwsskContainerRecognizer : IContainerRecognizer
         }
     }
 }
-
 internal sealed class LazyNode(string name, string path, string detail, Func<IAssetNode> open)
     : AssetNode(name, path, AssetKinds.Container, detail), IDescribable, ICommandSource
 {
     private readonly Lazy<IAssetNode> _inner = new(open);
-
     public override bool HasChildren => true;
-
     public override IEnumerable<IAssetNode> GetChildren()
     {
         return _inner.Value.GetChildren();
     }
-
     public IEnumerable<PropertyRow> Describe()
     {
         return _inner.Value is IDescribable d ? d.Describe() : [];
     }
-
     public IEnumerable<AssetCommand> GetCommands()
     {
         return _inner.Value is ICommandSource c ? c.GetCommands() : [];

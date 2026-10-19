@@ -1,13 +1,10 @@
 using System.Text.RegularExpressions;
 using DWSSK.Formats.Core;
 using static DWSSK.Formats.Shaders.Bits;
-
 namespace DWSSK.Formats.Shaders;
-
 internal static class Pica200
 {
     private const string Xyzw = "xyzw";
-
     private static readonly Dictionary<long, string> s_ops = new()
     {
         [0x00] = "add", [0x01] = "dp3", [0x02] = "dp4", [0x03] = "dph", [0x04] = "dst", [0x05] = "ex2", [0x06] = "lg2",
@@ -17,7 +14,6 @@ internal static class Pica200
         [0x26] = "callu", [0x27] = "ifu", [0x28] = "ifc", [0x29] = "loop", [0x2A] = "emit", [0x2B] = "setemit", [0x2C] = "jmpc",
         [0x2D] = "jmpu",
     };
-
     private static readonly HashSet<long> s_unary = [0x05, 0x06, 0x07, 0x0B, 0x0E, 0x0F, 0x12, 0x13];
     private static readonly HashSet<long> s_inverted = [0x18, 0x19, 0x1A, 0x1B];
     private static readonly HashSet<long> s_flow = [0x24, 0x25, 0x26, 0x27, 0x28, 0x29, 0x2C, 0x2D, 0x23];
@@ -25,13 +21,11 @@ internal static class Pica200
     private static readonly string[] s_conds = ["cc.x || cc.y", "cc.x && cc.y", "cc.x", "cc.y"];
     private static readonly string[] s_idx = [string.Empty, "a0.x", "a0.y", "aL"];
     private static readonly Dictionary<string, long> s_opsN = s_ops.ToDictionary(kv => kv.Value, kv => kv.Key);
-
     public static readonly Dictionary<long, string> OutputTypes = new()
     {
         [0] = "position", [1] = "normal_quat", [2] = "color", [3] = "texcoord0", [4] = "texcoord0w",
         [5] = "texcoord1", [6] = "texcoord2", [8] = "view",
     };
-
     public static string Reg(long r, bool dst = false)
     {
         if (dst)
@@ -40,12 +34,10 @@ internal static class Pica200
         }
         return r < 0x10 ? $"v{D(r)}" : r < 0x20 ? $"r{D(r - 0x10)}" : $"c{D(r - 0x20)}";
     }
-
     public static string Ureg(long r)
     {
         return r < 0x10 ? $"v{D(r)}" : r < 0x70 ? $"c{D(r - 0x10)}" : r < 0x78 ? $"i{D(r - 0x70)}" : $"b{D(r - 0x78)}";
     }
-
     public static long UregN(string t)
     {
         long b = t[0] switch
@@ -58,12 +50,10 @@ internal static class Pica200
         };
         return b + Rx.Int(t[1..]);
     }
-
     private static string Swz(long sel)
     {
         return string.Concat(Enumerable.Range(0, 4).Select(k => Xyzw[(int)((sel >> (6 - (2 * k))) & 3)]));
     }
-
     private static string Src(long r, long idx, long neg, long sel)
     {
         string s = (neg != 0 ? "-" : string.Empty) + Reg(r);
@@ -75,17 +65,14 @@ internal static class Pica200
         string sw = Swz(sel);
         return s + (sw == "xyzw" ? string.Empty : "." + sw);
     }
-
     private static string Mask(long d)
     {
         return string.Concat(Enumerable.Range(0, 4).Where(k => ((d >> (3 - k)) & 1) != 0).Select(k => Xyzw[k]));
     }
-
     private static long Desc(IReadOnlyList<long> opdesc, long i)
     {
         return i < opdesc.Count ? opdesc[(int)i] : throw new PyIndexException("list index out of range");
     }
-
     public static string Text(long w, IReadOnlyList<long> opdesc, IReadOnlyDictionary<long, string?>? labels)
     {
         long op = w >> 26;
@@ -161,12 +148,10 @@ internal static class Pica200
         }
         return $".word 0x{Hex(w, 8)}";
     }
-
     public static List<string> Disasm(IReadOnlyList<long> code, IReadOnlyList<long> opdesc, IReadOnlyDictionary<long, string?>? labels)
     {
         return [.. code.Select((w, pc) => $"{Hex(pc, 4)}: {Hex(w, 8)}  {Text(w, opdesc, labels)}")];
     }
-
     private static (long Reg, long? Idx, bool Neg, long Sel) SrcParse(string t)
     {
         bool neg = t.StartsWith('-');
@@ -205,7 +190,6 @@ internal static class Pica200
         }
         return (r, idx, neg, s);
     }
-
     private static long DescIndex(List<long[]> opdesc, string mask, List<(long Reg, long? Idx, bool Neg, long Sel)> srcs, int limit)
     {
         long d = 1L << 31;
@@ -236,18 +220,15 @@ internal static class Pica200
         opdesc.Add([d, need]);
         return opdesc.Count - 1;
     }
-
     private static long Dst(string t)
     {
         return Rx.Int(t[1..]) + (t[0] == 'r' ? 0x10 : 0);
     }
-
     private static (string, string) SplitDot(string t)
     {
         string[] p = t.Split('.');
         return p.Length == 2 ? (p[0], p[1]) : throw new InvalidDataException($"not enough values to unpack (expected 2, got {p.Length})");
     }
-
     public static long Parse(string text, long w, List<long[]> opdesc, IReadOnlyDictionary<string, long>? names)
     {
         if (text.StartsWith(".word", StringComparison.Ordinal))
@@ -351,7 +332,6 @@ internal static class Pica200
         }
         return Put(w, 0, 7, DescIndex(opdesc, msk, sr, 128));
     }
-
     public static (List<long> Code, List<long[]> Opdesc) Asm(IReadOnlyList<string> lines, IEnumerable<long[]> pairs, IReadOnlyDictionary<long, string?>? labels)
     {
         List<long[]> opdesc = [.. pairs.Select(x => (long[])x.Clone())];

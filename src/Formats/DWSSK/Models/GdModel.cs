@@ -1,8 +1,6 @@
 using System.Buffers.Binary;
 using DWSSK.Formats.Core;
-
 namespace DWSSK.Formats.Models;
-
 internal sealed class GdDraw
 {
     public int Material { get; init; }
@@ -14,28 +12,21 @@ internal sealed class GdDraw
     public bool Strip { get; init; } = true;
     public int Zone { get; set; }
 }
-
 internal sealed class GdVertices(byte[] data, int count, string layout)
 {
     public byte[] Data { get; } = data;
     public int Count { get; } = count;
     public string Layout { get; } = layout;
 }
-
 internal sealed class GdPrim(GdVertices vb)
 {
     public GdVertices Vb { get; } = vb;
     public List<GdDraw> Draws { get; } = [];
 }
-
 internal sealed record GdSampler(int Texture, int WrapS, int WrapT, int Usage, int Filter, uint Param);
-
 internal sealed record GdPass(int Shader, List<GdSampler> Samplers);
-
 internal sealed record GdMaterial(string Name, uint Hash, List<GdPass> Passes);
-
 internal sealed record GdBone(uint Hash, int? Parent, double[] InverseBind, double[] Rotation, double[] Scale, double[] Translation);
-
 internal sealed class GdModel
 {
     public required string Kind { get; init; }
@@ -47,31 +38,25 @@ internal sealed class GdModel
     public required List<List<GdPrim>> Lods { get; init; }
     public required List<GdBone> Bones { get; init; }
 }
-
 internal sealed record GdField(string Name, int Offset, char Type, int Size, int Count, double Scale = double.NaN, double Bias = 0);
-
 internal static class GdLayouts
 {
     private static GdField F(string name, int off, int count)
     {
         return new GdField(name, off, 'f', 4, count);
     }
-
     private static GdField U1(string name, int off, int count, double scale = double.NaN, double bias = 0)
     {
         return new GdField(name, off, 'B', 1, count, scale, bias);
     }
-
     private static GdField I1(string name, int off, int count, double scale)
     {
         return new GdField(name, off, 'b', 1, count, scale);
     }
-
     private static GdField I2(string name, int off, int count, double scale)
     {
         return new GdField(name, off, 'h', 2, count, scale);
     }
-
     public static readonly Dictionary<string, (int Stride, GdField[] Fields)> All = new()
     {
         ["static72"] = (72, [F("POSITION", 0, 3), F("TEXCOORD_0", 12, 2), F("TEXCOORD_1", 20, 2), F("NORMAL", 28, 3),
@@ -97,12 +82,10 @@ internal static class GdLayouts
         ["skin80"] = (80, [F("POSITION", 0, 3), F("TEXCOORD_0", 12, 2), F("NORMAL", 20, 3), F("TANGENT", 32, 3),
             F("BINORMAL", 44, 3), U1("COLOR_0", 56, 4), U1("COLOR_1", 60, 4), U1("JOINTS_0", 64, 4), U1("WEIGHTS_0", 68, 4)]),
     };
-
     public static bool Has(string layout, string name)
     {
         return All[layout].Fields.Any(f => f.Name == name);
     }
-
     public static double[]? Attr(GdVertices vb, bool big, string name)
     {
         (int stride, GdField[] fields) = All[vb.Layout];
@@ -134,17 +117,14 @@ internal static class GdLayouts
         }
         return v;
     }
-
     public static int Count(string layout, string name)
     {
         return All[layout].Fields.First(f => f.Name == name).Count;
     }
 }
-
 internal static class GdReader
 {
     private static readonly string[] s_kinds = ["gdw", "gds", "gdi", "gdt"];
-
     public static int[] StripToTris(int[] s)
     {
         if (s.Length < 3)
@@ -176,31 +156,25 @@ internal static class GdReader
         }
         return [.. output];
     }
-
     public static GdModel Parse(byte[] b, Platform platform)
     {
         return new Reader(b, platform).Parse();
     }
-
     private sealed class Reader(byte[] b, Platform platform)
     {
         private readonly bool _big = !(b.Length > 0 && b[0] != 0);
-
         private uint U(int o)
         {
             return Bin.U32(b, o, _big);
         }
-
         private uint[] Us(int o, int n)
         {
             return Bin.U32s(b, o, n, _big);
         }
-
         private ushort H(int o)
         {
             return Bin.U16(b, o, _big);
         }
-
         public GdModel Parse()
         {
             uint[] h = Us(0, 11);
@@ -250,7 +224,6 @@ internal static class GdReader
                 Bones = skel != 0 ? Skeleton(skel) : [],
             };
         }
-
         private GdMaterial Material(int o)
         {
             ReadOnlySpan<byte> field = Bin.Slice(b, o, o + 0x60);
@@ -292,7 +265,6 @@ internal static class GdReader
             }
             return new GdMaterial(name, w[0], passes);
         }
-
         private int[] Strip(int cnt, int off)
         {
             Bin.Need(b, off, cnt * 2);
@@ -303,13 +275,11 @@ internal static class GdReader
             }
             return s;
         }
-
         private GdVertices Buffer(int count, int stride, int offset, string layout)
         {
             Bin.Need(b, offset, count * stride);
             return new GdVertices(b.AsSpan(offset, count * stride).ToArray(), count, layout);
         }
-
         private List<(int Op, int[][] Idx)> GxDl(int dl, int size, int perVertex)
         {
             List<(int, int[][])> output = [];
@@ -343,7 +313,6 @@ internal static class GdReader
             }
             return output;
         }
-
         private static (List<int[]> Unique, int[] Inverse) Unique(List<int[]> tuples)
         {
             int[] order = [.. Enumerable.Range(0, tuples.Count)];
@@ -374,7 +343,6 @@ internal static class GdReader
             }
             return (unique, inverse);
         }
-
         private static (GdVertices Vb, List<GdDraw> Draws) GxDraw(byte[] vbuf, int stride, int vcount, string layout, List<(int Op, int[][] Idx)> prims, int material)
         {
             List<int[]> tuples = [.. prims.SelectMany(p => p.Idx)];
@@ -425,7 +393,6 @@ internal static class GdReader
             }
             return (new GdVertices(data, uniq.Count, layout), [.. strips.Select(s => new GdDraw { Material = material, Indices = s })]);
         }
-
         private List<List<GdPrim>> MeshGdt(int mb)
         {
             uint fmt = U(mb);
@@ -455,7 +422,6 @@ internal static class GdReader
             }
             return lods;
         }
-
         private List<List<GdPrim>> MeshGdtWii(int mb, int nl)
         {
             List<List<GdPrim>> lods = [];
@@ -480,7 +446,6 @@ internal static class GdReader
             }
             return lods;
         }
-
         private List<List<GdPrim>> MeshGdt3ds(int mb, int nl)
         {
             List<List<GdPrim>> lods = [];
@@ -500,7 +465,6 @@ internal static class GdReader
             }
             return lods;
         }
-
         private List<List<GdPrim>> MeshGdw(int mb)
         {
             int nb = (int)U(mb + 16);
@@ -560,7 +524,6 @@ internal static class GdReader
             }
             return [prims];
         }
-
         private List<List<GdPrim>> MeshGdi(int mb)
         {
             int vc = (int)U(mb + 8);
@@ -572,7 +535,6 @@ internal static class GdReader
             prim.Draws.Add(new GdDraw { Material = 0, Indices = Strip(ic, io) });
             return [[prim]];
         }
-
         private List<List<GdPrim>> MeshGds(int mb)
         {
             uint fmt = U(mb);
@@ -627,7 +589,6 @@ internal static class GdReader
             }
             return lods;
         }
-
         private List<List<GdPrim>> MeshGdsWii(int mb, int ns)
         {
             List<List<GdPrim>> lods = [];
@@ -664,7 +625,6 @@ internal static class GdReader
                     {
                         int[] t = uniq[k];
                         int o = k * stride;
-                        // GX sends a vertex's indices in attribute order: POS, NRM, CLR0, TEX0.
                         if (rigid)
                         {
                             Copy(bb, 10, t[0], 0, 10, data, o);
@@ -705,7 +665,6 @@ internal static class GdReader
             }
             return lods;
         }
-
         private byte[] Arr(int count, int size, int offset)
         {
             if (count == 0)
@@ -715,7 +674,6 @@ internal static class GdReader
             Bin.Need(b, offset, count * size);
             return b.AsSpan(offset, count * size).ToArray();
         }
-
         private static void Copy(byte[] src, int stride, int index, int from, int n, byte[] dst, int at)
         {
             int o = (index * stride) + from;
@@ -725,7 +683,6 @@ internal static class GdReader
             }
             System.Buffer.BlockCopy(src, o, dst, at, n);
         }
-
         private List<List<GdPrim>> MeshGds3ds(int mb, int ns)
         {
             List<List<GdPrim>> lods = [];
@@ -770,7 +727,6 @@ internal static class GdReader
             }
             return lods;
         }
-
         private List<List<GdPrim>> MeshGds6(int mb, int ns)
         {
             List<List<GdPrim>> lods = [];
@@ -804,7 +760,6 @@ internal static class GdReader
             }
             return lods;
         }
-
         private List<GdBone> Skeleton(int o)
         {
             uint[] head = Us(o, 4);
@@ -835,5 +790,4 @@ internal static class GdReader
         }
     }
 }
-
 internal sealed class ValueException(string message) : Exception(message);

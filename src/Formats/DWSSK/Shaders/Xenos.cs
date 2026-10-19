@@ -1,21 +1,16 @@
 using System.Text.RegularExpressions;
 using DWSSK.Formats.Core;
 using static DWSSK.Formats.Shaders.Bits;
-
 namespace DWSSK.Formats.Shaders;
-
 internal static class Xenos
 {
     private static readonly string[] s_dims = ["1D", "2D", "3D", "Cube"];
-
     private const string Xyzw = "xyzw";
-
     public static readonly string[] Cf =
     [
         "nop", "exec", "exece", "cexec", "cexece", "cexec_pred", "cexece_pred", "loop", "endloop", "ccall", "ret",
         "cjmp", "alloc", "cexec_pred_clean", "cexece_pred_clean", "vfetch_done",
     ];
-
     private static readonly (string Name, int N)[] s_vec =
     [
         ("add", 2), ("mul", 2), ("max", 2), ("min", 2), ("seq", 2), ("sgt", 2), ("sge", 2), ("sne", 2),
@@ -24,7 +19,6 @@ internal static class Xenos
         ("setp_gt_push", 2), ("setp_ge_push", 2), ("kill_eq", 2), ("kill_gt", 2), ("kill_ge", 2), ("kill_ne", 2),
         ("dst", 2), ("maxa", 2),
     ];
-
     private static readonly (string Name, string Kind)[] s_sca =
     [
         ("adds", "2"), ("adds_prev", "1"), ("muls", "2"), ("muls_prev", "1"), ("muls_prev2", "2"),
@@ -37,26 +31,21 @@ internal static class Xenos
         ("kills_one", "1"), ("sqrt", "1"), ("op41", "0"), ("mulsc", "c"), ("mulsc", "c"), ("addsc", "c"),
         ("addsc", "c"), ("subsc", "c"), ("subsc", "c"), ("sin", "1"), ("cos", "1"), ("retain_prev", "0"),
     ];
-
     private static readonly Dictionary<long, string> s_vfmt = new()
     {
         [6] = "8_8_8_8", [7] = "2_10_10_10", [10] = "10_11_11", [11] = "11_11_10", [25] = "16_16", [26] = "16_16_16_16",
         [31] = "16_16_FLOAT", [32] = "16_16_16_16_FLOAT", [33] = "32", [34] = "32_32", [35] = "32_32_32_32", [36] = "32_FLOAT",
         [37] = "32_32_FLOAT", [38] = "32_32_32_32_FLOAT", [57] = "32_32_32_FLOAT",
     };
-
     private static readonly string[] s_exec = ["exec", "exece", "cexec", "cexece", "cexec_pred", "cexece_pred", "cexec_pred_clean", "cexece_pred_clean"];
-
     private static readonly Dictionary<long, string> s_fetch = new()
     {
         [16] = "getBCF", [17] = "getCompTexLOD", [18] = "getGradients", [19] = "getWeights", [24] = "setTexLOD",
         [25] = "setGradientH", [26] = "setGradientV",
     };
-
     private static readonly Dictionary<string, long> s_vecN = s_vec.Select((v, k) => (v.Name, (long)k)).ToDictionary(t => t.Name, t => t.Item2);
     private static readonly Dictionary<string, long> s_scaN = BuildScaN();
     private static readonly Dictionary<string, long> s_vfmtN = s_vfmt.ToDictionary(kv => kv.Value, kv => kv.Key);
-
     private static Dictionary<string, long> BuildScaN()
     {
         Dictionary<string, long> d = [];
@@ -66,12 +55,10 @@ internal static class Xenos
         }
         return d;
     }
-
     public static bool IsExec(long hi)
     {
         return s_exec.Contains(Cf[B(hi, 12, 4)]);
     }
-
     public static string Export(long n, bool vs)
     {
         if (vs)
@@ -91,7 +78,6 @@ internal static class Xenos
             _ => n < 4 ? $"oC{D(n)}" : n is >= 33 and <= 37 ? $"eM{D(n - 33)}" : $"export{D(n)}",
         };
     }
-
     private static long ExportN(string name, bool vs)
     {
         for (int n = 0; n < 64; n++)
@@ -103,7 +89,6 @@ internal static class Xenos
         }
         throw new InvalidDataException(name);
     }
-
     public static string Alu(long d0, long d1, long d2, bool vs)
     {
         long export = B(d0, 15, 1);
@@ -193,7 +178,6 @@ internal static class Xenos
         }
         return parts.Count > 0 ? string.Join(" + ", parts) : "nop";
     }
-
     public static string Fetch(long d0, long d1, long d2)
     {
         long op = B(d0, 0, 5);
@@ -227,7 +211,6 @@ internal static class Xenos
         }
         return $"{(s_fetch.TryGetValue(op, out string? name) ? name : $"fetch{D(op)}")}{pred} {dst}, r{D(B(d0, 5, 6))}, tf{D(B(d0, 20, 5))}";
     }
-
     public static string CfText(long lo, long hi, bool vs)
     {
         string op = Cf[B(hi, 12, 4)];
@@ -266,7 +249,6 @@ internal static class Xenos
         }
         return op;
     }
-
     public static List<string> Disasm(ReadOnlySpan<byte> ucode, bool vs)
     {
         int nwords = ucode.Length / 4;
@@ -334,7 +316,6 @@ internal static class Xenos
         }
         return output;
     }
-
     private static (long Op, bool Sat, bool? Pred, List<string> Ops) SplitOp(string part, Dictionary<string, long> table)
     {
         Match m = Rx.Full(@"(\S+?)(_sat)?(?: \((!?)p0\))?(?: (.*))?", part) ?? throw new InvalidDataException($"'{part}' is not an instruction");
@@ -353,7 +334,6 @@ internal static class Xenos
         List<string> ops = m.Groups[4].Success && m.Groups[4].Value.Length > 0 ? [.. m.Groups[4].Value.Split(", ")] : [];
         return (op, m.Groups[2].Success, pred, ops);
     }
-
     public static (long, long, long) AluParse(string text, long d0, long d1, long d2, bool vs)
     {
         List<string> parts = text == "nop" ? [] : [.. text.Split(" + ")];
@@ -562,7 +542,6 @@ internal static class Xenos
         }
         return (d0, d1, d2);
     }
-
     public static (long, long, long) FetchParse(string text, long d0, long d1, long d2)
     {
         Match m = Rx.Full(@"(\w+?)(?: \((!?)p0\))? (.*)", text) ?? throw new InvalidDataException($"'{text}' is not a fetch");
@@ -632,19 +611,16 @@ internal static class Xenos
         }
         return (d0, d1, d2);
     }
-
     private static int Index(string c)
     {
         int i = Xyzw.IndexOf(c, StringComparison.Ordinal);
         return i >= 0 ? i : throw new InvalidDataException("substring not found");
     }
-
     private static (string, string) Part(string t)
     {
         int dot = t.IndexOf('.', StringComparison.Ordinal);
         return dot < 0 ? (t, string.Empty) : (t[..dot], t[(dot + 1)..]);
     }
-
     public static (long, long) CfParse(string text, long lo, long hi)
     {
         int sp = text.IndexOf(' ', StringComparison.Ordinal);
@@ -699,7 +675,6 @@ internal static class Xenos
         }
         return (lo, hi);
     }
-
     private static bool IsFetchText(string text)
     {
         string head = text.Split(' ')[0];
@@ -707,7 +682,6 @@ internal static class Xenos
             || s_fetch.ContainsValue(head)
             || Rx.Prefix(@"fetch\d", text) is not null;
     }
-
     public static byte[] Asm(IReadOnlyList<string> lines, bool vs)
     {
         List<(long Lo, long Hi, List<(long Addr, bool Fetch, bool Ser)> Slots)> cfs = [];

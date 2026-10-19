@@ -4,9 +4,7 @@ using DWSSK.Formats.Core;
 using DWSSK.Formats.Data;
 using DWSSK.Formats.Shaders;
 using Omega.Plugins;
-
 namespace DWSSK.Formats.Nodes;
-
 internal sealed record DocCodec(
     string Label,
     Func<byte[], JObj> Read,
@@ -18,12 +16,10 @@ internal sealed record DocCodec(
     {
         return PyJson.Dumps(doc, 1, false);
     }
-
     private static string Ascii(JObj doc)
     {
         return PyJson.Dumps(doc, 1);
     }
-
     public static readonly DocCodec P2b = new("P2B data table", Data.P2b.Read, Data.P2b.Write, Text);
     public static readonly DocCodec Lcl = new("localised strings", Data.Lcl.Read, Data.Lcl.Write, Text);
     public static readonly DocCodec Fkd = new("font kerning", Data.Fkd.Read, Data.Fkd.Write, Text);
@@ -34,7 +30,6 @@ internal sealed record DocCodec(
     public static readonly DocCodec Shader = new("shader", Shaders.Shader.Describe, Shaders.Shader.Build, Ascii);
     public static readonly DocCodec Nog = new("level name table", Data.Nog.Read, Data.Nog.Write, Ascii);
     public static readonly DocCodec Bog = new("level database", Data.Bog.Read, Data.Bog.Write, Data.Bog.Dumps);
-
     public static DocCodec? Of(string name)
     {
         string lower = name.ToLowerInvariant();
@@ -54,19 +49,15 @@ internal sealed record DocCodec(
         };
     }
 }
-
 internal class DocNode : SlotNode
 {
     private (int Revision, JObj Doc)? _doc;
-
     public DocNode(Slot slot, string name, string path, DocCodec codec)
         : base(slot, name, path, codec.Obj is null ? AssetKinds.Text : AssetKinds.Model)
     {
         Codec = codec;
     }
-
     protected DocCodec Codec { get; }
-
     protected JObj Doc
     {
         get
@@ -83,17 +74,14 @@ internal class DocNode : SlotNode
             return cached.Doc;
         }
     }
-
     protected override void Check(byte[] payload)
     {
         _ = Codec.Read(payload);
     }
-
     protected override void Invalidate()
     {
         _doc = null;
     }
-
     public override IEnumerable<PropertyRow> Describe()
     {
         JObj doc = Doc;
@@ -118,18 +106,15 @@ internal class DocNode : SlotNode
             yield return row;
         }
     }
-
     protected virtual IEnumerable<PropertyRow> Extra(JObj doc)
     {
         return [];
     }
-
     private static string Title(string key)
     {
         string spaced = key.Replace('_', ' ');
         return spaced.Length == 0 ? key : char.ToUpperInvariant(spaced[0]) + spaced[1..];
     }
-
     private static string? Summary(object? value)
     {
         return value switch
@@ -146,7 +131,6 @@ internal class DocNode : SlotNode
             _ => null,
         };
     }
-
     public override IEnumerable<AssetCommand> GetCommands()
     {
         yield return ExportJson(() => Codec.Dumps(Doc));
@@ -163,7 +147,6 @@ internal class DocNode : SlotNode
             yield return ImportJson(Codec.Write);
         }
     }
-
     protected void Rewrite(Action<JObj> edit)
     {
         JObj doc = Codec.Read(Slot.Data);
@@ -175,7 +158,6 @@ internal class DocNode : SlotNode
         }
     }
 }
-
 internal sealed class LclNode(Slot slot, string name, string path) : DocNode(slot, name, path, DocCodec.Lcl)
 {
     protected override IEnumerable<PropertyRow> Extra(JObj doc)
@@ -197,12 +179,10 @@ internal sealed class LclNode(Slot slot, string name, string path) : DocNode(slo
         }
     }
 }
-
 internal sealed class MeshDocNode(Slot slot, string name, string path, DocCodec codec)
     : DocNode(slot, name, path, codec), ISceneAsset
 {
     private (int Revision, SceneGeometry Scene)? _scene;
-
     public SceneGeometry? GetScene()
     {
         if (_scene is not { } cached || cached.Revision != Slot.Revision)
@@ -212,7 +192,6 @@ internal sealed class MeshDocNode(Slot slot, string name, string path, DocCodec 
         return cached.Scene.TriangleCount > 0 ? cached.Scene : null;
     }
 }
-
 internal static class ObjScene
 {
     public static SceneGeometry Build(string obj, string name)
@@ -272,7 +251,6 @@ internal static class ObjScene
         SceneMesh mesh = new() { Name = name, Positions = [.. positions], Normals = [.. normals], Submeshes = subs };
         return new SceneGeometry { Meshes = [mesh] };
     }
-
     private static float Number(string s)
     {
         return float.TryParse(s, NumberStyles.Float, CultureInfo.InvariantCulture, out float f) && float.IsFinite(f) ? f : 0f;

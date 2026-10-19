@@ -1,29 +1,23 @@
 using DWSSK.Formats.Core;
 using DWSSK.Formats.Wad;
 using Omega.Plugins;
-
 namespace DWSSK.Formats.Nodes;
-
 internal sealed class WadSession
 {
     private List<WadSlot>? _slots;
     private List<WadEntry>? _slotsFor;
-
     public WadSession(WadArchive archive, string name, bool writable)
     {
         Archive = archive;
         Name = name;
         Writable = writable;
     }
-
     public WadArchive Archive { get; }
     public string Name { get; }
     public bool Writable { get; }
     public WadGroup Group { get; set; } = null!;
-
     public string Suffix => Name.EndsWith(".mem1", StringComparison.OrdinalIgnoreCase) ? ".mem1"
         : Name.EndsWith(".vram", StringComparison.OrdinalIgnoreCase) ? ".vram" : string.Empty;
-
     public IReadOnlyList<WadSlot> Slots
     {
         get
@@ -38,7 +32,6 @@ internal sealed class WadSession
         }
     }
 }
-
 internal sealed class WadSlot(WadEntry entry, WadSession session) : Slot
 {
     public WadEntry Entry { get; } = entry;
@@ -50,7 +43,6 @@ internal sealed class WadSlot(WadEntry entry, WadSession session) : Slot
     public override bool CanWrite => Session.Writable && !Entry.IsAlias;
     public override uint? Hash => Entry.Hash;
     public override SlotGroup Group => Session.Group;
-
     private byte[] Alias()
     {
         if (Entry.AliasEntry >= 0 && Entry.AliasEntry < Session.Archive.Entries.Count)
@@ -60,7 +52,6 @@ internal sealed class WadSlot(WadEntry entry, WadSession session) : Slot
         }
         return [];
     }
-
     public override void Replace(byte[] data)
     {
         if (!CanWrite)
@@ -72,13 +63,11 @@ internal sealed class WadSlot(WadEntry entry, WadSession session) : Slot
         Session.Archive.Replace(Entry, data);
     }
 }
-
 internal sealed class WadGroup : SlotGroup
 {
     private readonly Func<WadGroup?>? _global;
     private WadGroup? _globalGroup;
     private bool _globalLoaded;
-
     public WadGroup(IHostServices host, IReadOnlyList<WadSession> sessions, Func<WadGroup?>? global)
         : base(host)
     {
@@ -94,13 +83,9 @@ internal sealed class WadGroup : SlotGroup
             s.Group = this;
         }
     }
-
     public IReadOnlyList<WadSession> Sessions { get; }
-
     public override Platform Platform => Sessions[0].Archive.Platform;
-
     public override int Revision => Sessions.Sum(s => s.Archive.Revision);
-
     public override SlotGroup? Global
     {
         get
@@ -125,31 +110,26 @@ internal sealed class WadGroup : SlotGroup
             return _globalGroup;
         }
     }
-
     public override IEnumerable<Slot> All()
     {
         return Sessions.SelectMany(s => s.Slots);
     }
-
     public override IEnumerable<Slot> Parts(Slot from)
     {
         WadSession? own = (from as WadSlot)?.Session;
         IEnumerable<WadSession> order = own is null ? Sessions : [own, .. Sessions.Where(s => !ReferenceEquals(s, own))];
         return order.SelectMany(s => s.Slots);
     }
-
     public override IEnumerable<IEnumerable<Slot>> Containers()
     {
         return Sessions.Select(s => s.Slots);
     }
 }
-
 internal static class GlobalWads
 {
     private static readonly Lock s_lock = new();
     private static Func<WadGroup?>? s_latest;
     private static RegionIndex? s_region;
-
     public static void Offer(Func<WadGroup?> provider, RegionIndex? region)
     {
         Lazy<WadGroup?> once = new(provider);
@@ -159,7 +139,6 @@ internal static class GlobalWads
             s_region = region;
         }
     }
-
     public static RegionIndex? LatestRegion
     {
         get
@@ -170,7 +149,6 @@ internal static class GlobalWads
             }
         }
     }
-
     public static WadGroup? Latest()
     {
         Func<WadGroup?>? f;
@@ -180,7 +158,6 @@ internal static class GlobalWads
         }
         return f?.Invoke();
     }
-
     public static string? FindNear(string path)
     {
         string? dir = Path.GetDirectoryName(Path.GetFullPath(path));
@@ -195,7 +172,6 @@ internal static class GlobalWads
         }
         return null;
     }
-
     public static Func<WadGroup?> FromFile(string path, IHostServices host)
     {
         return () =>

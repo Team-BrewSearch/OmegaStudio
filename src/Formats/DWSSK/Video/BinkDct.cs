@@ -1,10 +1,8 @@
 namespace DWSSK.Formats.Video;
-
 internal static class BinkDct
 {
     private const int Nw = 512;
     private const int Nc = 2048;
-
     public static void Inverse(Span<float> a, ReadOnlySpan<float> w)
     {
         int n = a.Length;
@@ -21,11 +19,8 @@ internal static class BinkDct
         }
         a[n - 1] = xr;
     }
-
     private static float Fma(float a, float b, float c) => (float)(((double)a * b) + c);
-
     private static float Fms(float a, float b, float c) => (float)(((double)a * b) - c);
-
     private static void DctSub(int n, Span<float> a, ReadOnlySpan<float> c)
     {
         int m = n >> 1;
@@ -43,7 +38,6 @@ internal static class BinkDct
         }
         a[m] *= c[0];
     }
-
     private static void RftFSub(int n, Span<float> a, ReadOnlySpan<float> c)
     {
         int m = n >> 1;
@@ -65,7 +59,6 @@ internal static class BinkDct
             a[k + 1] -= yi;
         }
     }
-
     private static void CftFSub(int n, Span<float> a, ReadOnlySpan<float> w)
     {
         CftF1st(n, a, w[(Nw - (n >> 2))..]);
@@ -92,7 +85,6 @@ internal static class BinkDct
         }
         BitRv2(n, a);
     }
-
     private static void BitRv2(int n, Span<float> a)
     {
         int bits = System.Numerics.BitOperations.Log2((uint)n) - 1;
@@ -110,7 +102,6 @@ internal static class BinkDct
             }
         }
     }
-
     private static void CftLeaf(int n, bool split, Span<float> a, ReadOnlySpan<float> w)
     {
         if (n == 512)
@@ -174,7 +165,6 @@ internal static class BinkDct
         CftF082(a[208..], w[(Nw - 16)..]);
         CftF081(a[224..], w[(Nw - 16)..]);
     }
-
     private static void CftF1st(int n, Span<float> a, ReadOnlySpan<float> w)
     {
         int mh = n >> 3;
@@ -378,7 +368,6 @@ internal static class BinkDct
         a[j3 + 2] = Fma(wk3i, x0r, wk3r * x0i);
         a[j3 + 3] = Fms(wk3i, x0i, wk3r * x0r);
     }
-
     private static void CftMdl1(int n, Span<float> a, ReadOnlySpan<float> w)
     {
         int mh = n >> 3;
@@ -484,7 +473,6 @@ internal static class BinkDct
         a[j3] = -wn4r * (x0r + x0i);
         a[j3 + 1] = -wn4r * (x0i - x0r);
     }
-
     private static void CftMdl2(int n, Span<float> a, ReadOnlySpan<float> w)
     {
         int mh = n >> 3;
@@ -614,7 +602,6 @@ internal static class BinkDct
         a[j3] = y0r + z2r;
         a[j3 + 1] = y0i + z2i;
     }
-
     private static void CftF161(Span<float> a, ReadOnlySpan<float> w)
     {
         Span<float> x = stackalloc float[32];
@@ -814,7 +801,6 @@ internal static class BinkDct
         a[6] = t159;
         a[7] = t161;
     }
-
     private static void CftF162(Span<float> a, ReadOnlySpan<float> w)
     {
         Span<float> x = stackalloc float[32];
@@ -1052,7 +1038,6 @@ internal static class BinkDct
         a[30] = t197;
         a[31] = t199;
     }
-
     private static void CftF081(Span<float> a, ReadOnlySpan<float> w)
     {
         Span<float> x = stackalloc float[16];
@@ -1130,7 +1115,6 @@ internal static class BinkDct
         a[14] = t53;
         a[15] = t55;
     }
-
     private static void CftF082(Span<float> a, ReadOnlySpan<float> w)
     {
         Span<float> x = stackalloc float[16];

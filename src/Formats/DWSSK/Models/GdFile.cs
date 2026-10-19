@@ -1,19 +1,15 @@
 using DWSSK.Formats.Core;
-
 namespace DWSSK.Formats.Models;
-
 internal static class GdFile
 {
     public static readonly string[] Kinds = ["gdw", "gds", "gdi", "gdt"];
     public static readonly string[] Extensions = [".gdw", ".gds", ".gdi", ".gdt", ".gdt.piece"];
-
     private static readonly (string Name, string Fmt)[] s_rec =
     [
         ("f00", "I"), ("name1", "I"), ("texture", "H"), ("wrap_s", "B"), ("wrap_t", "B"), ("c0c", "2s"),
         ("f0e", "H"), ("f10", "I"), ("name2", "I"), ("f18", "I"), ("c1c", "H"), ("f1e", "H"), ("value", "4f"),
         ("hash", "I"), ("enabled", "B"), ("f35", "3s"),
     ];
-
     public static int MaterialSize(Platform p)
     {
         return p switch
@@ -23,22 +19,18 @@ internal static class GdFile
             _ => 0xC0,
         };
     }
-
     public sealed record MatPtrs(int Entries, (int Rec, int Con, int State)[] Passes, (int Start, int End)? Extra);
-
     public static MatPtrs Ptrs(Platform p)
     {
         return p is Platform.PS3 or Platform.Xbox360
             ? new MatPtrs(2, [(4, 5, 6), (9, 10, 11)], (19, 20))
             : new MatPtrs(2, [(4, 5, 6)], null);
     }
-
     public static bool IsGd(string file)
     {
         string lower = file.ToLowerInvariant();
         return Extensions.Any(lower.EndsWith);
     }
-
     public static (JObj Doc, byte[] Bin) Read(byte[] b, Platform platform)
     {
         Reader r = new(b, platform);
@@ -66,28 +58,20 @@ internal static class GdFile
         doc["end_padding"] = (long)(b.Length - o);
         return (doc, r.Bin.ToArray());
     }
-
     public static byte[] Write(JObj doc, byte[] bin)
     {
         return new Writer(doc, bin).Build();
     }
-
-    // The material a .gdt draw renders with, from the byte each platform's renderer reads: 0x0E on
-    // the Wii (0x801588d0), 0x10 on the PS3 and Xbox 360 (0x8217dd08), 0x00 on the 3DS (0x15293c).
-    // The word at 0x00 is unused on the Wii and is the index buffer handle on the PS3 and Xbox 360.
-    // Draw data is laid out in this order too.
     internal static long GdtMaterial(Platform plat, JObj d)
     {
         return plat == Platform.N3ds
             ? J.L(d["material"]) & 0xFF
             : plat == Platform.Wii ? (J.L(d["flags"]) >> 8) & 0xFF : J.L(d["flags"]) >> 24;
     }
-
     private static List<int> StableSort(IEnumerable<int> items, Func<int, long> key)
     {
         return [.. items.Select((v, i) => (v, i)).OrderBy(t => key(t.v)).ThenBy(t => t.i).Select(t => t.v)];
     }
-
     private static List<int> DataOrder(JObj m)
     {
         if (m.Has("data_order"))
@@ -97,7 +81,6 @@ internal static class GdFile
         List<object?> draws = J.A(m["draws"]);
         return StableSort(Enumerable.Range(0, draws.Count), d => J.O(draws[d]).Get("created") is { } c ? J.L(c) : d);
     }
-
     private sealed class Reader
     {
         private readonly byte[] _b;
@@ -105,43 +88,35 @@ internal static class GdFile
         private readonly bool _big;
         private List<int> _starts = [];
         private long? _link0;
-
         public Reader(byte[] b, Platform platform)
         {
             _b = b;
             _plat = platform;
             _big = b.Length > 0 && b[0] == 0;
         }
-
         public Dictionary<string, int> Found { get; } = [];
         public ByteWriter Bin { get; } = new(1 << 16);
-
         private uint U(int o)
         {
             return Core.Bin.U32(_b, o, _big);
         }
-
         private uint[] Us(int o, int n)
         {
             return Core.Bin.U32s(_b, o, n, _big);
         }
-
         private ushort H(int o)
         {
             return Core.Bin.U16(_b, o, _big);
         }
-
         private float F(int o)
         {
             return Core.Bin.F32(_b, o, _big);
         }
-
         private int At(string name, int o)
         {
             Found[name] = o;
             return o;
         }
-
         private List<object?> Data(string name, int o, int n)
         {
             At(name, o);
@@ -149,12 +124,10 @@ internal static class GdFile
             Bin.Add(Core.Bin.Slice(_b, o, o + n));
             return reference;
         }
-
         private string CStr(int o)
         {
             return Core.Bin.CString(_b, o);
         }
-
         private List<long> NameOffsets(IEnumerable<int> offs)
         {
             List<long> output = [];
@@ -170,7 +143,6 @@ internal static class GdFile
             }
             return output;
         }
-
         private static IEnumerable<int> Range(int start, int stop, int step)
         {
             for (int i = start; i < stop; i += step)
@@ -178,7 +150,6 @@ internal static class GdFile
                 yield return i;
             }
         }
-
         private JObj Record(int o, JObj names)
         {
             Core.Bin.Need(_b, o, 0x38);
@@ -235,12 +206,10 @@ internal static class GdFile
             }
             return r;
         }
-
         private static string? Name(object? v)
         {
             return v is string { Length: > 0 } s ? s : null;
         }
-
         private static bool IsDefault(object? x)
         {
             return x switch
@@ -251,7 +220,6 @@ internal static class GdFile
                 _ => false,
             };
         }
-
         public JObj Parse()
         {
             uint[] h = Us(0, 20);
@@ -328,7 +296,6 @@ internal static class GdFile
             }
             return doc;
         }
-
         private JObj Material(int i, int o)
         {
             MatPtrs ptrs = Ptrs(_plat);
@@ -443,7 +410,6 @@ internal static class GdFile
             m["words"] = w;
             return m;
         }
-
         private List<object?> Tree(int root)
         {
             HashSet<int> nodes = [];
@@ -477,7 +443,6 @@ internal static class GdFile
             }
             return output;
         }
-
         private JObj MeshGdt(int o)
         {
             At("mesh", o);
@@ -554,7 +519,6 @@ internal static class GdFile
             }
             return new JObj { ["format"] = (long)fmt, ["lods"] = lods, ["tail"] = J.Longs(Us(o + 0x128, 4)) };
         }
-
         private JObj MeshGdi(int o)
         {
             At("mesh", o);
@@ -571,7 +535,6 @@ internal static class GdFile
             mesh["indices"] = Data("indices", (int)w[10], 2 * (int)w[3]);
             return mesh;
         }
-
         private JObj MeshGdw(int o)
         {
             At("mesh", o);
@@ -677,7 +640,6 @@ internal static class GdFile
             }
             return mesh;
         }
-
         private JObj MeshGds(int o)
         {
             At("mesh", o);
@@ -837,7 +799,6 @@ internal static class GdFile
             }
             return mesh;
         }
-
         private List<object?> Skeletons(uint[] h)
         {
             List<object?> output = [];
@@ -885,7 +846,6 @@ internal static class GdFile
             return output;
         }
     }
-
     private sealed class Writer
     {
         private readonly JObj _doc;
@@ -895,7 +855,6 @@ internal static class GdFile
         private readonly List<(string Block, int Pos, string Target, int Add)> _fix = [];
         private readonly List<(string Block, int Pos, string Target)> _endFix = [];
         private (string Block, Dictionary<string, int> Names) _names;
-
         public Writer(JObj doc, byte[] bin)
         {
             _doc = doc;
@@ -903,9 +862,7 @@ internal static class GdFile
             _plat = Platforms.Parse(J.S(doc["platform"]));
             _big = _plat != Platform.N3ds;
         }
-
         public List<(string Name, ByteWriter Data, int Align)> Blocks { get; } = [];
-
         private ByteWriter Block(string name, ReadOnlySpan<byte> data = default, int align = 16)
         {
             ByteWriter w = new(Math.Max(16, data.Length));
@@ -913,7 +870,6 @@ internal static class GdFile
             Blocks.Add((name, w, align));
             return w;
         }
-
         private void Ptr(string block, int pos, string? target)
         {
             if (target is not null)
@@ -921,7 +877,6 @@ internal static class GdFile
                 _fix.Add((block, pos, target, 0));
             }
         }
-
         private ReadOnlySpan<byte> Raw(object? reference)
         {
             List<object?> r = J.A(reference);
@@ -929,27 +884,22 @@ internal static class GdFile
             int n = J.I(r[1]);
             return Core.Bin.Slice(_bin, at, at + n);
         }
-
         private static int RefSize(object? reference)
         {
             return J.I(J.A(reference)[1]);
         }
-
         private void U32(ByteWriter w, object? v)
         {
             w.U32(J.U(v), _big);
         }
-
         private void U16(ByteWriter w, object? v)
         {
             w.U16(J.U16(v), _big);
         }
-
         private void F32(ByteWriter w, object? v)
         {
             w.F32(J.D(v), _big);
         }
-
         private byte[] Record(JObj r)
         {
             JObj g = r.Copy();
@@ -1003,7 +953,6 @@ internal static class GdFile
             o.Zeros(3 - Math.Min(3, f35.Length));
             return o.ToArray();
         }
-
         private static (string? Name1, string? Name2) NamesOf(JObj r)
         {
             if (r.Has("constant"))
@@ -1016,7 +965,6 @@ internal static class GdFile
             }
             return (r.Get("name1") as string, r.Get("name2") as string);
         }
-
         private void NameFix(string block, int pos, JObj r)
         {
             (string nb, Dictionary<string, int> names) = _names;
@@ -1030,7 +978,6 @@ internal static class GdFile
                 _fix.Add((block, pos + 0x14, nb, names[b]));
             }
         }
-
         public void Layout()
         {
             JObj d = _doc;
@@ -1099,7 +1046,6 @@ internal static class GdFile
             Ptr("header", 0x1C, "shaders");
             Ptr("header", 0x24, "mesh");
         }
-
         private byte[] Material(int i, JObj m, int at)
         {
             MatPtrs ptrs = Ptrs(_plat);
@@ -1218,7 +1164,6 @@ internal static class GdFile
             }
             return o.ToArray();
         }
-
         private void MeshGdi(JObj mesh)
         {
             int stride = _plat == Platform.Wii ? 36 : 64;
@@ -1249,7 +1194,6 @@ internal static class GdFile
             Block("vertices", Raw(mesh["vertices"]));
             Block("indices", Raw(mesh["indices"]));
         }
-
         private void MeshGdw(JObj mesh)
         {
             bool wii = _plat == Platform.Wii;
@@ -1384,7 +1328,6 @@ internal static class GdFile
                 }
             }
         }
-
         private void MeshGds(JObj mesh)
         {
             int sub = _plat switch
@@ -1572,7 +1515,6 @@ internal static class GdFile
                 }
             }
         }
-
         private void Skeletons(List<object?> sks)
         {
             for (int k = 0; k < sks.Count; k++)
@@ -1629,7 +1571,6 @@ internal static class GdFile
                 Ptr("header", 0x28 + (4 * k), $"k{k}.header");
             }
         }
-
         private void MeshGdt(JObj mesh)
         {
             List<object?> lods = J.A(mesh["lods"]);
@@ -1725,7 +1666,6 @@ internal static class GdFile
                 Block($"l{l}.vertices", Raw(lod["vertices"]));
             }
         }
-
         private (Dictionary<string, int> Off, int End) Offsets(JObj? padded)
         {
             Dictionary<string, int> off = new(StringComparer.Ordinal);
@@ -1738,7 +1678,6 @@ internal static class GdFile
             }
             return (off, o);
         }
-
         public byte[] Build()
         {
             Layout();

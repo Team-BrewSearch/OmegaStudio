@@ -1,13 +1,10 @@
 using System.Globalization;
 using System.Numerics;
 using System.Text;
-
 namespace DWSSK.Formats.Core;
-
 internal static class Py
 {
     private static readonly CultureInfo s_inv = CultureInfo.InvariantCulture;
-
     public static string Upper(string s)
     {
         StringBuilder sb = new(s.Length);
@@ -24,14 +21,11 @@ internal static class Py
         }
         return sb.ToString();
     }
-
     public static string Lower(string s)
     {
         return s.ToLowerInvariant();
     }
-
     public static readonly double PositiveNaN = BitConverter.Int64BitsToDouble(0x7FF8000000000000);
-
     public static float ToSingle(double v)
     {
         float f = (float)v;
@@ -39,22 +33,18 @@ internal static class Py
             ? throw new StructException("float too large to pack with f format")
             : f;
     }
-
     public static double Round(double v)
     {
         return Math.Round(v, MidpointRounding.ToEven);
     }
-
     public static string Hex8(uint v)
     {
         return v.ToString("x8", s_inv);
     }
-
     public static string Str(long v)
     {
         return v.ToString(s_inv);
     }
-
     public static string Repr(double x)
     {
         if (double.IsNaN(x))
@@ -73,12 +63,10 @@ internal static class Py
         }
         return sign + Exponent(digits, decpt - 1, false);
     }
-
     public static string JsonFloat(double x)
     {
         return double.IsNaN(x) ? "NaN" : double.IsPositiveInfinity(x) ? "Infinity" : double.IsNegativeInfinity(x) ? "-Infinity" : Repr(x);
     }
-
     private static (string Digits, int Decpt, bool Negative) Shortest(double x)
     {
         bool negative = double.IsNegative(x);
@@ -114,7 +102,6 @@ internal static class Py
         }
         return (all, decpt, negative);
     }
-
     private static string Fixed(string digits, int decpt, bool addDotZero)
     {
         string s;
@@ -132,7 +119,6 @@ internal static class Py
         }
         return s;
     }
-
     private static string Exponent(string digits, int exp, bool keepZeros)
     {
         string mant = digits.Length > 1 ? digits[0] + "." + digits[1..] : digits;
@@ -143,7 +129,6 @@ internal static class Py
         string es = Math.Abs(exp).ToString("00", s_inv);
         return mant + "e" + (exp < 0 ? "-" : "+") + es;
     }
-
     public static string FormatG(double x, int precision)
     {
         if (double.IsNaN(x))
@@ -177,7 +162,6 @@ internal static class Py
         }
         return sign + Exponent(digits.TrimEnd('0') is { Length: > 0 } t ? t : "0", exp, false);
     }
-
     private static (string Digits, int Decpt) RoundDigits(double x, int precision)
     {
         (string shortest, int sdec, _) = Shortest(x);
@@ -195,7 +179,6 @@ internal static class Py
         }
         return ExactRound(x, precision);
     }
-
     private static (string Digits, int Decpt) ExactRound(double x, int precision)
     {
         long bits = BitConverter.DoubleToInt64Bits(x);
@@ -259,7 +242,6 @@ internal static class Py
         }
         return (q.ToString(s_inv), decpt);
     }
-
     public static double ParseFloat(string s)
     {
         string t = s.Trim();
@@ -278,7 +260,6 @@ internal static class Py
                 return double.Parse(t.Replace("_", string.Empty, StringComparison.Ordinal), NumberStyles.Float, s_inv);
         }
     }
-
     public static int ParseInt(string s, int radix = 10)
     {
         string t = s.Trim();
@@ -286,7 +267,6 @@ internal static class Py
             ? int.Parse(t.StartsWith("0x", StringComparison.OrdinalIgnoreCase) ? t[2..] : t, NumberStyles.HexNumber, s_inv)
             : int.Parse(t, NumberStyles.AllowLeadingSign, s_inv);
     }
-
     public static uint ParseHex(string s)
     {
         string t = s.Trim();
@@ -296,7 +276,6 @@ internal static class Py
         }
         return uint.Parse(t, NumberStyles.HexNumber, s_inv);
     }
-
     public static string[] SplitWhitespace(string s)
     {
         return s.Split([' ', '\t', '\n', '\r', '\f', '\v'], StringSplitOptions.RemoveEmptyEntries);

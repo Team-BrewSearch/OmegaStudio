@@ -5,9 +5,7 @@ using DWSSK.Formats.Shaders;
 using DWSSK.Formats.Textures;
 using DWSSK.Formats.Wad;
 using Omega.Plugins;
-
 namespace DWSSK.Formats.Nodes;
-
 internal abstract class Slot
 {
     public abstract string File { get; }
@@ -19,43 +17,28 @@ internal abstract class Slot
     public abstract bool CanWrite { get; }
     public abstract uint? Hash { get; }
     public abstract SlotGroup Group { get; }
-
     public virtual bool PlatformKnown => true;
-
     public virtual int Size => Data.Length;
-
     public virtual bool Loaded => true;
-
     public abstract void Replace(byte[] data);
-
     public string Directory => File.Contains('/', StringComparison.Ordinal) ? File[..File.LastIndexOf('/')] : string.Empty;
 }
-
 internal abstract class SlotGroup(IHostServices host)
 {
     private readonly Dictionary<uint, (int Revision, ImageData? Image)> _images = [];
     private Dictionary<uint, Slot>? _byHash;
     private int _hashRevision = -1;
-
     public IHostServices Host { get; } = host;
-
     public abstract Platform Platform { get; }
-
     public abstract IEnumerable<Slot> Parts(Slot from);
-
     public abstract int Revision { get; }
-
     public virtual SlotGroup? Global => null;
-
     public RegionIndex? Region { get; set; }
-
     public abstract IEnumerable<Slot> All();
-
     public virtual IEnumerable<IEnumerable<Slot>> Containers()
     {
         return [All()];
     }
-
     public Slot? MasterModel(Slot animpack)
     {
         string dir = animpack.Directory.Length == 0 ? "MASTER" : animpack.Directory + "/MASTER";
@@ -70,12 +53,10 @@ internal abstract class SlotGroup(IHostServices host)
         }
         return null;
     }
-
     public IEnumerable<Slot> AnimPacksFor(Slot model)
     {
         return All().Where(s => s.Extension == ".animpack" && ReferenceEquals(MasterModel(s), model));
     }
-
     public Slot? ByHash(uint hash, Slot? from = null)
     {
         if (from is not null)
@@ -102,12 +83,10 @@ internal abstract class SlotGroup(IHostServices host)
         }
         return _byHash.TryGetValue(hash, out Slot? hit) ? hit : Global?.ByHash(hash) ?? Region?.Find(hash);
     }
-
     private static bool IsTexture(Slot s)
     {
         return s.Name.EndsWith(".htx", StringComparison.OrdinalIgnoreCase) && s is not WadSlot { Entry.IsAlias: true };
     }
-
     public ImageData? Texture(uint hash, Slot? from)
     {
         Slot? slot = ByHash(hash, from);
@@ -133,9 +112,7 @@ internal abstract class SlotGroup(IHostServices host)
         _images[hash] = (slot.Revision + Revision, image);
         return image;
     }
-
     private (int Revision, List<string> Names)? _p2bStrings;
-
     public IEnumerable<string> PrintableRuns(int min)
     {
         if (_p2bStrings is not { } cached || cached.Revision != Revision)
@@ -169,12 +146,10 @@ internal abstract class SlotGroup(IHostServices host)
             }
         }
     }
-
     public IEnumerable<string> AnimationNames()
     {
         return Anim.AnimPack.ExtraNames.Concat(PrintableRuns(3)).Concat(NameBook.Section("anim"));
     }
-
     public IEnumerable<string> LevelNames()
     {
         List<string> names = [];
@@ -193,12 +168,10 @@ internal abstract class SlotGroup(IHostServices host)
         names.AddRange(NameBook.Section("bog"));
         return names;
     }
-
     public ITextureLookup Lookup(Slot from)
     {
         return new Finder(this, from);
     }
-
     private sealed class Finder(SlotGroup group, Slot from) : ITextureLookup
     {
         public ImageData? Find(uint wadHash)
@@ -207,7 +180,6 @@ internal abstract class SlotGroup(IHostServices host)
         }
     }
 }
-
 internal static class Paths
 {
     public static Platform? PlatformOf(string path)

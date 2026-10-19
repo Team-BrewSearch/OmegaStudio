@@ -2,9 +2,7 @@ using System.Buffers.Binary;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using DWSSK.Formats.Core;
-
 namespace DWSSK.Formats.Models;
-
 internal sealed class GltfPrim
 {
     public required string Material { get; init; }
@@ -13,20 +11,16 @@ internal sealed class GltfPrim
     public long Zone { get; init; }
     public required List<string> Joints { get; init; }
 }
-
 internal static partial class GdImport
 {
     [GeneratedRegex(@"zone_?(\d+)")]
     private static partial Regex ZonePattern();
-
     [GeneratedRegex(@"\.\d{3}$")]
     private static partial Regex BlenderSuffix();
-
     private static string Strip(string name)
     {
         return BlenderSuffix().Replace(name, string.Empty, 1);
     }
-
     public static List<GltfPrim> ReadGltf(JsonElement doc, IReadOnlyList<byte[]> bins)
     {
         JsonElement[] accessors = Arr(doc, "accessors");
@@ -260,18 +254,15 @@ internal static partial class GdImport
         }
         return prims;
     }
-
     private static double[] Inverse3(double[] m4)
     {
         double[] inv4 = Mat.Inverse(m4);
         return [inv4[0], inv4[1], inv4[2], inv4[4], inv4[5], inv4[6], inv4[8], inv4[9], inv4[10]];
     }
-
     private static JsonElement[] Arr(JsonElement parent, string name)
     {
         return parent.TryGetProperty(name, out JsonElement a) && a.ValueKind == JsonValueKind.Array ? [.. a.EnumerateArray()] : [];
     }
-
     public static List<int> TrisToStrip(int[,] tri)
     {
         List<int> s = [];
@@ -293,7 +284,6 @@ internal static partial class GdImport
         }
         return s;
     }
-
     public static (double[,] T, double[,] B) Tangents(double[,] pos, double[,] nrm, double[,] uv, int[,] tri)
     {
         int n = pos.GetLength(0);
@@ -356,7 +346,6 @@ internal static partial class GdImport
         }
         return (t, binormal);
     }
-
     private static Dictionary<string, double[,]> Argb(Dictionary<string, double[,]> a)
     {
         Dictionary<string, double[,]> output = new(a);
@@ -377,7 +366,6 @@ internal static partial class GdImport
         }
         return output;
     }
-
     public static byte[] EncodeVertices(string layout, bool big, Dictionary<string, double[,]> a)
     {
         (int stride, GdField[] fields) = GdLayouts.All[layout];
@@ -447,7 +435,6 @@ internal static partial class GdImport
         }
         return output;
     }
-
     private static long Clip(double x, long lo, long hi)
     {
         double r = Math.Round(x, MidpointRounding.ToEven);
@@ -457,7 +444,6 @@ internal static partial class GdImport
         }
         return (long)Math.Clamp(r, lo, hi);
     }
-
     private static double[,] U8Weights(double[,] w)
     {
         int n = w.GetLength(0);
@@ -473,7 +459,6 @@ internal static partial class GdImport
         }
         return o;
     }
-
     private static double[,] Rows(double[,] v, List<int> rows)
     {
         int w = v.GetLength(1);
@@ -487,7 +472,6 @@ internal static partial class GdImport
         }
         return o;
     }
-
     private static double[,] Tile(double[] row, int n)
     {
         double[,] o = new double[n, row.Length];
@@ -500,7 +484,6 @@ internal static partial class GdImport
         }
         return o;
     }
-
     private static byte[] U16s(IEnumerable<int> values, bool big, bool strict)
     {
         ByteWriter o = new();
@@ -514,42 +497,34 @@ internal static partial class GdImport
         }
         return o.ToArray();
     }
-
     private sealed class BinData(byte[] bin)
     {
         private readonly ByteWriter _new = Init(bin);
-
         private static ByteWriter Init(byte[] bin)
         {
             ByteWriter w = new(bin.Length + 1024);
             w.Add(bin);
             return w;
         }
-
         public int Length => _new.Length;
-
         public List<object?> Add(ReadOnlySpan<byte> data)
         {
             _new.Add(data);
             return [(long)(_new.Length - data.Length), (long)data.Length];
         }
-
         public byte[] ToArray()
         {
             return _new.ToArray();
         }
     }
-
     private static List<string> MaterialNames(JObj doc)
     {
         return [.. J.A(doc["materials"]).Select(m => J.S(J.O(m)["name"]))];
     }
-
     private static string NotOneOf(string material, List<string> names)
     {
         return $"glTF material '{material}' is not one of [{string.Join(", ", names.Select(n => $"'{n}'"))}]";
     }
-
     public static (JObj Doc, byte[] Bin) Import(JObj doc, byte[] bin, List<GltfPrim> prims)
     {
         Platform plat = Platforms.Parse(J.S(doc["platform"]));
@@ -707,7 +682,6 @@ internal static partial class GdImport
         mesh["tail"] = J.Longs(Enumerable.Range(0, 4).Select(k => (long)Bin.U32(packed, k * 4, big)));
         return (doc, nw.ToArray());
     }
-
     private static byte[] WiiList(byte op, List<int> s)
     {
         ByteWriter dl = new();
@@ -731,7 +705,6 @@ internal static partial class GdImport
         dl.Zeros(Bin.Mod(-dl.Length, 32));
         return dl.ToArray();
     }
-
     private static IEnumerable<int> Flat(int[,] t)
     {
         for (int i = 0; i < t.GetLength(0); i++)
@@ -742,7 +715,6 @@ internal static partial class GdImport
             }
         }
     }
-
     private static int[,] ConcatTris(List<int[,]> tris)
     {
         int total = tris.Sum(t => t.GetLength(0));
@@ -761,7 +733,6 @@ internal static partial class GdImport
         }
         return o;
     }
-
     private static double[,] Concat(List<double[,]> parts)
     {
         int width = parts[0].GetLength(1);
@@ -785,7 +756,6 @@ internal static partial class GdImport
         }
         return o;
     }
-
     private static double[] Sphere(double[,] pos, IReadOnlyList<int>? rows)
     {
         double[] lo = [double.PositiveInfinity, double.PositiveInfinity, double.PositiveInfinity];
@@ -810,28 +780,22 @@ internal static partial class GdImport
         double dz = hi[2] - lo[2];
         return [(lo[0] + hi[0]) / 2, (lo[1] + hi[1]) / 2, (lo[2] + hi[2]) / 2, Math.Sqrt(((dx * dx) + (dy * dy)) + (dz * dz)) / 2];
     }
-
     private static JObj? Like(List<object?> old, long material)
     {
         return old.Select(J.O).FirstOrDefault(d =>
             (d.Has("material") ? J.L(d["material"]) : J.L(d.Get("flags", 0L)) >> 24) == material);
     }
-
     private static int MaskOf(List<object?> old, long material, bool rigid)
     {
         JObj? like = Like(old, material);
         long mk = (like is null ? 0x07 : like.Has("mask") ? J.L(like["mask"]) : (J.L(like.Get("flags", 0L)) >> 8) & 0xFF) & 0x0F;
         return (int)(mk | (rigid ? 0x10L : 0));
     }
-
-    // The hide group of a draw: a bit in the instance's hidden-parts mask (Wii 0x80157b80, Xbox 360
-    // 0x8217b740 skip the draw when it is set), so a new draw takes its material's old group.
     private static long PartOf(List<object?> old, long material)
     {
         JObj? like = Like(old, material);
         return like is null ? 0 : like.Has("created") ? J.L(like["created"]) : (J.L(like.Get("flags", 0L)) >> 16) & 0xFF;
     }
-
     private static (JObj, byte[]) ImportGds(JObj doc, byte[] bin, List<GltfPrim> prims)
     {
         Platform plat = Platforms.Parse(J.S(doc["platform"]));
@@ -1145,7 +1109,6 @@ internal static partial class GdImport
         sm.Remove("data_order");
         return (doc, nw.ToArray());
     }
-
     private static int SearchSorted(List<int> pal, double v)
     {
         int lo = 0;
@@ -1164,7 +1127,6 @@ internal static partial class GdImport
         }
         return lo;
     }
-
     private static List<(int[,], List<int>)> Chunks(int[,] tri, double[,] joints, int limit)
     {
         List<(int[,], List<int>)> output = [];
@@ -1195,7 +1157,6 @@ internal static partial class GdImport
         }
         return output;
     }
-
     private static int[,] Pick(int[,] tri, List<int> rows)
     {
         int[,] o = new int[rows.Count, 3];
@@ -1208,7 +1169,6 @@ internal static partial class GdImport
         }
         return o;
     }
-
     private static (JObj, byte[]) ImportGdw(JObj doc, byte[] bin, List<GltfPrim> prims)
     {
         Platform plat = Platforms.Parse(J.S(doc["platform"]));

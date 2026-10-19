@@ -5,13 +5,10 @@ using DWSSK.Formats.Core;
 using DWSSK.Formats.Models;
 using Omega.Plugins;
 using Omega.Plugins.Gltf;
-
 namespace DWSSK.Formats.Nodes;
-
 internal sealed class RiggedScene(SceneGeometry scene, AnimRig? rig, Dictionary<AnimationClip, AnimClipData> clips)
 {
     public SceneGeometry Scene { get; } = scene;
-
     public static RiggedScene Build(SceneGeometry scene, GdModel gd, IEnumerable<(Slot Slot, JObj Doc)> packs)
     {
         if (gd.Bones.Count == 0)
@@ -38,7 +35,6 @@ internal sealed class RiggedScene(SceneGeometry scene, AnimRig? rig, Dictionary<
         };
         return new RiggedScene(withClips, rig, clips);
     }
-
     public bool TryPose(AnimationClip clip, double seconds, out float[] positions, out float[] normals)
     {
         if (rig is null || !clips.TryGetValue(clip, out AnimClipData? data))
@@ -51,19 +47,15 @@ internal sealed class RiggedScene(SceneGeometry scene, AnimRig? rig, Dictionary<
         return AnimRig.Skin(Scene, skin, out positions, out normals);
     }
 }
-
 internal sealed class GdNode : SlotNode, ISceneAsset, IAnimatedAsset
 {
     private (int Slot, int Group, int Lod, GdModel Model, RiggedScene View)? _view;
     private int _lod;
-
     public GdNode(Slot slot, string name, string path)
         : base(slot, name, path, AssetKinds.Model)
     {
     }
-
     private GdModel Model => Load().Model;
-
     private (GdModel Model, RiggedScene View) Load()
     {
         if (_view is { } v && v.Slot == Slot.Revision && v.Group == Group.Revision && v.Lod == _lod)
@@ -76,7 +68,6 @@ internal sealed class GdNode : SlotNode, ISceneAsset, IAnimatedAsset
         _view = (Slot.Revision, Group.Revision, _lod, gd, view);
         return (gd, view);
     }
-
     private IEnumerable<(Slot Slot, JObj Doc)> Packs()
     {
         if (!Slot.Name.EndsWith(".gds", StringComparison.Ordinal))
@@ -101,30 +92,24 @@ internal sealed class GdNode : SlotNode, ISceneAsset, IAnimatedAsset
             yield return (pack, doc);
         }
     }
-
     public SceneGeometry? GetScene()
     {
         SceneGeometry scene = Load().View.Scene;
         return scene.TriangleCount > 0 ? scene : null;
     }
-
     public IReadOnlyList<AnimationClip> Clips => Load().View.Scene.Clips;
-
     public bool TryPose(AnimationClip clip, double seconds, out float[] positions, out float[] normals)
     {
         return Load().View.TryPose(clip, seconds, out positions, out normals);
     }
-
     protected override void Check(byte[] payload)
     {
         _ = GdReader.Parse(payload, Slot.Platform);
     }
-
     protected override void Invalidate()
     {
         _view = null;
     }
-
     public override IEnumerable<PropertyRow> Describe()
     {
         GdModel gd = Model;
@@ -168,13 +153,11 @@ internal sealed class GdNode : SlotNode, ISceneAsset, IAnimatedAsset
             yield return row;
         }
     }
-
     private static string LodLabel(GdModel gd, int lod)
     {
         int prims = gd.Lods[lod].Count;
         return $"LOD {lod} ({prims} part{(prims == 1 ? "" : "s")})";
     }
-
     public override IEnumerable<AssetCommand> GetCommands()
     {
         yield return new AssetCommand
@@ -231,7 +214,6 @@ internal sealed class GdNode : SlotNode, ISceneAsset, IAnimatedAsset
             },
         };
     }
-
     private void Apply(AssetCommandContext context, byte[] rebuilt, string from)
     {
         bool same = rebuilt.AsSpan().SequenceEqual(Slot.Data);
@@ -245,16 +227,13 @@ internal sealed class GdNode : SlotNode, ISceneAsset, IAnimatedAsset
         context.Changed = same ? AssetChange.None : Everything;
     }
 }
-
 internal sealed class AnimPackNode : SlotNode, ISceneAsset, IAnimatedAsset
 {
     private (int Slot, int Group, JObj Doc, RiggedScene? View)? _view;
-
     public AnimPackNode(Slot slot, string name, string path)
         : base(slot, name, path, AssetKinds.Animation, Label(slot))
     {
     }
-
     private static string Label(Slot slot)
     {
         try
@@ -267,12 +246,10 @@ internal sealed class AnimPackNode : SlotNode, ISceneAsset, IAnimatedAsset
             return Sizes.Describe(slot.Data.Length);
         }
     }
-
     protected override string DescribeSize()
     {
         return Label(Slot);
     }
-
     private (JObj Doc, RiggedScene? View) Load()
     {
         if (_view is { } v && v.Slot == Slot.Revision && v.Group == Group.Revision)
@@ -297,21 +274,17 @@ internal sealed class AnimPackNode : SlotNode, ISceneAsset, IAnimatedAsset
         _view = (Slot.Revision, Group.Revision, doc, view);
         return (doc, view);
     }
-
     private JObj Named()
     {
         JObj doc = AnimPack.Read(Slot.Data);
         AnimPack.AddNames(doc, Group.AnimationNames());
         return doc;
     }
-
     public SceneGeometry? GetScene()
     {
         return Load().View?.Scene is { TriangleCount: > 0 } scene ? scene : null;
     }
-
     public IReadOnlyList<AnimationClip> Clips => Load().View?.Scene.Clips ?? [];
-
     public bool TryPose(AnimationClip clip, double seconds, out float[] positions, out float[] normals)
     {
         if (Load().View is { } view)
@@ -322,17 +295,14 @@ internal sealed class AnimPackNode : SlotNode, ISceneAsset, IAnimatedAsset
         normals = [];
         return false;
     }
-
     protected override void Check(byte[] payload)
     {
         _ = AnimPack.Read(payload);
     }
-
     protected override void Invalidate()
     {
         _view = null;
     }
-
     public override IEnumerable<PropertyRow> Describe()
     {
         (JObj doc, RiggedScene? view) = Load();
@@ -357,7 +327,6 @@ internal sealed class AnimPackNode : SlotNode, ISceneAsset, IAnimatedAsset
             yield return row;
         }
     }
-
     public override IEnumerable<AssetCommand> GetCommands()
     {
         yield return ExportJson(() => AnimPack.Dumps(Load().Doc));

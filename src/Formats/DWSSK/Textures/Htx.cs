@@ -1,11 +1,8 @@
 using DWSSK.Formats.Core;
-
 namespace DWSSK.Formats.Textures;
-
 internal sealed class Htx
 {
     public const uint Magic = 0xFC000001;
-
     private Htx(byte[] blob, int width, int height, int mips, int format, int flag, bool big, int dataOffset)
     {
         Blob = blob;
@@ -17,7 +14,6 @@ internal sealed class Htx
         BigEndian = big;
         DataOffset = dataOffset;
     }
-
     public byte[] Blob { get; }
     public int Width { get; }
     public int Height { get; }
@@ -28,12 +24,10 @@ internal sealed class Htx
     public int DataOffset { get; }
     private bool Linear => (Flag & 1) == 0;
     public ReadOnlySpan<byte> Data => Bin.Slice(Blob, DataOffset, Blob.Length);
-
     public static bool IsHtx(ReadOnlySpan<byte> b)
     {
         return b.Length >= 0x20 && Bin.U32(b, 0, b[0] == 0xFC) == Magic;
     }
-
     public static Htx Parse(byte[] blob)
     {
         if (blob.Length < 0x20)
@@ -46,7 +40,6 @@ internal sealed class Htx
             ? throw new InvalidDataException("not an HTX file")
             : new Htx(blob, (int)f[1], (int)f[2], (int)f[4], (int)f[5], (int)f[6], be, (int)f[7]);
     }
-
     private static (int Block, int Bytes) BlockOf(int fmt)
     {
         return fmt switch
@@ -58,7 +51,6 @@ internal sealed class Htx
             _ => throw new InvalidDataException($"HTX format {fmt} has no block layout"),
         };
     }
-
     public static string FormatName(int fmt)
     {
         return fmt switch
@@ -74,7 +66,6 @@ internal sealed class Htx
             _ => $"format {fmt}",
         };
     }
-
     public string Describe(Platform platform)
     {
         if (platform == Platform.N3ds && Format == 8)
@@ -84,7 +75,6 @@ internal sealed class Htx
         }
         return platform == Platform.Wii && Format == 5 ? "CMPR (DXT1)" : FormatName(Format);
     }
-
     public (int Width, int Height, int Mips) Dimensions(Platform platform)
     {
         if (platform == Platform.N3ds)
@@ -94,7 +84,6 @@ internal sealed class Htx
         }
         return (Width, Height, Mips);
     }
-
     private static int BcN(int fmt)
     {
         return fmt switch
@@ -105,7 +94,6 @@ internal sealed class Htx
             _ => throw new InvalidDataException($"HTX format {fmt} is not block compressed"),
         };
     }
-
     public List<(int Offset, int Width, int Height, int Pitch)> X360Mips()
     {
         (int bs, int bpb) = BlockOf(Format);
@@ -123,7 +111,6 @@ internal sealed class Htx
         }
         return output;
     }
-
     public List<(int Offset, int Size, int Width, int Height)> LevelSizes(Platform platform)
     {
         List<(int, int, int, int)> output = [];
@@ -156,12 +143,10 @@ internal sealed class Htx
         }
         return output;
     }
-
     public int MipCount(Platform platform)
     {
         return platform == Platform.N3ds ? Pica.ParseCtpk(Data).Mips : Mips;
     }
-
     public (byte[] Rgba, int Width, int Height) DecodeLevel(Platform platform, int level = 0)
     {
         if (platform == Platform.N3ds)
@@ -209,14 +194,12 @@ internal sealed class Htx
         }
         return (Linear ? units : Pixels.Unswizzle(units, 4, lw, lh), lw, lh);
     }
-
     private static byte[] Need(ReadOnlySpan<byte> raw, int n)
     {
         return raw.Length < n
             ? throw new InvalidDataException($"texture level holds {raw.Length} bytes, needs {n}")
             : raw[..n].ToArray();
     }
-
     private static void Color16(int fmt, uint v, byte[] o, int i)
     {
         switch (fmt)
@@ -234,7 +217,6 @@ internal sealed class Htx
                 throw new InvalidDataException($"HTX format {fmt} is not a 16-bit format");
         }
     }
-
     private (byte[], int, int) DecodeX360(int level)
     {
         (int off, int w, int h, int pitch) = X360Mips()[level];
@@ -268,7 +250,6 @@ internal sealed class Htx
         }
         return (output, w, h);
     }
-
     public static void Swap16(byte[] a)
     {
         for (int i = 0; i + 1 < a.Length; i += 2)
@@ -276,7 +257,6 @@ internal sealed class Htx
             (a[i], a[i + 1]) = (a[i + 1], a[i]);
         }
     }
-
     public byte[] EncodeLevel(byte[] img, int w, int h, Platform platform, int level)
     {
         int f = Format;
@@ -358,7 +338,6 @@ internal sealed class Htx
         }
         throw new InvalidDataException($"{platform.Name()} format {f}");
     }
-
     private static uint Encode16(int fmt, ReadOnlySpan<byte> p)
     {
         return fmt switch
@@ -369,7 +348,6 @@ internal sealed class Htx
             _ => throw new InvalidDataException($"HTX format {fmt} is not a 16-bit format"),
         };
     }
-
     public byte[] BcToLevel(byte[] bc, Platform platform, int level)
     {
         int w = Math.Max(1, Width >> level);
@@ -386,7 +364,6 @@ internal sealed class Htx
         }
         return bc;
     }
-
     public void WriteLevel(byte[] data, Platform platform, int level, byte[] payload)
     {
         if (platform == Platform.Xbox360)
@@ -408,7 +385,6 @@ internal sealed class Htx
         }
         payload.CopyTo(data, o);
     }
-
     public byte[] ReadLevel(Platform platform, int level)
     {
         if (platform == Platform.Xbox360)
@@ -426,12 +402,10 @@ internal sealed class Htx
         (int at, int size, _, _) = LevelSizes(platform)[level];
         return Bin.Slice(Data, at, at + size).ToArray();
     }
-
     public bool IsLossless(Platform platform)
     {
         return platform == Platform.N3ds ? Pica.ParseCtpk(Data).Format is not (12 or 13) : Format is not (5 or 6 or 7);
     }
-
     public static byte[] FromImage(byte[] blob, Platform platform, byte[] px, int width, int height)
     {
         Htx t = Parse(blob);
@@ -474,7 +448,6 @@ internal sealed class Htx
         }
         return [.. head, .. data];
     }
-
     private static void Splice(byte[] tex, int off, int size, byte[] enc)
     {
         if (enc.Length != size)
@@ -488,7 +461,6 @@ internal sealed class Htx
         enc.CopyTo(tex, off);
     }
 }
-
 internal static class Gx
 {
     public static byte[] CmprToBc1(ReadOnlySpan<byte> data, int w, int h)
@@ -518,12 +490,10 @@ internal static class Gx
         }
         return output;
     }
-
     private static byte FlipIndices(byte idx)
     {
         return (byte)(((idx & 3) << 6) | ((idx & 12) << 2) | ((idx & 48) >> 2) | (idx >> 6));
     }
-
     public static byte[] Bc1ToCmpr(byte[] bc1, int w, int h)
     {
         int bw = Bin.CeilDiv(w, 4);
@@ -562,7 +532,6 @@ internal static class Gx
         }
         return output;
     }
-
     public static byte[] DecodeHtx(int fmt, ReadOnlySpan<byte> data, int w, int h)
     {
         switch (fmt)

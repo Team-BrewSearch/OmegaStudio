@@ -1,5 +1,4 @@
 namespace DWSSK.Formats.Textures;
-
 internal static class Pixels
 {
     public static byte Expand(uint v, int bits)
@@ -7,18 +6,15 @@ internal static class Pixels
         uint max = (1u << bits) - 1;
         return (byte)(((v * 255) + (max / 2)) / max);
     }
-
     public static uint Quant(uint c, int bits)
     {
         uint m = (1u << bits) - 1;
         return ((c * m) + 127) / 255;
     }
-
     public static uint Lum(byte r, byte g, byte b)
     {
         return ((299u * r) + (587u * g) + (114u * b) + 500) / 1000;
     }
-
     public static void Put(byte[] rgba, int i, uint r, uint g, uint b, uint a)
     {
         rgba[i * 4] = (byte)r;
@@ -26,7 +22,6 @@ internal static class Pixels
         rgba[(i * 4) + 2] = (byte)b;
         rgba[(i * 4) + 3] = (byte)a;
     }
-
     public static void Rgb5a3(uint v, byte[] o, int i)
     {
         if ((v & 0x8000) != 0)
@@ -38,68 +33,55 @@ internal static class Pixels
             Put(o, i, Expand((v >> 8) & 15, 4), Expand((v >> 4) & 15, 4), Expand(v & 15, 4), Expand((v >> 12) & 7, 3));
         }
     }
-
     public static void Rgb565(uint v, byte[] o, int i)
     {
         Put(o, i, Expand(v >> 11, 5), Expand((v >> 5) & 63, 6), Expand(v & 31, 5), 255);
     }
-
     public static void Argb4444(uint v, byte[] o, int i)
     {
         Put(o, i, Expand((v >> 8) & 15, 4), Expand((v >> 4) & 15, 4), Expand(v & 15, 4), Expand(v >> 12, 4));
     }
-
     public static void Rgba4444(uint v, byte[] o, int i)
     {
         Put(o, i, Expand(v >> 12, 4), Expand((v >> 8) & 15, 4), Expand((v >> 4) & 15, 4), Expand(v & 15, 4));
     }
-
     public static void Argb1555(uint v, byte[] o, int i)
     {
         Put(o, i, Expand((v >> 10) & 31, 5), Expand((v >> 5) & 31, 5), Expand(v & 31, 5), (v >> 15) != 0 ? 255u : 0u);
     }
-
     public static void Rgba5551(uint v, byte[] o, int i)
     {
         Put(o, i, Expand(v >> 11, 5), Expand((v >> 6) & 31, 5), Expand((v >> 1) & 31, 5), (v & 1) != 0 ? 255u : 0u);
     }
-
     public static void La8(uint v, byte[] o, int i)
     {
         uint l = v & 0xFF;
         Put(o, i, l, l, l, v >> 8);
     }
-
     public static uint EncArgb4444(ReadOnlySpan<byte> p)
     {
         return (Quant(p[3], 4) << 12) | (Quant(p[0], 4) << 8) | (Quant(p[1], 4) << 4) | Quant(p[2], 4);
     }
-
     public static uint EncRgba4444(ReadOnlySpan<byte> p)
     {
         return (Quant(p[0], 4) << 12) | (Quant(p[1], 4) << 8) | (Quant(p[2], 4) << 4) | Quant(p[3], 4);
     }
-
     public static uint EncArgb1555(ReadOnlySpan<byte> p)
     {
         return ((p[3] >= 128 ? 1u : 0u) << 15) | (Quant(p[0], 5) << 10) | (Quant(p[1], 5) << 5) | Quant(p[2], 5);
     }
-
     public static uint EncRgba5551(ReadOnlySpan<byte> p)
     {
         return (Quant(p[0], 5) << 11) | (Quant(p[1], 5) << 6) | (Quant(p[2], 5) << 1) | (p[3] >= 128 ? 1u : 0u);
     }
-
     public static uint EncRgb565(ReadOnlySpan<byte> p)
     {
         return (Quant(p[0], 5) << 11) | (Quant(p[1], 6) << 5) | Quant(p[2], 5);
     }
-
     public static uint EncLa8(ReadOnlySpan<byte> p)
     {
         return ((uint)p[3] << 8) | Lum(p[0], p[1], p[2]);
     }
-
     public static (int[] X, int[] Y) MortonXY(int w, int h)
     {
         int n = w * h;
@@ -132,7 +114,6 @@ internal static class Pixels
         }
         return (x, y);
     }
-
     public static byte[] Unswizzle(byte[] px, int unit, int w, int h)
     {
         (int[] xs, int[] ys) = MortonXY(w, h);
@@ -147,7 +128,6 @@ internal static class Pixels
         }
         return output;
     }
-
     public static byte[] Swizzle(byte[] img, int unit, int w, int h)
     {
         (int[] xs, int[] ys) = MortonXY(w, h);
@@ -162,7 +142,6 @@ internal static class Pixels
         }
         return output;
     }
-
     public static byte[] Untile(byte[] units, int unit, int w, int h, int tw, int th)
     {
         int pw = (w + tw - 1) / tw * tw;
@@ -184,7 +163,6 @@ internal static class Pixels
         }
         return output;
     }
-
     public static byte[] Tile(byte[] px, int unit, int w, int h, int tw, int th)
     {
         int pw = (w + tw - 1) / tw * tw;
@@ -204,7 +182,6 @@ internal static class Pixels
         }
         return output;
     }
-
     public static byte[] PadEdge(byte[] img, int w, int h, int pw, int ph)
     {
         if (pw == w && ph == h)
@@ -223,7 +200,6 @@ internal static class Pixels
         }
         return output;
     }
-
     public static byte[] Crop(byte[] img, int pw, int w, int h)
     {
         if (pw == w)
@@ -237,7 +213,6 @@ internal static class Pixels
         }
         return output;
     }
-
     public static List<(byte[] Image, int Width, int Height)> MipChain(byte[] img, int w, int h, int n)
     {
         List<(byte[], int, int)> output = [(img, w, h)];

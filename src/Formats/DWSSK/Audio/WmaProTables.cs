@@ -1,5 +1,4 @@
 namespace DWSSK.Formats.Audio;
-
 internal static class WmaProTables
 {
     public static readonly ushort[] CriticalFreq =
@@ -7,7 +6,6 @@ internal static class WmaProTables
         100, 200, 300, 400, 510, 630, 770, 920, 1080, 1270, 1480, 1720, 2000, 2320, 2700, 3150,
         3700, 4400, 5300, 6400, 7700, 9500, 12000, 15500, 20675, 28575, 41375, 63875,
     ];
-
     public static readonly byte[] ScaleTable =
     [
         58, 5, 64, 6, 66, 7, 65, 7, 62, 5, 63, 6, 68, 9, 69, 10,
@@ -27,7 +25,6 @@ internal static class WmaProTables
         120, 19, 18, 18, 53, 16, 56, 11, 57, 8, 67, 7, 61, 3, 59, 2,
         60, 1,
     ];
-
     public static readonly byte[] ScaleRlTable =
     [
         103, 7, 80, 11, 60, 11, 18, 10, 56, 10, 21, 12, 90, 12, 58, 11,
@@ -46,7 +43,6 @@ internal static class WmaProTables
         22, 11, 119, 10, 33, 9, 36, 9, 113, 11, 106, 12, 112, 13, 71, 15,
         85, 15, 74, 14, 76, 10, 114, 7, 29, 5, 54, 6, 13, 6, 3, 2,
     ];
-
     public static readonly byte[] ScaleRlRun =
     [
         0, 0, 0, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12,
@@ -58,7 +54,6 @@ internal static class WmaProTables
         18, 19, 20, 21, 22, 23, 24, 0, 1, 2, 3, 4, 5, 6, 7, 8,
         9, 10, 0, 1, 0, 1, 0, 1,
     ];
-
     public static readonly byte[] ScaleRlLevel =
     [
         0, 0, 1, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2,
@@ -70,7 +65,6 @@ internal static class WmaProTables
         5, 5, 5, 5, 5, 5, 5, 6, 6, 6, 6, 6, 6, 6, 6, 6,
         6, 6, 7, 7, 8, 8, 9, 9,
     ];
-
     public static readonly byte[] Coef0Lens =
     [
         2, 9, 14, 14, 13, 12, 13, 14, 15, 15, 12, 10, 10, 10, 13, 14,
@@ -91,7 +85,6 @@ internal static class WmaProTables
         10, 8, 7, 5, 9, 12, 13, 14, 15, 15, 12, 12, 10, 14, 14, 13,
         12, 13, 14, 14, 12, 13, 13, 12, 12, 12, 9, 7, 6, 3, 4, 4,
     ];
-
     public static readonly ushort[] Coef0Syms =
     [
         2, 25, 111, 94, 69, 58, 87, 93, 136, 135, 59, 37, 34, 36, 82, 182,
@@ -112,7 +105,6 @@ internal static class WmaProTables
         158, 24, 212, 8, 33, 70, 92, 205, 240, 242, 75, 197, 233, 259, 190, 98,
         71, 201, 122, 206, 72, 90, 95, 84, 167, 245, 229, 17, 12, 4, 152, 6,
     ];
-
     public static readonly byte[] Coef1Table =
     [
         2, 2, 3, 3, 102, 3, 4, 4, 148, 6, 134, 9, 171, 10, 18, 10,
@@ -147,7 +139,6 @@ internal static class WmaProTables
         119, 15, 63, 14, 237, 14, 78, 15, 85, 15, 60, 14, 98, 16, 100, 16,
         124, 16, 123, 16, 150, 11, 1, 7,
     ];
-
     public static readonly ushort[] Coef0Run =
     [
         0, 0, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13,
@@ -168,7 +159,6 @@ internal static class WmaProTables
         1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0,
         1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0,
     ];
-
     public static readonly float[] Coef0Level =
     [
         0.0f, 0.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f,
@@ -189,7 +179,6 @@ internal static class WmaProTables
         12.0f, 13.0f, 13.0f, 14.0f, 14.0f, 15.0f, 15.0f, 16.0f, 16.0f, 17.0f, 17.0f, 18.0f, 18.0f, 19.0f, 19.0f, 20.0f,
         20.0f, 21.0f, 21.0f, 22.0f, 22.0f, 23.0f, 23.0f, 24.0f, 24.0f, 25.0f, 25.0f, 26.0f, 26.0f, 27.0f, 27.0f, 28.0f,
     ];
-
     public static readonly ushort[] Coef1Run =
     [
         0, 0, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13,
@@ -209,7 +198,6 @@ internal static class WmaProTables
         1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0,
         1, 0, 0, 0,
     ];
-
     public static readonly float[] Coef1Level =
     [
         0.0f, 0.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f,
@@ -229,7 +217,6 @@ internal static class WmaProTables
         41.0f, 42.0f, 42.0f, 43.0f, 43.0f, 44.0f, 44.0f, 45.0f, 45.0f, 46.0f, 46.0f, 47.0f, 47.0f, 48.0f, 48.0f, 49.0f,
         49.0f, 50.0f, 51.0f, 52.0f,
     ];
-
     public static readonly byte[] Vec4Lens =
     [
         1, 6, 8, 10, 10, 10, 10, 8, 8, 10, 10, 9, 8, 8, 9, 12,
@@ -241,7 +228,6 @@ internal static class WmaProTables
         8, 8, 8, 10, 10, 10, 10, 9, 9, 8, 10, 11, 11, 9, 8, 8,
         8, 9, 9, 10, 11, 12, 12, 9, 9, 9, 8, 8, 7, 7, 7,
     ];
-
     public static readonly ushort[] Vec4Syms =
     [
         0, 4370, 275, 8195, 4146, 12545, 8225, 290, 4625, 515, 20, 8706, 8210, 4355, 4131, 16385,
@@ -253,7 +239,6 @@ internal static class WmaProTables
         34, 529, 289, 770, 12289, 4, 4145, 4356, 12306, 8193, 12801, 261, 16386, 4881, 3, 514,
         4129, 545, 306, 36, 4101, 65, 20481, 786, 4401, 4866, 8721, 291, 8450, 8465, 4115,
     ];
-
     public static readonly byte[] Vec2Table =
     [
         19, 5, 165, 10, 211, 11, 46, 11, 75, 10, 177, 11, 12, 11, 86, 8,
@@ -275,7 +260,6 @@ internal static class WmaProTables
         151, 9, 106, 9, 82, 6, 22, 6, 100, 7, 132, 8, 57, 8, 18, 4,
         34, 4,
     ];
-
     public static readonly byte[] Vec1Table =
     [
         7, 5, 32, 8, 59, 10, 60, 10, 83, 11, 82, 11, 62, 10, 33, 8,

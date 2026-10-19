@@ -1,17 +1,13 @@
 using DWSSK.Formats.Core;
-
 namespace DWSSK.Formats.Audio;
-
 internal sealed class MsbReader(byte[] data, int start, int bits)
 {
     private readonly int _end = Math.Min(data.Length, start + ((bits + 7) >> 3));
-
     public int Size { get; } = bits;
     public int Pos { get; set; }
     public int Left => Size - Pos;
     public byte[] Buffer => data;
     public int Start => start;
-
     public uint Peek(int n)
     {
         if (n <= 0)
@@ -32,44 +28,36 @@ internal sealed class MsbReader(byte[] data, int start, int bits)
         }
         return v;
     }
-
     public uint Read(int n)
     {
         uint v = Peek(n);
         Pos += n;
         return v;
     }
-
     public int Bit()
     {
         return (int)Read(1);
     }
-
     public int Signed(int n)
     {
         int v = (int)Read(n);
         return (v << (32 - n)) >> (32 - n);
     }
 }
-
 internal sealed class MsbWriter
 {
     private byte[] _data;
-
     public MsbWriter(int capacity = 256)
     {
         _data = new byte[Math.Max(16, capacity)];
     }
-
     public int Bits { get; private set; }
     public byte[] Data => _data;
-
     public void Reset()
     {
         Array.Clear(_data, 0, Math.Min(_data.Length, (Bits + 7) >> 3));
         Bits = 0;
     }
-
     public void Put(uint value, int n)
     {
         if (Bits + n + 64 > _data.Length * 8)
@@ -85,7 +73,6 @@ internal sealed class MsbWriter
             Bits++;
         }
     }
-
     public void Copy(MsbReader from, int n)
     {
         while (n > 0)
@@ -95,20 +82,17 @@ internal sealed class MsbWriter
             n -= take;
         }
     }
-
     public byte[] ToArray()
     {
         return _data.AsSpan(0, (Bits + 7) >> 3).ToArray();
     }
 }
-
 internal sealed class Vlc
 {
     private readonly List<int> _zero = [];
     private readonly List<int> _one = [];
     private readonly List<int> _symbol = [];
     private readonly Dictionary<int, (uint Code, int Length)> _codes = [];
-
     public Vlc(ReadOnlySpan<byte> lengths, Func<int, int> symbol, int offset)
     {
         Node();
@@ -137,7 +121,6 @@ internal sealed class Vlc
             code += 1UL << (32 - len);
         }
     }
-
     public static Vlc Pairs(byte[] table, int offset)
     {
         byte[] lengths = new byte[table.Length / 2];
@@ -147,7 +130,6 @@ internal sealed class Vlc
         }
         return new Vlc(lengths, i => table[2 * i], offset);
     }
-
     private int Node()
     {
         _zero.Add(-1);
@@ -155,7 +137,6 @@ internal sealed class Vlc
         _symbol.Add(int.MinValue);
         return _zero.Count - 1;
     }
-
     public int Read(MsbReader r)
     {
         int at = 0;
@@ -172,29 +153,24 @@ internal sealed class Vlc
             }
         }
     }
-
     public bool Has(int symbol)
     {
         return _codes.ContainsKey(symbol);
     }
-
     public int Length(int symbol)
     {
         return _codes[symbol].Length;
     }
-
     public void Write(MsbWriter w, int symbol)
     {
         (uint code, int len) = _codes[symbol];
         w.Put(code, len);
     }
 }
-
 internal static class Dct4
 {
     private static readonly Dictionary<int, (double[] Cos, double[] Sin, int[] Rev)> s_plans = [];
     private static readonly Lock s_lock = new();
-
     private static (double[] Cos, double[] Sin, int[] Rev) Plan(int m)
     {
         lock (s_lock)
@@ -224,7 +200,6 @@ internal static class Dct4
             return plan;
         }
     }
-
     private static void Fft(double[] re, double[] im, bool positive)
     {
         int m = re.Length;
@@ -261,7 +236,6 @@ internal static class Dct4
             }
         }
     }
-
     public static void Transform(ReadOnlySpan<double> v, Span<double> u)
     {
         int n = v.Length;
@@ -287,7 +261,6 @@ internal static class Dct4
             u[n - 1 - (2 * q)] = (re[q] * s) + (im[q] * c);
         }
     }
-
     public static void InverseHalf(ReadOnlySpan<float> coefficients, Span<float> output, double scale)
     {
         int n = coefficients.Length;
@@ -303,7 +276,6 @@ internal static class Dct4
             output[j] = (float)(-u[n - 1 - j] * scale);
         }
     }
-
     public static void InverseFull(ReadOnlySpan<double> coefficients, Span<double> output)
     {
         int n = coefficients.Length;
@@ -315,7 +287,6 @@ internal static class Dct4
             output[i] = i < h ? u[i + h] : i < 3 * h ? -u[(3 * h) - 1 - i] : -u[i - (3 * h)];
         }
     }
-
     public static void Forward(ReadOnlySpan<double> x, Span<double> coefficients)
     {
         int n = coefficients.Length;
@@ -332,7 +303,6 @@ internal static class Dct4
         Transform(v, coefficients);
     }
 }
-
 internal sealed class WmaProStream
 {
     private const int MaxFrameSize = 32768;
@@ -341,7 +311,6 @@ internal sealed class WmaProStream
     private const int BlockMinBits = 6;
     private const int BlockSizes = 8;
     private const int Log2FrameSize = 15;
-
     private static readonly Lazy<Vlc[]> s_vlcs = new(() =>
     [
         Vlc.Pairs(WmaProTables.ScaleTable, -60),
@@ -352,7 +321,6 @@ internal sealed class WmaProStream
         Vlc.Pairs(WmaProTables.Vec2Table, -1),
         Vlc.Pairs(WmaProTables.Vec1Table, 0),
     ]);
-
     private static readonly float[][] s_windows = [.. Enumerable.Range(0, BlockSizes).Select(i =>
     {
         int n = 1 << (BlockMinBits + i);
@@ -363,14 +331,12 @@ internal sealed class WmaProStream
         }
         return w;
     })];
-
     public static Vlc ScaleVlc => s_vlcs.Value[0];
     public static Vlc ScaleRlVlc => s_vlcs.Value[1];
     public static Vlc CoefVlc(int table) => s_vlcs.Value[2 + table];
     public static Vlc Vec4Vlc => s_vlcs.Value[4];
     public static Vlc Vec2Vlc => s_vlcs.Value[5];
     public static Vlc Vec1Vlc => s_vlcs.Value[6];
-
     private sealed class Channel
     {
         public int PrevBlockLen;
@@ -393,7 +359,6 @@ internal sealed class WmaProStream
         public int NumVecCoeffs;
         public readonly float[] Out = new float[8192 + 4096];
     }
-
     private readonly Channel[] _ch;
     private readonly int _nch;
     private readonly int _samplesPerFrame = 512;
@@ -406,7 +371,6 @@ internal sealed class WmaProStream
     private readonly float[] _tmp = new float[8192];
     private readonly byte[] _frameData = new byte[MaxFrameSize + 64];
     private readonly List<float>[] _output;
-
     private MsbReader _pgb = new([], 0, 0);
     private MsbReader _gb = new([], 0, 0);
     private int _pbBits;
@@ -429,7 +393,6 @@ internal sealed class WmaProStream
     private int _numChgroups;
     private readonly (int NumChannels, bool Transform, bool[] TransformBand, float[] Matrix, int[] Channels)[] _chgroup =
         [.. Enumerable.Range(0, 2).Select(_ => (0, false, new bool[MaxBands], new float[4], new int[2]))];
-
     public WmaProStream(int sampleRate, int channels)
     {
         _nch = channels;
@@ -475,7 +438,6 @@ internal sealed class WmaProStream
             }
         }
     }
-
     public int Channels => _nch;
     public bool PacketDone => _packetDone;
     public bool PacketLoss => _packetLoss;
@@ -486,7 +448,6 @@ internal sealed class WmaProStream
     public IReadOnlyList<List<float>> Output => _output;
     public int[] SfbOffsets(int table) => _sfbOffsets[table];
     public int NumSfb(int table) => _numSfb[table];
-
     private void SaveBits(MsbReader gb, int len, bool append)
     {
         int buflen;
@@ -527,7 +488,6 @@ internal sealed class WmaProStream
         gb.Pos += len;
         _gb = new MsbReader(_frameData, 0, _numSavedBits) { Pos = _frameOffset };
     }
-
     private void PutBits(MsbReader from, int n)
     {
         while (n > 0)
@@ -537,7 +497,6 @@ internal sealed class WmaProStream
             n -= take;
         }
     }
-
     private void Put(uint value, int n)
     {
         for (int i = n - 1; i >= 0; i--)
@@ -549,7 +508,6 @@ internal sealed class WmaProStream
             _pbBits++;
         }
     }
-
     public int DecodePacket(byte[] buf, int offset, int size)
     {
         if (size == 0)
@@ -635,7 +593,6 @@ internal sealed class WmaProStream
         _packetOffset = gb.Pos & 7;
         return _packetLoss ? -1 : gb.Pos >> 3;
     }
-
     private bool DecodeFrame()
     {
         try
@@ -648,7 +605,6 @@ internal sealed class WmaProStream
             return false;
         }
     }
-
     private bool Frame()
     {
         MsbReader gb = _gb;
@@ -719,7 +675,6 @@ internal sealed class WmaProStream
         gb.Pos += len - (gb.Pos - _frameOffset) - 1;
         return gb.Bit() != 0;
     }
-
     private int SubframeLength(int offset)
     {
         MsbReader gb = _gb;
@@ -739,7 +694,6 @@ internal sealed class WmaProStream
         int len = _samplesPerFrame >> shift;
         return len < _minSamplesPerSubframe || len > _samplesPerFrame ? -1 : len;
     }
-
     private bool TileHeader()
     {
         MsbReader gb = _gb;
@@ -805,7 +759,6 @@ internal sealed class WmaProStream
         }
         return true;
     }
-
     private bool ChannelTransform()
     {
         MsbReader gb = _gb;
@@ -870,9 +823,7 @@ internal sealed class WmaProStream
         }
         return true;
     }
-
     private static readonly float[] s_fval = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15];
-
     private void Coeffs(int c)
     {
         MsbReader gb = _gb;
@@ -945,7 +896,6 @@ internal sealed class WmaProStream
             RunLevel(gb, vlc, level, run, coeffs, at, cur);
         }
     }
-
     public static uint LargeVal(MsbReader gb)
     {
         int n = 8;
@@ -963,7 +913,6 @@ internal sealed class WmaProStream
         }
         return gb.Read(n);
     }
-
     private void RunLevel(MsbReader gb, Vlc vlc, float[] level, ushort[] run, float[] ptr, int at, int offset)
     {
         int mask = _subframeLen - 1;
@@ -1001,7 +950,6 @@ internal sealed class WmaProStream
             }
         }
     }
-
     private bool ScaleFactors()
     {
         MsbReader gb = _gb;
@@ -1074,7 +1022,6 @@ internal sealed class WmaProStream
         }
         return true;
     }
-
     private void InverseChannelTransform()
     {
         for (int i = 0; i < _numChgroups; i++)
@@ -1118,7 +1065,6 @@ internal sealed class WmaProStream
             }
         }
     }
-
     private void Window()
     {
         for (int i = 0; i < _channelsForCurSubframe; i++)
@@ -1148,7 +1094,6 @@ internal sealed class WmaProStream
             ch.PrevBlockLen = _subframeLen;
         }
     }
-
     private bool Subframe()
     {
         MsbReader gb = _gb;
@@ -1323,11 +1268,9 @@ internal sealed class WmaProStream
         return true;
     }
 }
-
 internal static class Xma
 {
     public const int PacketSize = 2048;
-
     public static (int Streams, uint ChannelMask, int SamplesEncoded, int BytesPerBlock, int PlayBegin, int PlayLength, int LoopBegin, int LoopLength, int LoopCount, int EncoderVersion, int BlockCount) Format(WemInfo i)
     {
         byte[] x = i.Extra;
@@ -1335,7 +1278,6 @@ internal static class Xma
         return (Bin.U16(x, 0, big), Bin.U32(x, 2, big), (int)Bin.U32(x, 6, big), (int)Bin.U32(x, 10, big), (int)Bin.U32(x, 14, big),
             (int)Bin.U32(x, 18, big), (int)Bin.U32(x, 22, big), (int)Bin.U32(x, 26, big), x[30], x[31], Bin.U16(x, 32, big));
     }
-
     public static short[] Decode(WemInfo i)
     {
         int streams = Math.Max(1, Format(i).Streams);
