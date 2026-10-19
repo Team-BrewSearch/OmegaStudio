@@ -47,7 +47,7 @@ done > trusted-plugins.txt
 
 With that file present, a plugin whose digest is not on the list is refused and the reason
 is logged; without it, everything in `formats/` loads. Either way the digest of each file
-that does load is printed in the Console pane, so what actually ran is a matter of record.
+that does load is printed in the Console pane, so what ran is a matter of record.
 
 Plugins built and shipped together with the app (a developer build, or a release you assemble
 yourself) are already trustworthy in the sense that matters, so the default of loading
@@ -166,8 +166,8 @@ internal sealed class PakHandle : IArchive
 }
 ```
 
-Serialize completely in memory first. A rebuild that fails halfway through a write leaves
-a truncated file where the user's archive used to be. List every file `Save` touches in
+Serialize completely in memory first. A rebuild that fails halfway through a write leaves a
+truncated file where the user's archive used to be. List every file `Save` touches in
 `BackupPaths`. The host copies each to `.bak` before the first save of a session.
 
 ## Nodes

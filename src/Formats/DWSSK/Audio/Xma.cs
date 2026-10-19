@@ -225,7 +225,7 @@ internal static class Dct4
         }
     }
 
-    public static void Fft(double[] re, double[] im, bool positive)
+    private static void Fft(double[] re, double[] im, bool positive)
     {
         int m = re.Length;
         (double[] cos, double[] sin, int[] rev) = Plan(m);

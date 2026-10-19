@@ -449,7 +449,7 @@ internal static class GdReader
                 for (int q = (int)p[0]; q < (int)p[4]; q += 0x14)
                 {
                     uint[] v = Us(q, 5);
-                    prim.Draws.Add(new GdDraw { Material = (int)v[0], Indices = Strip((int)v[1], (int)v[2]), Flags = v[4] });
+                    prim.Draws.Add(new GdDraw { Material = (int)(v[4] >> 24), Indices = Strip((int)v[1], (int)v[2]), Flags = v[4] });
                 }
                 lods.Add([prim]);
             }
@@ -471,7 +471,7 @@ internal static class GdReader
                 for (int q = (int)p[0]; q < (int)p[4]; q += 0x10)
                 {
                     uint[] v = Us(q, 4);
-                    (GdVertices vb, List<GdDraw> draws) = GxDraw(vbuf, 24, vc, "wii24", GxDl((int)v[1], (int)v[2], 4), (int)v[0]);
+                    (GdVertices vb, List<GdDraw> draws) = GxDraw(vbuf, 24, vc, "wii24", GxDl((int)v[1], (int)v[2], 4), (int)((v[3] >> 8) & 0xFF));
                     GdPrim prim = new(vb);
                     prim.Draws.AddRange(draws);
                     prims.Add(prim);
@@ -494,7 +494,7 @@ internal static class GdReader
                 for (int q = (int)p[0]; q < (int)p[4]; q += 0x14)
                 {
                     uint[] v = Us(q, 5);
-                    prim.Draws.Add(new GdDraw { Material = (int)v[0], Indices = Strip((int)v[1], (int)v[2]), Flags = v[4], Strip = false });
+                    prim.Draws.Add(new GdDraw { Material = (int)(v[0] & 0xFF), Indices = Strip((int)v[1], (int)v[2]), Flags = v[4], Strip = false });
                 }
                 lods.Add([prim]);
             }
@@ -664,17 +664,18 @@ internal static class GdReader
                     {
                         int[] t = uniq[k];
                         int o = k * stride;
+                        // GX sends a vertex's indices in attribute order: POS, NRM, CLR0, TEX0.
                         if (rigid)
                         {
                             Copy(bb, 10, t[0], 0, 10, data, o);
-                            Copy(u, 4, t[2], 0, 4, data, o + 10);
-                            Copy(c, 4, t[3], 0, 4, data, o + 14);
+                            Copy(u, 4, t[3], 0, 4, data, o + 10);
+                            Copy(c, 4, t[2], 0, 4, data, o + 14);
                         }
                         else
                         {
                             Copy(a, 32, t[0], 0, 32, data, o);
-                            Copy(u, 4, t[2], 0, 4, data, o + 32);
-                            Copy(c, 4, t[3], 0, 4, data, o + 36);
+                            Copy(u, 4, t[3], 0, 4, data, o + 32);
+                            Copy(c, 4, t[2], 0, 4, data, o + 36);
                         }
                     }
                     GdPrim prim = new(new GdVertices(data, uniq.Count, rigid ? "wiirigid" : "wiiskin"));

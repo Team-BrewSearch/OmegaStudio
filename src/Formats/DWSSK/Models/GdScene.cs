@@ -1,4 +1,5 @@
 using System.Numerics;
+using DWSSK.Formats.Anim;
 using DWSSK.Formats.Core;
 using Omega.Plugins;
 
@@ -54,8 +55,8 @@ internal static class GdScene
             Normals = normals,
             Uv0 = GdLayouts.Attr(vb, gd.Big, "TEXCOORD_0") is { } u0 ? ToFloat(u0) : null,
             Uv1 = GdLayouts.Attr(vb, gd.Big, "TEXCOORD_1") is { } u1 ? ToFloat(u1) : null,
-            Color0 = GdLayouts.Attr(vb, gd.Big, "COLOR_0") is { } c0 ? ToBytes(c0) : null,
-            Color1 = GdLayouts.Attr(vb, gd.Big, "COLOR_1") is { } c1 ? ToBytes(c1) : null,
+            Color0 = Colors(gd, vb, "COLOR_0"),
+            Color1 = Colors(gd, vb, "COLOR_1"),
         };
     }
 
@@ -67,6 +68,23 @@ internal static class GdScene
             f[i] = (float)v[i];
         }
         return f;
+    }
+
+    private static byte[]? Colors(GdModel gd, GdVertices vb, string name)
+    {
+        if (GdLayouts.Attr(vb, gd.Big, name) is not { } c)
+        {
+            return null;
+        }
+        byte[] rgba = ToBytes(c);
+        if (gd.Platform == Platform.Xbox360)
+        {
+            for (int i = 0; i + 3 < rgba.Length; i += 4)
+            {
+                (rgba[i], rgba[i + 1], rgba[i + 2], rgba[i + 3]) = (rgba[i + 1], rgba[i + 2], rgba[i + 3], rgba[i]);
+            }
+        }
+        return rgba;
     }
 
     private static byte[] ToBytes(double[] v)
@@ -141,36 +159,25 @@ internal static class GdScene
         return new GdDrawArrays { Triangles = [.. kept], Joints = joints, Weights = weights };
     }
 
-    public static (Matrix4x4[] World, double[][] Local) BoneWorlds(IReadOnlyList<GdBone> bones)
+    // Bone world matrices in the rest pose, built the way the game builds them (Wii 0x800cab00):
+    // each bone's pose as a local matrix, times its parent's world, in index order. The stored
+    // inverse binds undo these to within float error.
+    public static Matrix4x4[] BoneWorlds(IReadOnlyList<GdBone> bones)
     {
-        double[][] world = new double[bones.Count][];
+        Matrix4x4[] world = new Matrix4x4[bones.Count];
         for (int i = 0; i < bones.Count; i++)
         {
-            double[] w = Mat.Inverse(Mat.Transpose(bones[i].InverseBind));
-            double s = Math.Cbrt(Math.Abs(Mat.Det3(w)));
-            double div = s > 1e-8 ? s : 1;
-            for (int r = 0; r < 3; r++)
-            {
-                for (int c = 0; c < 3; c++)
-                {
-                    w[(r * 4) + c] /= div;
-                }
-            }
-            world[i] = w;
+            Matrix4x4 local = AnimRig.Local(AnimRig.Rest(bones[i]));
+            world[i] = bones[i].Parent is not int parent ? local
+                : parent < i ? AnimRig.Mul(local, world[parent])
+                : throw new InvalidDataException($"bone {i} names parent {parent}, which does not come before it");
         }
-        double[][] local = new double[bones.Count][];
-        for (int i = 0; i < bones.Count; i++)
-        {
-            local[i] = bones[i].Parent is int parent && parent < bones.Count
-                ? Mat.Mul(Mat.Inverse(world[parent]), world[i])
-                : bones[i].Parent is null ? world[i] : throw new InvalidDataException($"bone {i} names parent {bones[i].Parent}, past the {bones.Count} bones");
-        }
-        return ([.. world.Select(Mat.ToRowVector)], local);
+        return world;
     }
 
     public static IReadOnlyList<SceneJoint> Joints(IReadOnlyList<GdBone> bones)
     {
-        (Matrix4x4[] world, _) = BoneWorlds(bones);
+        Matrix4x4[] world = BoneWorlds(bones);
         List<SceneJoint> joints = new(bones.Count);
         for (int i = 0; i < bones.Count; i++)
         {
@@ -384,13 +391,6 @@ internal static class Mat
         return m;
     }
 
-    public static double Det3(double[] m)
-    {
-        return (m[0] * ((m[5] * m[10]) - (m[6] * m[9])))
-            - (m[1] * ((m[4] * m[10]) - (m[6] * m[8])))
-            + (m[2] * ((m[4] * m[9]) - (m[5] * m[8])));
-    }
-
     public static double[] Inverse(double[] m)
     {
         double[] a = (double[])m.Clone();
@@ -445,15 +445,5 @@ internal static class Mat
             }
         }
         return inv;
-    }
-
-    public static Matrix4x4 ToRowVector(double[] columnVector)
-    {
-        double[] t = Transpose(columnVector);
-        return new Matrix4x4(
-            (float)t[0], (float)t[1], (float)t[2], (float)t[3],
-            (float)t[4], (float)t[5], (float)t[6], (float)t[7],
-            (float)t[8], (float)t[9], (float)t[10], (float)t[11],
-            (float)t[12], (float)t[13], (float)t[14], (float)t[15]);
     }
 }

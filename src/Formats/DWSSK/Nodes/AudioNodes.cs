@@ -43,7 +43,7 @@ internal sealed class WemNode : SlotNode, IAudioAsset
             if (_audio is not { } c || c.Revision != Slot.Revision)
             {
                 byte[] b = Slot.Data;
-                _audio = c = (Slot.Revision, Wem.Info(b).Tag == 0xFFFF ? Vorbis.ToOgg(b) : Wav(b));
+                _audio = c = (Slot.Revision, Wav(b));
             }
             return c.Audio;
         }
@@ -73,7 +73,7 @@ internal sealed class WemNode : SlotNode, IAudioAsset
         yield return PropertyRow.Of("Chunks", string.Join(", ", i.Chunks.Keys.Select(k => k.TrimEnd())));
         yield return PropertyRow.Of("Plays as", i.Tag switch
         {
-            0xFFFF => "Ogg Vorbis, rebuilt from the Wwise packets",
+            0xFFFF => "WAV, decoded the way the Wii game decodes it",
             0x0166 => "WAV, decoded from XMA2",
             _ => "WAV",
         });

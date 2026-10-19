@@ -72,10 +72,14 @@ internal static class GdFile
         return new Writer(doc, bin).Build();
     }
 
-    private static long Created(Platform plat, JObj d)
+    // The material a .gdt draw renders with, from the byte each platform's renderer reads: 0x0E on
+    // the Wii (0x801588d0), 0x10 on the PS3 and Xbox 360 (0x8217dd08), 0x00 on the 3DS (0x15293c).
+    // The word at 0x00 is unused on the Wii and is the index buffer handle on the PS3 and Xbox 360.
+    // Draw data is laid out in this order too.
+    internal static long GdtMaterial(Platform plat, JObj d)
     {
         return plat == Platform.N3ds
-            ? J.L(d["material"])
+            ? J.L(d["material"]) & 0xFF
             : plat == Platform.Wii ? (J.L(d["flags"]) >> 8) & 0xFF : J.L(d["flags"]) >> 24;
     }
 
@@ -541,7 +545,7 @@ internal static class GdFile
                 lods.Add(lod);
                 if (draws is { Count: > 0 })
                 {
-                    List<int> sorted = StableSort(order, j => Created(_plat, J.O(draws[j])));
+                    List<int> sorted = StableSort(order, j => GdtMaterial(_plat, J.O(draws[j])));
                     if (!order.SequenceEqual(sorted))
                     {
                         lod["data_order"] = J.Longs(order);
@@ -1705,7 +1709,7 @@ internal static class GdFile
                 }
                 List<int> order = lod.Get("data_order") is List<object?> { Count: > 0 } dataOrder
                     ? [.. dataOrder.Select(J.I)]
-                    : StableSort(Enumerable.Range(0, draws.Count), j => Created(_plat, J.O(draws[j])));
+                    : StableSort(Enumerable.Range(0, draws.Count), j => GdtMaterial(_plat, J.O(draws[j])));
                 foreach (int j in order)
                 {
                     JObj d = J.O(draws[j]);

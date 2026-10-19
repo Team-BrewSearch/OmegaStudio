@@ -153,33 +153,22 @@ internal static class Wem
         {
             int pred = Bin.I16(data, blk, big);
             int idx = Math.Min(88, (int)data[blk + 2]);
-            for (int i = blk + 4; i < blk + align; i++)
+            output.Add((short)pred);
+            for (int i = 0; i < ((align - 4) * 2) - 1; i++)
             {
-                int bt = data[i];
-                foreach (int nib in new[] { bt & 15, bt >> 4 })
-                {
-                    int step = s_imaStep[idx];
-                    int diff = step >> 3;
-                    if ((nib & 1) != 0)
-                    {
-                        diff += step >> 2;
-                    }
-                    if ((nib & 2) != 0)
-                    {
-                        diff += step >> 1;
-                    }
-                    if ((nib & 4) != 0)
-                    {
-                        diff += step;
-                    }
-                    pred = (nib & 8) != 0 ? pred - diff : pred + diff;
-                    pred = Math.Clamp(pred, -32768, 32767);
-                    idx = Math.Clamp(idx + s_imaIndex[nib & 7], 0, 88);
-                    output.Add((short)pred);
-                }
+                int nib = (data[blk + 4 + (i >> 1)] >> ((i & 1) * 4)) & 15;
+                pred = ImaStep(pred, idx, nib);
+                idx = Math.Clamp(idx + s_imaIndex[nib & 7], 0, 88);
+                output.Add((short)pred);
             }
         }
         return [.. output];
+    }
+
+    private static int ImaStep(int pred, int idx, int nib)
+    {
+        int diff = s_imaStep[idx] * (((nib & 7) * 2) + 1) >> 3;
+        return Math.Clamp((nib & 8) != 0 ? pred - diff : pred + diff, -32768, 32767);
     }
 
     public static (short[] Samples, int Rate, int Channels) Decode(byte[] b)
@@ -219,7 +208,7 @@ internal static class Wem
         }
         if (i.Tag == 0xFFFF)
         {
-            return (Vorbis.DecodeOgg(Vorbis.ToOgg(b)), i.Rate, nch);
+            return (VorbisDecoder.Decode(i, b), i.Rate, nch);
         }
         throw new NotSupportedException($"codec 0x{i.Tag:x}");
     }
@@ -251,40 +240,30 @@ internal static class Wem
     public static byte[] ImaEncode(short[] x0, bool big, int align)
     {
         int per = (align - 4) * 2;
-        long[] x = new long[x0.Length + Bin.Mod(-x0.Length, per)];
-        for (int k = 0; k < x0.Length; k++)
-        {
-            x[k] = x0[k];
-        }
+        short[] x = new short[x0.Length + Bin.Mod(-x0.Length, per)];
+        x0.CopyTo(x, 0);
         ByteWriter output = new();
-        int pred = 0;
         int idx = 0;
         for (int blk = 0; blk < x.Length; blk += per)
         {
+            int pred = x[blk];
             output.U16((ushort)(short)pred, big);
             output.Add((byte)idx);
             output.Add(0);
             int[] nibs = new int[per];
-            for (int i = 0; i < per; i++)
+            for (int i = 1; i < per; i++)
             {
-                long v = x[blk + i];
-                int step = s_imaStep[idx];
-                long d = v - pred;
-                int nib = d < 0 ? 8 : 0;
-                d = Math.Abs(d);
-                int diff = step >> 3;
-                foreach ((int bit, int part) in new[] { (4, step), (2, step >> 1), (1, step >> 2) })
+                int best = 0;
+                for (int nib = 1; nib < 16; nib++)
                 {
-                    if (d >= part)
+                    if (Math.Abs(x[blk + i] - ImaStep(pred, idx, nib)) < Math.Abs(x[blk + i] - ImaStep(pred, idx, best)))
                     {
-                        nib |= bit;
-                        d -= part;
-                        diff += part;
+                        best = nib;
                     }
                 }
-                pred = Math.Clamp((nib & 8) != 0 ? pred - diff : pred + diff, -32768, 32767);
-                idx = Math.Clamp(idx + s_imaIndex[nib & 7], 0, 88);
-                nibs[i] = nib;
+                pred = ImaStep(pred, idx, best);
+                idx = Math.Clamp(idx + s_imaIndex[best & 7], 0, 88);
+                nibs[i - 1] = best;
             }
             for (int k = 0; k < per; k += 2)
             {

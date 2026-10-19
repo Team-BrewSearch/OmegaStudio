@@ -76,7 +76,7 @@ internal static class Vorbis
         return (lib, Bin.U32s(lib, table, n, false));
     }
 
-    private static byte[] Codebook(long i)
+    internal static byte[] Codebook(long i)
     {
         (byte[] lib, uint[] offs) = s_codebooks.Value;
         if (i + 1 >= offs.Length)
@@ -152,7 +152,7 @@ internal static class Vorbis
         }
     }
 
-    private static BitStream Header(int kind)
+    internal static BitStream Header(int kind)
     {
         BitStream w = new();
         w.Write(kind, 8);
@@ -279,163 +279,5 @@ internal static class Vorbis
         }
         output.Write(1, 1);
         return (output.Bytes(), modes);
-    }
-
-    private static readonly uint[] s_crc = BuildCrc();
-
-    private static uint[] BuildCrc()
-    {
-        uint[] t = new uint[256];
-        for (uint i = 0; i < 256; i++)
-        {
-            uint c = i << 24;
-            for (int k = 0; k < 8; k++)
-            {
-                c = (c & 0x80000000) != 0 ? (c << 1) ^ 0x04C11DB7 : c << 1;
-            }
-            t[i] = c;
-        }
-        return t;
-    }
-
-    private static uint OggCrc(ReadOnlySpan<byte> data)
-    {
-        uint crc = 0;
-        foreach (byte b in data)
-        {
-            crc = (crc << 8) ^ s_crc[((crc >> 24) ^ b) & 0xFF];
-        }
-        return crc;
-    }
-
-    private static byte[] OggPage(byte[] packet, long seq, long granule, int flags)
-    {
-        int full = packet.Length / 255;
-        if (full + 1 > 255)
-        {
-            throw new InvalidDataException("bytes must be in range(0, 256)");
-        }
-        ByteWriter page = new(packet.Length + 64);
-        page.Add("OggS"u8);
-        page.Add(0);
-        page.Add((byte)flags);
-        page.U32((uint)(ulong)granule, false);
-        page.U32((uint)((ulong)granule >> 32), false);
-        page.U32(0x5757, false);
-        page.U32((uint)seq, false);
-        page.U32(0, false);
-        page.Add((byte)(full + 1));
-        page.Fill(255, full);
-        page.Add((byte)(packet.Length % 255));
-        page.Add(packet);
-        page.PatchU32(22, OggCrc(page.Span), false);
-        return page.ToArray();
-    }
-
-    public static short[] DecodeOgg(byte[] ogg)
-    {
-        using MemoryStream stream = new(ogg);
-        using NVorbis.VorbisReader reader = new(stream, false) { ClipSamples = false };
-        List<short> pcm = new((int)Math.Min(int.MaxValue / 2, reader.TotalSamples * reader.Channels));
-        float[] buffer = new float[4096 * reader.Channels];
-        int read;
-        while ((read = reader.ReadSamples(buffer, 0, buffer.Length)) > 0)
-        {
-            for (int k = 0; k < read; k++)
-            {
-                pcm.Add((short)Math.Clamp(MathF.Truncate(buffer[k] * 32768f), -32768f, 32767f));
-            }
-        }
-        return [.. pcm];
-    }
-
-    public static byte[] ToOgg(byte[] b)
-    {
-        WemInfo i = Wem.Info(b);
-        bool big = i.Big;
-        int nch = i.Channels;
-        (int fo, int fs) = i.Fmt;
-        if (fs != 0x42)
-        {
-            throw new NotSupportedException($"Wwise Vorbis with a 0x{fs:x}-byte fmt");
-        }
-        int v = fo + 0x18;
-        long samples = Bin.U32(b, v, big);
-        long modSignal = Bin.U32(b, v + 4, big);
-        int setupOff = (int)Bin.U32(b, v + 0x10, big);
-        int audioOff = (int)Bin.U32(b, v + 0x14, big);
-        int bs0 = Bin.U8(b, v + 0x28);
-        int bs1 = Bin.U8(b, v + 0x29);
-        bool modPackets = modSignal is not (0x4A or 0x4B or 0x69 or 0x70);
-        byte[] data = i.Data;
-        (byte[] Packet, int Next) Packet(int o)
-        {
-            int n = Bin.U16(data, o, big);
-            return (Bin.Slice(data, o + 2, o + 2 + n).ToArray(), o + 2 + n);
-        }
-        BitStream ident = Header(1);
-        (long Val, int Width)[] identFields =
-        [
-            (0, 32), (nch, 8), (i.Rate, 32), (0, 32), (Bin.U32(b, fo + 8, big) * 8L, 32), (0, 32), (bs0, 4), (bs1, 4), (1, 1),
-        ];
-        foreach ((long val, int width) in identFields)
-        {
-            ident.Write(val, width);
-        }
-        BitStream comment = Header(3);
-        byte[] vendor = "converted from Audiokinetic Wwise by dwssk wem.py"u8.ToArray();
-        comment.Write(vendor.Length, 32);
-        foreach (byte c in vendor)
-        {
-            comment.Write(c, 8);
-        }
-        comment.Write(0, 32);
-        comment.Write(1, 1);
-        (byte[] setup, List<long> modes) = RebuildSetup(Packet(setupOff).Packet, nch);
-        int modeBits = Ilog(modes.Count - 1);
-        List<byte[]> pages = [OggPage(ident.Bytes(), 0, 0, 2), OggPage(comment.Bytes(), 1, 0, 0), OggPage(setup, 2, 0, 0)];
-        List<byte[]> pkts = [];
-        int at = audioOff;
-        while (at < data.Length)
-        {
-            (byte[] p, int next) = Packet(at);
-            pkts.Add(p);
-            at = next;
-        }
-        long granule = 0;
-        long? prev = null;
-        for (int k = 0; k < pkts.Count; k++)
-        {
-            byte[] p = pkts[k];
-            if (modPackets)
-            {
-                BitStream src = new(p);
-                BitStream output = new();
-                output.Write(0, 1);
-                long mode0 = output.Copy(src, modeBits);
-                if (modes[(int)mode0] != 0)
-                {
-                    long nxt = k + 1 < pkts.Count && pkts[k + 1].Length > 0 ? modes[(int)new BitStream(pkts[k + 1]).Read(modeBits)] : 0;
-                    output.Write(prev ?? 0, 1);
-                    output.Write(nxt, 1);
-                }
-                output.Copy(src, 8 - modeBits);
-                for (int c = 1; c < p.Length; c++)
-                {
-                    output.Write(p[c], 8);
-                }
-                p = output.Bytes();
-            }
-            long mode = new BitStream(p).Read(1 + modeBits) >> 1;
-            long size = 1L << (modes[(int)mode] != 0 ? bs1 : bs0);
-            if (prev is { } pv)
-            {
-                granule += ((1L << (pv != 0 ? bs1 : bs0)) + size) / 4;
-            }
-            prev = modes[(int)mode];
-            bool last = k == pkts.Count - 1;
-            pages.Add(OggPage(p, 3 + k, last ? Math.Min(granule, samples) : granule, last ? 4 : 0));
-        }
-        return [.. pages.SelectMany(x => x)];
     }
 }

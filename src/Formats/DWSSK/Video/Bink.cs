@@ -1,5 +1,4 @@
 using System.Buffers.Binary;
-using DWSSK.Formats.Audio;
 
 namespace DWSSK.Formats.Video;
 
@@ -1261,174 +1260,6 @@ internal static class BinkColor
     }
 }
 
-internal sealed class BinkAudio
-{
-    private static readonly byte[] s_rle = [2, 3, 4, 5, 6, 8, 9, 10, 11, 12, 13, 14, 15, 16, 32, 64];
-
-    private readonly int _channels;
-    private readonly int _frameLen;
-    private readonly int _overlap;
-    private readonly float _root;
-    private readonly float[] _quantTable = new float[96];
-    private readonly int _numBands;
-    private readonly int[] _bands = new int[26];
-    private readonly float[][] _previous;
-    private bool _first = true;
-
-    public BinkAudio(BinkTrack track)
-    {
-        if (!track.Dct)
-        {
-            throw new NotSupportedException("Bink RDFT audio is not decoded; only the DCT variant is");
-        }
-        _channels = track.Channels;
-        int bits = track.Rate < 22050 ? 9 : track.Rate < 44100 ? 10 : 11;
-        _frameLen = 1 << bits;
-        _overlap = _frameLen / 16;
-        int half = (track.Rate + 1) / 2;
-        _root = (float)(_frameLen / (Math.Sqrt(_frameLen) * 32768.0));
-        for (int i = 0; i < 96; i++)
-        {
-            _quantTable[i] = MathF.Exp(i * 0.15289164787221953823f) * _root;
-        }
-        for (_numBands = 1; _numBands < 25; _numBands++)
-        {
-            if (half <= BinkTables.CriticalFreqs[_numBands - 1])
-            {
-                break;
-            }
-        }
-        _bands[0] = 2;
-        for (int i = 1; i < _numBands; i++)
-        {
-            _bands[i] = (BinkTables.CriticalFreqs[i - 1] * _frameLen / half) & ~1;
-        }
-        _bands[_numBands] = _frameLen;
-        _previous = [.. Enumerable.Range(0, _channels).Select(_ => new float[_overlap])];
-    }
-
-    public int Channels => _channels;
-
-    private static float Float(LsbReader gb)
-    {
-        int power = (int)gb.Read(5);
-        float f = MathF.ScaleB(gb.Read(23), power - 23);
-        return gb.Bit() != 0 ? -f : f;
-    }
-
-    public void Packet(byte[] data, int offset, int length, List<float>[] output)
-    {
-        LsbReader gb = new(data, offset, length);
-        gb.Pos += 32;
-        float[][] outs = [.. Enumerable.Range(0, _channels).Select(_ => new float[_frameLen])];
-        while (gb.Left > 0)
-        {
-            Block(gb, outs);
-            for (int c = 0; c < _channels; c++)
-            {
-                for (int k = 0; k < _frameLen - _overlap; k++)
-                {
-                    output[c].Add(outs[c][k]);
-                }
-            }
-            if ((gb.Pos & 31) != 0)
-            {
-                gb.Pos += 32 - (gb.Pos & 31);
-            }
-        }
-    }
-
-    private void Block(LsbReader gb, float[][] outs)
-    {
-        float[] coeffs = new float[_frameLen + 2];
-        Span<float> quant = stackalloc float[25];
-        gb.Pos += 2;
-        for (int ch = 0; ch < _channels; ch++)
-        {
-            if (gb.Left < 58)
-            {
-                throw new InvalidDataException("a Bink audio block ended early");
-            }
-            coeffs[0] = Float(gb) * _root;
-            coeffs[1] = Float(gb) * _root;
-            if (gb.Left < _numBands * 8)
-            {
-                throw new InvalidDataException("a Bink audio block ended early");
-            }
-            for (int i = 0; i < _numBands; i++)
-            {
-                quant[i] = _quantTable[Math.Min((int)gb.Read(8), 95)];
-            }
-            int k = 0;
-            float q = quant[0];
-            int at = 2;
-            while (at < _frameLen)
-            {
-                int j = gb.Bit() != 0 ? at + (s_rle[gb.Read(4)] * 8) : at + 8;
-                j = Math.Min(j, _frameLen);
-                int width = (int)gb.Read(4);
-                if (width == 0)
-                {
-                    Array.Clear(coeffs, at, j - at);
-                    at = j;
-                    while (_bands[k] < at)
-                    {
-                        q = quant[k++];
-                    }
-                }
-                else
-                {
-                    while (at < j)
-                    {
-                        if (_bands[k] == at)
-                        {
-                            q = quant[k++];
-                        }
-                        int coeff = (int)gb.Read(width);
-                        coeffs[at] = coeff == 0 ? 0f : gb.Bit() != 0 ? -q * coeff : q * coeff;
-                        at++;
-                    }
-                }
-            }
-            coeffs[0] /= 0.5f;
-            Dct3(coeffs, outs[ch]);
-        }
-        int count = _overlap * _channels;
-        for (int ch = 0; ch < _channels; ch++)
-        {
-            if (!_first)
-            {
-                for (int i = 0, j = ch; i < _overlap; i++, j += _channels)
-                {
-                    outs[ch][i] = ((_previous[ch][i] * (count - j)) + (outs[ch][i] * j)) / count;
-                }
-            }
-            Array.Copy(outs[ch], _frameLen - _overlap, _previous[ch], 0, _overlap);
-        }
-        _first = false;
-    }
-
-    private void Dct3(float[] x, float[] y)
-    {
-        int n = _frameLen;
-        double[] re = new double[2 * n];
-        double[] im = new double[2 * n];
-        for (int k = 0; k < n; k++)
-        {
-            double a = k == 0 ? x[0] * 0.5 : x[k];
-            double angle = Math.PI * k / (2 * n);
-            re[k] = a * Math.Cos(angle);
-            im[k] = a * Math.Sin(angle);
-        }
-        Dct4.Fft(re, im, true);
-        double scale = 2.0 / n;
-        for (int m = 0; m < n; m++)
-        {
-            y[m] = (float)(re[m] * scale);
-        }
-    }
-}
-
 internal sealed class BinkReader : Omega.Plugins.IVideoReader
 {
     private readonly BinkFile _file;
@@ -1489,7 +1320,7 @@ internal static class Bink
             return null;
         }
         BinkAudio decoder = new(file.Tracks[track]);
-        List<float>[] output = [.. Enumerable.Range(0, decoder.Channels).Select(_ => new List<float>())];
+        List<short> output = [];
         for (int f = 0; f < file.Frames; f++)
         {
             (int offset, int length) = file.Audio(f, track);
@@ -1498,15 +1329,6 @@ internal static class Bink
                 decoder.Packet(file.Data, offset, length, output);
             }
         }
-        int frames = output[0].Count;
-        short[] pcm = new short[frames * decoder.Channels];
-        for (int c = 0; c < decoder.Channels; c++)
-        {
-            for (int k = 0; k < frames; k++)
-            {
-                pcm[(k * decoder.Channels) + c] = (short)Math.Clamp(MathF.Round(output[c][k] * 32768f), -32768f, 32767f);
-            }
-        }
-        return (pcm, file.Tracks[track].Rate, decoder.Channels);
+        return ([.. output], file.Tracks[track].Rate, decoder.Channels);
     }
 }

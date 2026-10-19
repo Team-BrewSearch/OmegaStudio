@@ -8,22 +8,22 @@ a plugin, see [PLUGINS.md](PLUGINS.md).
 ## The three layers
 
 ```
-                  ┌──────────────────────────────────────────┐
-                  │  OmegaStudio                             │
-                  │  Views, view models, rendering, audio,   │
-                  │  glTF and PNG codecs, the plugin host    │
-                  └────────────────────┬─────────────────────┘
-                                       │ references
-                  ┌────────────────────┴─────────────────────┐
-                  │  Omega.Plugins                           │
-                  │  The contract. Interfaces, node bases,   │
-                  │  neutral geometry and image types.       │
-                  └────────────────────┬─────────────────────┘
-                                       │ references
-       ┌───────────┬───────────┬───────┴───┬───────────┐
-       │ Harugeki  │ Virtuos   │ Nintendo  │ Generic   │  …loaded at runtime
-       │ .Formats  │ .Formats  │ .Formats  │ .Formats  │
-       └───────────┴───────────┴───────────┴───────────┘
+                   ┌──────────────────────────────────────────┐
+                   │  OmegaStudio                             │
+                   │  Views, view models, rendering, audio,   │
+                   │  glTF and PNG codecs, the plugin host    │
+                   └────────────────────┬─────────────────────┘
+                                        │ references
+                   ┌────────────────────┴─────────────────────┐
+                   │  Omega.Plugins                           │
+                   │  The contract. Interfaces, node bases,   │
+                   │  neutral geometry and image types.       │
+                   └────────────────────┬─────────────────────┘
+                                        │ references
+        ┌───────────┬───────────┬───────┴───┬───────────┐
+        │ Harugeki  │ Virtuos   │ Nintendo  │ Generic   │  …loaded at runtime
+        │ .Formats  │ .Formats  │ .Formats  │ .Formats  │
+        └───────────┴───────────┴───────────┴───────────┘
 ```
 
 Plugins never reference `OmegaStudio`. The arrow only points one way, which is what lets a
@@ -38,9 +38,10 @@ between releases.
 src/
   Omega.Plugins/             The plugin contract. The only public API.
   OmegaStudio/               The application: UI, rendering, audio, plugin host.
-  Omega.Disc/                Disc formats: bounded readers, cluster mapping, decryption streams.
+  Omega.Disc/                Disc formats: bounded readers, cluster mapping,
+                             decryption streams. Shared by the console plugins.
   Formats/
-    Harugeki/                Suzumiya Haruhi no Chourantou / Gekitou
+    Harugeki/                Suzumiya Haruhi no Chourantou / Gekitou (PC)
     Virtuos/                 Virtuos racing engine (Nintendo DS)
     Nintendo/                Nintendo DS ROM images, WBFS Wii containers, 3DS cart images
     Polarbit/                Polarbit racing engine (iOS)
@@ -154,7 +155,7 @@ implements as many as apply:
 | `ICommandSource` | Extra entries in the row's context menu |
 
 `NodeCommands` builds a row's menu purely by testing which of these a node implements, so the
-host needs no knowledge of what the node actually is.
+host needs no knowledge of what the node is.
 
 A row gets at most one `Export…` and one `Replace…` entry, however many capabilities it has.
 Each capability, and each plugin command that sets `AssetCommandRole`, contributes file types
@@ -200,9 +201,10 @@ that only swaps images. `EditHistory` holds a byte budget, 256 MB by default, ra
 fixed count, because 24 whole payloads is 768 MB for 24 models of 32 MB; the oldest edits are
 evicted as new ones push the total past the budget, and an edit larger than the whole budget
 is refused with a message rather than stored silently where it cannot be undone. Two cases
-clear the history rather than risk reverting the wrong thing: a command on a node with
-neither restorable bytes nor a replaceable image, and a command that edits a node other than
-the one it ran on.
+refuse an edit rather than risk reverting the wrong thing: a command on a node with neither
+restorable bytes nor a replaceable image clears the history, and a command whose node type
+changed mid-execution clears it too; an edit that changed nothing on the expected node is
+skipped outright.
 
 An editable Properties row is the one edit that does not arrive as a command. A `PropertyRow`
 carrying an `Apply` is shown as a text box, a check box, or a drop-down; committing it
@@ -253,15 +255,15 @@ big-endian reads, fixed-point, NUL-terminated names, Latin-1, and hexadecimal. E
 bounds-checks its span and refuses an out-of-range one with `InvalidDataException` naming the
 offset and the span, so a truncated blob is a parse failure with a reason rather than an
 indexer's own exception. The two cursor shapes built on it, `SpanReader` in Omega.Disc and
-the `Le` / `BinaryRead` names each plugin kept, forward to the same set, so a read past the
-end means the same thing and reads the same way wherever it is written.
+`Le`, a local alias kept by the Polarbit plugin that forwards to `BinaryRead`, reach the same
+set, so a read past the end means the same thing and reads the same way wherever it is written.
 
 ## Containing plugin failures
 
 A plugin is third-party code parsing formats somebody reverse-engineered, so it will
 eventually throw. `PluginGuard` wraps every call from the host into a plugin. The rule is
 that a failure costs the user the one thing they were doing and never the session: an
-unreadable node shows an error row, a throwing sniff means that format simply does not claim
+unreadable node shows an error row, a throwing sniff means that format does not claim
 the file, a throwing property leaves the pane empty. The catches are broad on purpose, since
 guessing which exception types a plugin author will use, and guessing wrong, turns a
 contained failure back into a crash. `OutOfMemoryException` is the single exception that is
@@ -291,7 +293,7 @@ before an upload and before an export: array lengths against the vertex count, i
 joint indices in range, every submesh covering real entries with a real texture. A plugin bug
 is named at that boundary rather than surfacing later as a torn draw or corrupt output.
 Shaders carry no `#version` line; the preamble is supplied at compile time from the context
-Avalonia actually provided, so one copy of each shader serves both desktop GL and GLES.
+Avalonia provides, so one copy of each shader serves both desktop GL and GLES.
 
 ## Audio
 
@@ -342,7 +344,7 @@ storm across a multi-gigabyte scan, and memory-mapped views do not fix the write
 gate serialises a position-and-read instead of letting two readers serve each other's bytes.
 
 The search walk is debounced by 200 ms and carries a cancellation token, so typing cancels
-the previous walk rather than queuing another. The walk reads nodes rather than the view
+the previous walk rather than queueing another. The walk reads nodes rather than the view
 models the UI thread owns, and the result set is capped and the cap reported, so memory stays
 proportional to the matches. Overlapping opens are refused by a single slot rather than
 racing. The audio transport's state is locked at the object that owns it. The audio poll

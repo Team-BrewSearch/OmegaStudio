@@ -26,6 +26,7 @@ internal sealed class Htx
     public int Flag { get; }
     public bool BigEndian { get; }
     public int DataOffset { get; }
+    private bool Linear => (Flag & 1) == 0;
     public ReadOnlySpan<byte> Data => Bin.Slice(Blob, DataOffset, Blob.Length);
 
     public static bool IsHtx(ReadOnlySpan<byte> b)
@@ -193,10 +194,10 @@ internal sealed class Htx
         }
         if (Format == 0)
         {
-            byte[] px = Pixels.Unswizzle(Need(raw, lw * lh * 4), 4, lw, lh);
+            byte[] px = Linear ? Need(raw, lw * lh * 4) : Pixels.Unswizzle(Need(raw, lw * lh * 4), 4, lw, lh);
             for (int i = 0; i < px.Length; i += 4)
             {
-                (px[i], px[i + 1], px[i + 2], px[i + 3]) = (px[i + 1], px[i + 2], px[i + 3], px[i]);
+                (px[i], px[i + 2]) = (px[i + 2], px[i]);
             }
             return (px, lw, lh);
         }
@@ -206,7 +207,7 @@ internal sealed class Htx
         {
             Color16(Format, Bin.U16(raw, i * 2, true), units, i);
         }
-        return (Pixels.Unswizzle(units, 4, lw, lh), lw, lh);
+        return (Linear ? units : Pixels.Unswizzle(units, 4, lw, lh), lw, lh);
     }
 
     private static byte[] Need(ReadOnlySpan<byte> raw, int n)
@@ -288,19 +289,19 @@ internal sealed class Htx
         {
             if (f == 0)
             {
-                byte[] argb = new byte[w * h * 4];
+                byte[] bgra = new byte[w * h * 4];
                 for (int i = 0; i < w * h; i++)
                 {
-                    Pixels.Put(argb, i, img[(i * 4) + 3], img[i * 4], img[(i * 4) + 1], img[(i * 4) + 2]);
+                    Pixels.Put(bgra, i, img[(i * 4) + 2], img[(i * 4) + 1], img[i * 4], img[(i * 4) + 3]);
                 }
-                return Pixels.Swizzle(argb, 4, w, h);
+                return Linear ? bgra : Pixels.Swizzle(bgra, 4, w, h);
             }
             byte[] v = new byte[w * h * 2];
             for (int i = 0; i < w * h; i++)
             {
                 Bin.PutU16(v, i * 2, Encode16(f, img.AsSpan(i * 4, 4)), true);
             }
-            return Pixels.Swizzle(v, 2, w, h);
+            return Linear ? v : Pixels.Swizzle(v, 2, w, h);
         }
         if (platform == Platform.Wii)
         {

@@ -106,15 +106,24 @@ is written back to the row when the disc allows it.
 
 What each row does:
 
-- `.htx` textures decode for every platform layout: PS3 swizzled and DXT, Xbox 360 tiled,
-  Wii GX tiles and CMPR, 3DS CTPK. Replacing one from a PNG re-encodes it in the original
+- `.htx` textures decode for every platform layout: PS3 swizzled or linear (header bit 0)
+  and DXT, Xbox 360 linear with a padded pitch, Wii GX tiles and CMPR, 3DS CTPK. Formats and
+  channel orders follow the tables in the game executables; PS3 32-bit textures, for example,
+  are stored blue, green, red, alpha. Replacing one from a PNG re-encodes it in the original
   format; the lossless formats give back the same bytes for an unchanged PNG.
 - `.gdw`, `.gds`, `.gdi`, `.gdt` and `.gdt.piece` models render with their textures. A world
   splits into one mesh per visibility zone. Skinned models carry their skeleton and play
   every animation from the `.animpack` files beside their `MASTER` folder. Geometry can be
   replaced from a glTF (the first LOD), and every model exports and imports as the JSON and
-  `.bin` pair the reverse-engineering tools write.
+  `.bin` pair the reverse-engineering tools write. Vertex colors are alpha, red, green, blue
+  on the Xbox 360 (its `D3DCOLOR`) and red, green, blue, alpha everywhere else.
 - `.animpack` files play on their character's master model and export and import as JSON.
+  Rotation keys decode the way the game does: each 10-bit component is `(c - 0.5) * step -
+  max`, with `max` the square root of 0.5 and `step` `2 * max / 1023`, and the quaternion is
+  normalized afterwards. Translations are sign-magnitude fractions of 100 times the range at
+  0x40, scales of the range at 0x44, and key times are a byte scaled to the range at 0x48.
+  Poses are built with the game's own single-precision math (rest pose, interpolation and
+  bone matrices), so the skinning matrices match the Wii build's bit for bit.
 - `.bog` level databases, `.p2b` data tables, `.lcl` string tables, `.fkd` font kerning,
   `.cam` cameras, `.csd` collision surfaces, `.nav` navigation meshes, `.col` and
   `.col.piece` collision and `.nog` name tables export and import as JSON. Navigation and
@@ -124,15 +133,23 @@ What each row does:
   disassembly and rebuild from edited JSON.
 - `.arc` U8 archives on the Wii open as folders with their TPL images.
 - `.wem` audio plays and exports as WAV with no outside tools. PCM, Wwise IMA, Nintendo DSP
-  ADPCM, Wwise Vorbis and XMA2 all decode inside the plugin. A sound is replaced from a
-  16-bit WAV in its own codec: Vorbis is encoded with the sound's own Wwise setup and
-  codebooks, and XMA2 is encoded as XMA2 with its seek table rebuilt. Sound banks list their
-  events by name and hold their embedded media as rows.
-- `.swf` Scaleform movies list their bitmaps as rows. Each one previews and can be replaced
-  from a PNG: lossless bitmaps stay lossless, and JPEG bitmaps are re-encoded as JPEG, so
-  they lose a little quality.
+  ADPCM, Wwise Vorbis and XMA2 all decode inside the plugin. Wwise IMA follows the game's
+  routine: each 36-byte block starts with its header sample, then 63 nibbles, with each step
+  `step * (2n + 1) / 8`. Vorbis decodes through a port of the Wii game's own decoder (Tremor
+  with a floating-point floor, MDCT and window), so the samples match what the game plays bit
+  for bit. A sound is replaced from a 16-bit WAV in its own codec: Vorbis is encoded with the
+  sound's own Wwise setup and codebooks, and XMA2 is encoded as XMA2 with its seek table
+  rebuilt. Sound banks list their events by name and hold their embedded media as rows.
+- `.swf` Scaleform movies list their bitmaps as rows. JPEG bitmaps decode to the same pixels
+  the game's libjpeg 6b gives. Each one previews and can be replaced from a PNG: lossless
+  bitmaps stay lossless, and JPEG bitmaps are re-encoded as JPEG, so they lose a little
+  quality.
 - `.bik` Bink 1 videos (revisions `f` to `k`) play in the Video tab with their sound, and export
-  as frames, a WAV soundtrack or a Matroska movie.
+  as frames, a WAV soundtrack or a Matroska movie. The sound decodes through a port of the Wii
+  game's Bink audio decoder: Ooura's split-radix DCT in single precision with the game's own
+  tables, the game's rounding to 16 bits and its integer crossfade between blocks. Each packet
+  stops at the sample count in its header, as the game's does. The PS3 build's decoder, which
+  converts and crossfades with VMX, gives the same samples.
 - Every WAD, U8 archive and sound bank extracts to a folder with a manifest and rebuilds
   from it, in the layout the Python tools use. An alias entry names its target by index
   only; manifests from the older tools, which also carry an `offset`, still rebuild.

@@ -49,7 +49,9 @@ internal static class Lcl
         ByteWriter data = new();
         int baseOff = 4 + (16 * recs.Count);
         Dictionary<string, int> seen = new(StringComparer.Ordinal);
-        foreach (object? ro in recs)
+        // The game finds a string by binary search with the hashes in descending order (Wii
+        // 0x800f5370); the files already are, so they rebuild unchanged.
+        foreach (object? ro in recs.OrderByDescending(r => Py.ParseHex(J.S(J.O(r)["hash"]))))
         {
             JObj r = J.O(ro);
             string t = J.S(r["text"]);
@@ -247,7 +249,9 @@ internal static class Csd
         o.Add("STD "u8);
         o.U32(J.U(doc["version"]), big);
         o.U32((uint)surfaces.Count, big);
-        foreach (object? s in surfaces)
+        // The game finds a surface by binary search on its name hash (Wii 0x8008f030), so the
+        // table stays sorted; the files already are, so they rebuild unchanged.
+        foreach (object? s in surfaces.OrderBy(s => Py.ParseHex(J.S(J.O(s)["name"]))))
         {
             JObj x = J.O(s);
             o.U32(Py.ParseHex(J.S(x["name"])), big);

@@ -17,7 +17,7 @@ public sealed class DwsskPlugin : IFormatPlugin
     {
         Id = "dwssk",
         DisplayName = "DreamWorks Super Star Kartz",
-        Version = "1.1.0",
+        Version = "1.0.0",
         Author = "Omega Studio",
         Description = "WAD containers, textures, models, animations, level data, shaders, Wwise audio and Bink video "
             + "from the PS3, Xbox 360, Wii and 3DS releases, on disk or inside a disc image.",

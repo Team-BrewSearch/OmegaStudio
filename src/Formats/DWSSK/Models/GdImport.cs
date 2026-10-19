@@ -357,6 +357,27 @@ internal static partial class GdImport
         return (t, binormal);
     }
 
+    private static Dictionary<string, double[,]> Argb(Dictionary<string, double[,]> a)
+    {
+        Dictionary<string, double[,]> output = new(a);
+        foreach (string name in new[] { "COLOR_0", "COLOR_1" })
+        {
+            if (a.TryGetValue(name, out double[,]? c) && c.GetLength(1) == 4)
+            {
+                double[,] argb = new double[c.GetLength(0), 4];
+                for (int i = 0; i < c.GetLength(0); i++)
+                {
+                    argb[i, 0] = c[i, 3];
+                    argb[i, 1] = c[i, 0];
+                    argb[i, 2] = c[i, 1];
+                    argb[i, 3] = c[i, 2];
+                }
+                output[name] = argb;
+            }
+        }
+        return output;
+    }
+
     public static byte[] EncodeVertices(string layout, bool big, Dictionary<string, double[,]> a)
     {
         (int stride, GdField[] fields) = GdLayouts.All[layout];
@@ -604,7 +625,7 @@ internal static partial class GdImport
         JObj mesh = J.O(doc["mesh"]);
         if (kind == "gdi")
         {
-            mesh["vertices"] = nw.Add(EncodeVertices(plat == Platform.Wii ? "wiigdi" : "rigid64", big, all));
+            mesh["vertices"] = nw.Add(EncodeVertices(plat == Platform.Wii ? "wiigdi" : "rigid64", big, plat == Platform.Xbox360 ? Argb(all) : all));
             mesh["indices"] = nw.Add(U16s(TrisToStrip(ConcatTris(tris)), big, true));
             mesh["sphere"] = J.Doubles(sphere);
             return (doc, nw.ToArray());
@@ -624,7 +645,7 @@ internal static partial class GdImport
         for (int j = old.Count - 1; j >= 0; j--)
         {
             JObj d = J.O(old[j]);
-            keep[J.L(d["material"])] = (lst[j], d);
+            keep[GdFile.GdtMaterial(plat, d)] = (lst[j], d);
         }
         string layout = plat switch
         {
@@ -646,8 +667,8 @@ internal static partial class GdImport
                 List<int> s = TrisToStrip(t);
                 d = new JObj
                 {
-                    ["material"] = (long)m,
-                    ["flags"] = (J.L(like["flags"]) & ~0xFF00L) | ((long)j << 8),
+                    ["material"] = 0L,
+                    ["flags"] = (J.L(like["flags"]) & ~0xFF00L) | ((long)m << 8),
                     ["display_list"] = nw.Add(WiiList(0x9B, s)),
                 };
             }
@@ -665,9 +686,9 @@ internal static partial class GdImport
             {
                 d = new JObj
                 {
-                    ["material"] = (long)m,
+                    ["material"] = 0L,
                     ["primitive"] = like.Get("primitive", 0x30000L),
-                    ["flags"] = (J.L(like["flags"]) & 0xFFFFFF) | ((long)j << 24),
+                    ["flags"] = (J.L(like["flags"]) & 0xFFFFFF) | ((long)m << 24),
                     ["indices"] = nw.Add(U16s(TrisToStrip(t), true, true)),
                 };
             }
@@ -676,7 +697,7 @@ internal static partial class GdImport
         List<(int List, JObj Draw)> sorted = [.. draws.Select((x, i) => (x, i)).OrderBy(x => x.x.List).ThenBy(x => x.i).Select(x => x.x)];
         lod["draws"] = J.List(sorted.Select(x => (object?)x.Draw));
         lod["lists"] = J.Longs(Enumerable.Range(0, 4).Select(g => (long)sorted.Count(x => x.List == g)));
-        lod["vertices"] = nw.Add(EncodeVertices(layout, big, all));
+        lod["vertices"] = nw.Add(EncodeVertices(layout, big, plat == Platform.Xbox360 ? Argb(all) : all));
         lod.Remove("data_order");
         byte[] packed = new byte[16];
         for (int k = 0; k < 4; k++)
@@ -790,12 +811,25 @@ internal static partial class GdImport
         return [(lo[0] + hi[0]) / 2, (lo[1] + hi[1]) / 2, (lo[2] + hi[2]) / 2, Math.Sqrt(((dx * dx) + (dy * dy)) + (dz * dz)) / 2];
     }
 
+    private static JObj? Like(List<object?> old, long material)
+    {
+        return old.Select(J.O).FirstOrDefault(d =>
+            (d.Has("material") ? J.L(d["material"]) : J.L(d.Get("flags", 0L)) >> 24) == material);
+    }
+
     private static int MaskOf(List<object?> old, long material, bool rigid)
     {
-        JObj? like = old.Select(J.O).FirstOrDefault(d =>
-            (d.Has("material") ? J.L(d["material"]) : J.L(d.Get("flags", 0L)) >> 24) == material);
+        JObj? like = Like(old, material);
         long mk = (like is null ? 0x07 : like.Has("mask") ? J.L(like["mask"]) : (J.L(like.Get("flags", 0L)) >> 8) & 0xFF) & 0x0F;
         return (int)(mk | (rigid ? 0x10L : 0));
+    }
+
+    // The hide group of a draw: a bit in the instance's hidden-parts mask (Wii 0x80157b80, Xbox 360
+    // 0x8217b740 skip the draw when it is set), so a new draw takes its material's old group.
+    private static long PartOf(List<object?> old, long material)
+    {
+        JObj? like = Like(old, material);
+        return like is null ? 0 : like.Has("created") ? J.L(like["created"]) : (J.L(like.Get("flags", 0L)) >> 16) & 0xFF;
     }
 
     private static (JObj, byte[]) ImportGds(JObj doc, byte[] bin, List<GltfPrim> prims)
@@ -958,7 +992,7 @@ internal static partial class GdImport
                 draws.Add(new JObj
                 {
                     ["material"] = (long)m,
-                    ["created"] = (long)k,
+                    ["created"] = PartOf(old, m),
                     ["mask"] = (long)MaskOf(old, m, bone is not null),
                     ["bone"] = (long)(bone ?? 0),
                     ["display_list"] = nw.Add(dl.Span),
@@ -1008,7 +1042,7 @@ internal static partial class GdImport
                 draws.Add(new JObj
                 {
                     ["word"] = 0L,
-                    ["flags"] = ((long)m << 24) | ((long)k << 16) | (mk << 8) | (long)(bone ?? 0),
+                    ["flags"] = ((long)m << 24) | (PartOf(old, m) << 16) | (mk << 8) | (long)(bone ?? 0),
                     ["indices"] = nw.Add(U16s(TrisToStrip(shifted), true, true)),
                 });
             }
@@ -1064,13 +1098,12 @@ internal static partial class GdImport
                             t2[i, c] = remap[t[i, c]];
                         }
                     }
-                    int k = draws.Count;
                     JObj d = new()
                     {
                         ["words"] = J.Longs(new long[] { 0, 0 }),
                         ["palette"] = J.Longs(pal),
                         ["material"] = (long)m,
-                        ["created"] = (long)k,
+                        ["created"] = PartOf(old, m),
                         ["mask"] = (long)MaskOf(old, m, bone is not null),
                         ["bone"] = (long)(bone ?? 0),
                     };
@@ -1091,7 +1124,7 @@ internal static partial class GdImport
                         d["palette_rest"] = string.Concat(Enumerable.Repeat("00", 48 - pal.Count));
                         d["tail"] = "000000";
                         d["indices"] = nw.Add(U16s(TrisToStrip(t2), true, true));
-                        d["vertices"] = nw.Add(EncodeVertices(pal.Count > 0 ? "skin72" : "rigid64", big, sub));
+                        d["vertices"] = nw.Add(EncodeVertices(pal.Count > 0 ? "skin72" : "rigid64", big, Argb(sub)));
                     }
                     else
                     {
@@ -1262,7 +1295,7 @@ internal static partial class GdImport
                 ["leaf"] = 0L,
                 ["e"] = 0xFFFFL,
                 ["flags"] = flags.GetValueOrDefault(m, 3),
-                ["vertices"] = nw.Add(EncodeVertices(layout, big, a)),
+                ["vertices"] = nw.Add(EncodeVertices(layout, big, plat == Platform.Xbox360 ? Argb(a) : a)),
             };
             if (plat == Platform.Wii)
             {

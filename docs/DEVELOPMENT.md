@@ -1,8 +1,7 @@
 # Development
 
-This guide covers building, running, and releasing Omega Studio from source. For the plugin
-contract see [PLUGINS.md](PLUGINS.md); for how the host works see
-[ARCHITECTURE.md](ARCHITECTURE.md).
+Building, running, and releasing Omega Studio from source. For the plugin contract see
+[PLUGINS.md](PLUGINS.md); for how the host works see [ARCHITECTURE.md](ARCHITECTURE.md).
 
 ## Prerequisites
 
@@ -19,11 +18,11 @@ dotnet run --project src/OmegaStudio/OmegaStudio.csproj
 ```
 
 Build the solution, not just the host project. Building `OmegaStudio.csproj` on its own
-produces an application with an empty `formats` folder, and an application with no plugins
-opens nothing. Each plugin project copies its assembly into the host's `formats` folder after
-every build, so a plain solution build produces a working application.
+produces an app with an empty `formats` folder, and an app with no plugins opens nothing.
+Each plugin project copies its assembly into the host's `formats` folder after every build,
+so a plain solution build produces a working app.
 
-You can pass an archive on the command line to open it straight away:
+Pass an archive on the command line to open it straight away:
 
 ```bash
 dotnet run --project src/OmegaStudio/OmegaStudio.csproj -- path/to/archive.bin
@@ -62,13 +61,13 @@ docs/
 
 ## Conventions the build enforces
 
-Every project is built with warnings as errors, so a clean build is the bar. The settings
-live in `src/Directory.Build.props`:
+Every project builds with warnings as errors, so a clean build is the bar. The settings live
+in `src/Directory.Build.props`:
 
-- `net10.0`, nullable reference types, and implicit usings are on everywhere.
+- `net10.0`, nullable reference types, and implicit usings on everywhere.
 - The full recommended analyzer set runs at `latest-recommended`, with code style enforced
   during the build.
-- NuGet audit runs at every level, with five advisories currently suppressed in
+- NuGet audit runs at every level, with five advisories suppressed in
   `Directory.Build.props`; a new advisory fails the build.
 - Debug builds carry portable symbols; release builds embed theirs.
 
@@ -82,8 +81,7 @@ Copy the shape of an in-tree plugin: a project under `src/Formats/` that sets
 `OmegaPluginName` and imports `../../Plugin.props`, then add it to `src/OmegaStudio.slnx`.
 `Plugin.props` names the assembly `<name>.Formats`, references `Omega.Plugins` without
 copying it, embeds the plugin's own dependencies inside the assembly, and copies the built
-DLL into the host's `formats` folder. The full walkthrough is
-[PLUGINS.md](PLUGINS.md).
+DLL into the host's `formats` folder. The full walkthrough is [PLUGINS.md](PLUGINS.md).
 
 ## Publishing
 

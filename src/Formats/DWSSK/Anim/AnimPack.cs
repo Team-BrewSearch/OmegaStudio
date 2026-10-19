@@ -15,7 +15,8 @@ internal static partial class AnimPack
     ];
 
     public const double Fps = 30;
-    private static readonly double s_qscale = 511.5 * Math.Sqrt(2);
+    private static readonly float s_qmax = GameSqrt(0.5f);
+    private static readonly float s_qstep = (s_qmax + s_qmax) / 1023f;
 
     [GeneratedRegex(@"\[\s+([^\[\]{}]+?)\s+\]")]
     private static partial Regex FlatList();
@@ -33,12 +34,16 @@ internal static partial class AnimPack
         return Bin.U32(b, 0, big) == 12;
     }
 
+    // Nine significant digits give back the exact single-precision value the game decodes.
     private static double Short(double x)
     {
-        return Py.ParseFloat(Py.FormatG(x, 8));
+        return Py.ParseFloat(Py.FormatG(x, 9));
     }
 
-    private static double SmRead(ReadOnlySpan<byte> b, int o, int width, double rng)
+    // A sign-magnitude key component as the game decodes it (Wii 0x800c6f60 for translations,
+    // 0x800c7430 for scales): the low bits over their maximum, then times the range, in single
+    // precision; the top bit makes it negative.
+    private static double SmRead(ReadOnlySpan<byte> b, int o, int width, float rng)
     {
         if (width == 0)
         {
@@ -51,11 +56,16 @@ internal static partial class AnimPack
             v |= (long)b[o + k] << (8 * k);
         }
         long top = (1L << ((8 * width) - 1)) - 1;
-        double x = Short((double)(v & top) / top * rng);
-        return v > top ? -x : x;
+        float x = SmValue(v & top, top, rng);
+        return Short(v > top ? -x : x);
     }
 
-    private static byte[] SmWrite(double x, double rng, int width)
+    private static float SmValue(long n, long top, float rng)
+    {
+        return rng * (float)((double)(float)n / (float)top);
+    }
+
+    private static byte[] SmWrite(double x, float rng, int width)
     {
         long top = (1L << ((8 * width) - 1)) - 1;
         if (rng == 0)
@@ -64,6 +74,16 @@ internal static partial class AnimPack
         }
         double r = Py.Round(Math.Abs(x) / rng * top);
         long n = Math.Min(top, (long)r);
+        // In single precision a 3-byte step can round to the neighbouring one; take the step the
+        // game decodes to this exact value (one per value at these widths), so keys rebuild unchanged.
+        for (long m = Math.Max(0, n - 2); m <= Math.Min(top, n + 2); m++)
+        {
+            if (SmValue(m, top, rng) == (float)Math.Abs(x))
+            {
+                n = m;
+                break;
+            }
+        }
         if (double.IsNegative(x))
         {
             n |= top + 1;
@@ -78,19 +98,28 @@ internal static partial class AnimPack
 
     public static double[] QuatDecode(uint v)
     {
-        int i = (int)(v >> 30);
-        List<double> c = [];
+        float[] c = new float[3];
+        float w = 1f;
         for (int j = 0; j < 3; j++)
         {
-            c.Add((((v >> (20 - (10 * j))) & 1023) - 511.5) / s_qscale);
+            c[j] = (float)(((((v >> (20 - (10 * j))) & 1023) - 0.5f) * (double)s_qstep) - s_qmax);
+            w = (float)(w - ((double)c[j] * c[j]));
         }
-        double sum = 0;
-        foreach (double x in c)
-        {
-            sum += x * x;
-        }
-        c.Insert(i, Math.Sqrt(Math.Max(0.0, 1 - sum)));
-        return [.. c];
+        List<float> q = [.. c];
+        q.Insert((int)(v >> 30), w > 0 ? GameSqrt(w) : 0f);
+        float len = q[0] * q[0];
+        len = (float)(((double)q[3] * q[3]) + len);
+        len = (float)(((double)q[1] * q[1]) + len);
+        len = (float)(((double)q[2] * q[2]) + len);
+        float inv = 1f / (len == 0 ? 0f : GameSqrt(len));
+        return [.. q.Select(x => (double)(x * inv))];
+    }
+
+    private static float GameSqrt(float x)
+    {
+        double y = 1.0 / Math.Sqrt(x);
+        float t = (float)(3.0 - ((double)x * (float)(y * y)));
+        return x * ((float)(0.5 * y) * t);
     }
 
     public static uint QuatEncode(IReadOnlyList<double> q0)
@@ -118,7 +147,7 @@ internal static partial class AnimPack
             {
                 if (k != i)
                 {
-                    bits.Add(Math.Min(1023, Math.Max(0, (long)Py.Round((p[k] * s_qscale) + 511.5))));
+                    bits.Add(Math.Min(1023, Math.Max(0, (long)Py.Round(p[k] / s_qstep) + 512)));
                 }
             }
             uint v = (uint)(((long)i << 30) | (bits[0] << 20) | (bits[1] << 10) | bits[2]);
@@ -203,8 +232,8 @@ internal static partial class AnimPack
                 ["leftover_54"] = Bin.Hex(e[0x54..]),
                 ["tracks"] = tracks,
             };
-            double rt = f40 * 100;
-            double rs = f44;
+            float rt = 100f * (float)f40;
+            float rs = (float)f44;
             for (int i = 0; i < e[0x38]; i++)
             {
                 int r = (int)tt + (i * 16);
@@ -278,8 +307,8 @@ internal static partial class AnimPack
             JObj a = J.O(anims[n]);
             int tw = J.I(a["translation_bytes"]);
             int sw = J.I(a["scale_bytes"]);
-            double rt = J.D(a["translation_range"]) * 100;
-            double rs = J.D(a["scale_range"]);
+            float rt = 100f * (float)J.D(a["translation_range"]);
+            float rs = (float)J.D(a["scale_range"]);
             List<object?> tracks = J.A(a["tracks"]);
             List<int> offs = [];
             foreach (object? to in tracks)
@@ -303,7 +332,7 @@ internal static partial class AnimPack
                         q.U32(QuatEncode([.. J.A(k["rotation"]).Select(J.D)]), big);
                         buf.AddRange(q.Span);
                     }
-                    foreach ((string nm, int w, double rng) in new[] { ("translation", tw, rt), ("scale", sw, rs) })
+                    foreach ((string nm, int w, float rng) in new[] { ("translation", tw, rt), ("scale", sw, rs) })
                     {
                         if (channels.Contains(nm))
                         {

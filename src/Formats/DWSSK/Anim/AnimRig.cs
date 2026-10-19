@@ -13,81 +13,116 @@ internal sealed record AnimClipData(string Name, int Frames, List<AnimTrack> Tra
 
 internal sealed class AnimRig
 {
+    // Bone translations, in the skeleton's poses and in animation keys, are centimetres. The game's
+    // palette builder (Wii 0x800cab00, through 0x800ca970) scales them by 0.00125 into the space the
+    // skinned vertices are stored in; the mesh scale at mesh+4 (8.0) is applied when drawing.
+    public const float TranslationScale = 0.00125f;
+
     private readonly int[] _parents;
     private readonly Matrix4x4[] _inverseBind;
     private readonly (Vector3 T, Quaternion R, Vector3 S)[] _bind;
-    private readonly double[] _k;
 
     public AnimRig(IReadOnlyList<GdBone> bones)
     {
-        int n = bones.Count;
         _parents = [.. bones.Select(b => b.Parent ?? -1)];
-        (Matrix4x4[] world, double[][] local) = GdScene.BoneWorlds(bones);
-        _inverseBind = [.. world.Select(m => MatrixOps.InvertOrIdentity(m))];
-        _bind = new (Vector3, Quaternion, Vector3)[n];
-        for (int i = 0; i < n; i++)
-        {
-            double[] m = local[i];
-            double[] cols = [.. Enumerable.Range(0, 3).Select(c => Math.Sqrt((m[c] * m[c]) + (m[4 + c] * m[4 + c]) + (m[8 + c] * m[8 + c])))];
-            _bind[i] = (
-                new Vector3((float)m[3], (float)m[7], (float)m[11]),
-                QuatFromMatrix(m, cols),
-                new Vector3((float)cols[0], (float)cols[1], (float)cols[2]));
-        }
-        double[] rig = new double[n];
-        for (int i = 0; i < n; i++)
-        {
-            double[] inv = Mat.Inverse(bones[i].InverseBind);
-            rig[i] = Math.Cbrt(Math.Abs(Mat.Det3(inv)));
-        }
-        _k = [.. Enumerable.Repeat(1.0 / 800, n)];
-        for (int i = 0; i < n; i++)
-        {
-            for (int c = 0; c < n; c++)
-            {
-                if (_parents[c] == i)
-                {
-                    _k[c] = rig[i] / 800;
-                }
-            }
-        }
+        _inverseBind = [.. bones.Select(b => Row(b.InverseBind))];
+        _bind = [.. bones.Select(Rest)];
         Names = [.. bones.Select(b => GdScene.BoneName(b.Hash))];
     }
 
     public IReadOnlyList<string> Names { get; }
 
-    private static Quaternion QuatFromMatrix(double[] m, double[] cols)
+    public static (Vector3 T, Quaternion R, Vector3 S) Rest(GdBone b)
     {
-        double R(int r, int c)
+        return (
+            new Vector3((float)b.Translation[0], (float)b.Translation[1], (float)b.Translation[2]) * TranslationScale,
+            new Quaternion((float)b.Rotation[0], (float)b.Rotation[1], (float)b.Rotation[2], (float)b.Rotation[3]),
+            new Vector3((float)b.Scale[0], (float)b.Scale[1], (float)b.Scale[2]));
+    }
+
+    // Broadway's single-precision float ops work in double and round the result to single, so fused
+    // and summed values are rounded twice; these two reproduce that.
+    private static float Fma(float a, float b, float c)
+    {
+        return (float)Math.FusedMultiplyAdd(a, b, (double)c);
+    }
+
+    private static float Add(float a, float b)
+    {
+        return (float)((double)a + b);
+    }
+
+    // The local matrix 0x800ca970 builds: the rotation 0x8000bd00 makes from the quaternion, each
+    // row scaled by S, then T on the bottom row. Row vectors throughout, as System.Numerics uses.
+    public static Matrix4x4 Local((Vector3 T, Quaternion R, Vector3 S) p)
+    {
+        Quaternion q = p.R;
+        float xx = q.X * q.X;
+        float yy = q.Y * q.Y;
+        float zz = q.Z * q.Z;
+        float xy = q.X * q.Y;
+        float zw = q.Z * q.W;
+        float xz = q.X * q.Z;
+        float yw = q.Y * q.W;
+        float xw = q.X * q.W;
+        float yz = q.Y * q.Z;
+        return new Matrix4x4(
+            Fma(-2, Add(yy, zz), 1) * p.S.X, 2 * Add(xy, zw) * p.S.X, 2 * Add(xz, -yw) * p.S.X, 0,
+            2 * Add(xy, -zw) * p.S.Y, Fma(-2, Add(xx, zz), 1) * p.S.Y, 2 * Add(yz, xw) * p.S.Y, 0,
+            2 * Add(xz, yw) * p.S.Z, 2 * Add(yz, -xw) * p.S.Z, Fma(-2, Add(xx, yy), 1) * p.S.Z, 0,
+            p.T.X, p.T.Y, p.T.Z, 1);
+    }
+
+    // The affine product a * b as 0x8008fc10 (bone worlds) and 0x800cab00 (skin palette) compute it:
+    // each element fma(a2, b2, fma(a0, b0, a1 * b1)), and the bottom row adds b's translation last.
+    public static Matrix4x4 Mul(Matrix4x4 a, Matrix4x4 b)
+    {
+        static float E(float a0, float a1, float a2, float b0, float b1, float b2)
         {
-            return cols[c] == 0 ? 0 : m[(r * 4) + c] / cols[c];
+            return Fma(a2, b2, Fma(a0, b0, a1 * b1));
         }
-        double t = R(0, 0) + R(1, 1) + R(2, 2);
-        double[] q = new double[4];
-        if (t > 0)
+        return new Matrix4x4(
+            E(a.M11, a.M12, a.M13, b.M11, b.M21, b.M31), E(a.M11, a.M12, a.M13, b.M12, b.M22, b.M32), E(a.M11, a.M12, a.M13, b.M13, b.M23, b.M33), 0,
+            E(a.M21, a.M22, a.M23, b.M11, b.M21, b.M31), E(a.M21, a.M22, a.M23, b.M12, b.M22, b.M32), E(a.M21, a.M22, a.M23, b.M13, b.M23, b.M33), 0,
+            E(a.M31, a.M32, a.M33, b.M11, b.M21, b.M31), E(a.M31, a.M32, a.M33, b.M12, b.M22, b.M32), E(a.M31, a.M32, a.M33, b.M13, b.M23, b.M33), 0,
+            Add(b.M41, E(a.M41, a.M42, a.M43, b.M11, b.M21, b.M31)), Add(b.M42, E(a.M41, a.M42, a.M43, b.M12, b.M22, b.M32)), Add(b.M43, E(a.M41, a.M42, a.M43, b.M13, b.M23, b.M33)), 1);
+    }
+
+    private static Matrix4x4 Row(double[] m)
+    {
+        return new Matrix4x4(
+            (float)m[0], (float)m[1], (float)m[2], (float)m[3],
+            (float)m[4], (float)m[5], (float)m[6], (float)m[7],
+            (float)m[8], (float)m[9], (float)m[10], (float)m[11],
+            (float)m[12], (float)m[13], (float)m[14], (float)m[15]);
+    }
+
+    // 0x80091210: the first quaternion is negated when the two point apart, and the blend falls back
+    // to linear weights, without renormalizing, when they are within 1e-4 of each other.
+    private static Quaternion Slerp(Quaternion a, Quaternion b, float t)
+    {
+        float dot = Fma(a.W, b.W, Fma(a.Z, b.Z, Fma(a.X, b.X, a.Y * b.Y)));
+        if (dot < 0)
         {
-            double s = Math.Sqrt(t + 1) * 2;
-            q = [(R(2, 1) - R(1, 2)) / s, (R(0, 2) - R(2, 0)) / s, (R(1, 0) - R(0, 1)) / s, s / 4];
+            a = Quaternion.Negate(a);
+            dot = -dot;
         }
-        else
+        float wa = Add(1, -t);
+        float wb = t;
+        if (Add(1, -dot) > 0.0001f)
         {
-            int i = 0;
-            for (int d = 1; d < 3; d++)
-            {
-                if (R(d, d) > R(i, i))
-                {
-                    i = d;
-                }
-            }
-            int j = (i + 1) % 3;
-            int k = (i + 2) % 3;
-            double s = Math.Sqrt(1 + R(i, i) - R(j, j) - R(k, k)) * 2;
-            q[i] = s / 4;
-            q[j] = (R(j, i) + R(i, j)) / s;
-            q[k] = (R(k, i) + R(i, k)) / s;
-            q[3] = (R(k, j) - R(j, k)) / s;
+            float th = (float)Math.Acos(dot);
+            float sn = (float)Math.Sin(th);
+            wa = (float)((double)(float)Math.Sin(wa * th) / sn);
+            wb = (float)((double)(float)Math.Sin(t * th) / sn);
         }
-        return new Quaternion((float)q[0], (float)q[1], (float)q[2], (float)q[3]);
+        return new Quaternion(Fma(wa, a.X, wb * b.X), Fma(wa, a.Y, wb * b.Y), Fma(wa, a.Z, wb * b.Z), Fma(wa, a.W, wb * b.W));
+    }
+
+    // 0x80015ce0: a + t * (b - a), fused.
+    private static Vector3 Lerp(Vector3 a, Vector3 b, float t)
+    {
+        return new Vector3(Fma(t, Add(b.X, -a.X), a.X), Fma(t, Add(b.Y, -a.Y), a.Y), Fma(t, Add(b.Z, -a.Z), a.Z));
     }
 
     public List<AnimClipData> Read(JObj doc)
@@ -98,6 +133,8 @@ internal sealed class AnimRig
             JObj a = J.O(ao);
             List<AnimTrack> tracks = [];
             int maxFrame = 0;
+            // Key times are a byte scaled to the range at 0x48 (0x800c6dc0); the files use 255/30 s.
+            float range = (float)J.D(a["unknown_48"]);
             foreach (object? to in J.A(a["tracks"]))
             {
                 JObj t = J.O(to);
@@ -109,7 +146,6 @@ internal sealed class AnimRig
                     continue;
                 }
                 List<AnimKey> list = [];
-                Quaternion? prev = null;
                 foreach (object? ko in keys)
                 {
                     JObj k = J.O(ko);
@@ -119,25 +155,13 @@ internal sealed class AnimRig
                     if (channels.Contains("rotation"))
                     {
                         List<object?> q = J.A(k["rotation"]);
-                        double x = J.D(q[0]);
-                        double y = J.D(q[1]);
-                        double z = J.D(q[2]);
-                        double w = J.D(q[3]);
-                        double len = Math.Max(Math.Sqrt((x * x) + (y * y) + (z * z) + (w * w)), 1e-12);
-                        Quaternion qq = new((float)(x / len), (float)(y / len), (float)(z / len), (float)(w / len));
-                        if (prev is { } p && Quaternion.Dot(qq, p) < 0)
-                        {
-                            qq = Quaternion.Negate(qq);
-                        }
-                        prev = qq;
-                        r = qq;
+                        r = new((float)J.D(q[0]), (float)J.D(q[1]), (float)J.D(q[2]), (float)J.D(q[3]));
                     }
                     Vector3? tr = null;
                     if (channels.Contains("translation"))
                     {
                         List<object?> v = J.A(k["translation"]);
-                        double f = _k[bone];
-                        tr = new Vector3((float)(J.D(v[0]) * f), (float)(J.D(v[1]) * f), (float)(J.D(v[2]) * f));
+                        tr = new Vector3((float)J.D(v[0]), (float)J.D(v[1]), (float)J.D(v[2])) * TranslationScale;
                     }
                     Vector3? sc = null;
                     if (channels.Contains("scale"))
@@ -145,7 +169,7 @@ internal sealed class AnimRig
                         List<object?> v = J.A(k["scale"]);
                         sc = new Vector3((float)J.D(v[0]), (float)J.D(v[1]), (float)J.D(v[2]));
                     }
-                    list.Add(new AnimKey(frame / AnimPack.Fps, tr, r, sc));
+                    list.Add(new AnimKey(Math.Min(range, range * (float)((double)frame / 255)), tr, r, sc));
                 }
                 tracks.Add(new AnimTrack(bone, list));
             }
@@ -162,7 +186,7 @@ internal sealed class AnimRig
     private Matrix4x4 Compose(int bone, AnimKey key)
     {
         (Vector3 bt, Quaternion br, Vector3 bs) = _bind[bone];
-        return Matrix4x4.CreateScale(key.S ?? bs) * Matrix4x4.CreateFromQuaternion(key.R ?? br) * Matrix4x4.CreateTranslation(key.T ?? bt);
+        return Local((key.T ?? bt, key.R ?? br, key.S ?? bs));
     }
 
     public AnimationClip ToClip(AnimClipData data)
@@ -203,12 +227,12 @@ internal sealed class AnimRig
         }
         AnimKey a = keys[b - 1];
         AnimKey c = keys[b];
-        float u = c.Time > a.Time ? (float)((t - a.Time) / (c.Time - a.Time)) : 0f;
+        float u = c.Time > a.Time ? (float)((double)Add((float)t, -(float)a.Time) / Add((float)c.Time, -(float)a.Time)) : 0f;
         return new AnimKey(
             t,
-            a.T is { } at && c.T is { } ct ? Vector3.Lerp(at, ct, u) : a.T,
-            a.R is { } ar && c.R is { } cr ? Quaternion.Slerp(ar, cr, u) : a.R,
-            a.S is { } asv && c.S is { } cs ? Vector3.Lerp(asv, cs, u) : a.S);
+            a.T is { } at && c.T is { } ct ? Lerp(at, ct, u) : a.T,
+            a.R is { } ar && c.R is { } cr ? Slerp(ar, cr, u) : a.R,
+            a.S is { } asv && c.S is { } cs ? Lerp(asv, cs, u) : a.S);
     }
 
     public Matrix4x4[] Pose(AnimClipData clip, double seconds)
@@ -217,8 +241,7 @@ internal sealed class AnimRig
         Matrix4x4[] local = new Matrix4x4[n];
         for (int i = 0; i < n; i++)
         {
-            (Vector3 bt, Quaternion br, Vector3 bs) = _bind[i];
-            local[i] = Matrix4x4.CreateScale(bs) * Matrix4x4.CreateFromQuaternion(br) * Matrix4x4.CreateTranslation(bt);
+            local[i] = Local(_bind[i]);
         }
         foreach (AnimTrack t in clip.Tracks)
         {
@@ -233,14 +256,14 @@ internal sealed class AnimRig
                 return world[i];
             }
             int p = _parents[i];
-            world[i] = p >= 0 && p < n && p != i && depth < n ? local[i] * World(p, depth + 1) : local[i];
+            world[i] = p >= 0 && p < n && p != i && depth < n ? Mul(local[i], World(p, depth + 1)) : local[i];
             done[i] = true;
             return world[i];
         }
         Matrix4x4[] skin = new Matrix4x4[n];
         for (int i = 0; i < n; i++)
         {
-            skin[i] = _inverseBind[i] * World(i, 0);
+            skin[i] = Mul(_inverseBind[i], World(i, 0));
         }
         return skin;
     }

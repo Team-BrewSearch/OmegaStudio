@@ -86,8 +86,7 @@ undoable like any other.
 ### Console
 
 The Console pane is a timestamped log of everything that happens: what loaded, what opened,
-what failed, and what was written. Every plugin that loads prints its SHA-256 here, so what
-actually ran is on the record. When something goes wrong, read this first.
+what failed, and what was written. Every plugin that loads prints its SHA-256 here, so what ran is on the record.
 
 ### Menus
 
@@ -104,7 +103,7 @@ ones that were rejected, each with the reason.
 
 ## What a row can do
 
-Right-click a row. The menu is built from what the row can actually do, not from a fixed
+Right-click a row. The menu is built from what the row can do, not from a fixed
 list:
 
 - **Extract** writes the row's raw bytes to a file of your choosing.
