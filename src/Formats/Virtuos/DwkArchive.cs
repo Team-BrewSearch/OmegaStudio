@@ -26,6 +26,10 @@ public sealed class DwkArchive
         Revision++;
         Changed?.Invoke();
     }
+    public void MarkSaved()
+    {
+        _entries.ForEach(entry => entry.MarkSaved());
+    }
     public static DwkArchive Load(string gdaPath, string gdfPath, string gdtPath)
     {
         byte[] gdaData = File.ReadAllBytes(gdaPath);

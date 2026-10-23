@@ -50,6 +50,12 @@ public sealed class SskTexture
             long colorsAvailable = Math.Min(
                 (long)numColors,
                 Math.Max(0, (blob.Length - (secOff + 12)) / 2));
+            if (palette.Count + colorsAvailable > blob.Length / 2)
+            {
+                throw new InvalidDataException(
+                    $"the PALT section at 0x{secOff:X} takes the palette past {blob.Length / 2} colours, more than "
+                    + $"the {blob.Length}-byte blob holds");
+            }
             for (long ci = 0; ci < colorsAvailable; ci++)
             {
                 ushort c = BinaryRead.U16(blob, (int)(secOff + 12 + (ci * 2)));

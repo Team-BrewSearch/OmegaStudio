@@ -25,7 +25,7 @@ public sealed partial class VideoPlayer : ObservableObject, IDisposable
     private VideoInfo? _info;
     private Channel<(int Index, byte[] Bgra)>? _frames;
     private CancellationTokenSource? _decoding;
-    private Task? _producer;
+    private Task _producer = Task.CompletedTask;
     private WriteableBitmap? _bitmap;
     private (int Index, byte[] Bgra)? _pending;
     private bool _hasSound;
@@ -93,7 +93,6 @@ public sealed partial class VideoPlayer : ObservableObject, IDisposable
         Status = $"{info.Codec} · {info.Width} x {info.Height} · {info.FramesPerSecond:0.###} fps · {info.FrameCount:N0} frames";
         OnPropertyChanged(nameof(Frame));
         Notify();
-        _timer.Start();
         Restart(0);
         byte[] soundtrack = await Task.Run(() => PluginGuard.Try("Reading the soundtrack", () => asset.Soundtrack.ToArray(), []));
         if (generation != _generation)
@@ -120,7 +119,11 @@ public sealed partial class VideoPlayer : ObservableObject, IDisposable
         Halt();
         _timer.Stop();
         StopProducer();
-        _reader?.Dispose();
+        if (_reader is { } reader)
+        {
+            _ = _producer.ContinueWith(_ => PluginGuard.Try("Closing the video", reader.Dispose), TaskScheduler.Default);
+        }
+        _producer = Task.CompletedTask;
         _reader = null;
         _info = null;
         _asset = null;
@@ -128,6 +131,7 @@ public sealed partial class VideoPlayer : ObservableObject, IDisposable
         _pending = null;
         _bitmap?.Dispose();
         _bitmap = null;
+        _pool.Clear();
         CurrentFrame = 0;
         Status = "No video selected";
         _pushing = true;
@@ -186,6 +190,7 @@ public sealed partial class VideoPlayer : ObservableObject, IDisposable
             _audio.Resume();
         }
         _clock.Restart();
+        _timer.Start();
     }
     private void Halt()
     {
@@ -229,16 +234,20 @@ public sealed partial class VideoPlayer : ObservableObject, IDisposable
         }
         Channel<(int, byte[])> frames = Channel.CreateBounded<(int, byte[])>(new BoundedChannelOptions(Ahead) { SingleReader = true, SingleWriter = true });
         CancellationTokenSource cancel = new();
+        CancellationToken token = cancel.Token;
+        Task previous = _producer;
         _frames = frames;
         _decoding = cancel;
         _pending = null;
         _awaitingFrame = true;
         _producer = Task.Run(async () =>
         {
+            await previous.ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing);
             try
             {
+                token.ThrowIfCancellationRequested();
                 reader.Seek(frame);
-                while (!cancel.IsCancellationRequested)
+                while (!token.IsCancellationRequested)
                 {
                     int index = reader.Position;
                     byte[] buffer = _pool.TryTake(out byte[]? reused) && reused.Length == info.FrameBytes ? reused : new byte[info.FrameBytes];
@@ -246,8 +255,8 @@ public sealed partial class VideoPlayer : ObservableObject, IDisposable
                     {
                         break;
                     }
-                    Bgra(buffer);
-                    await frames.Writer.WriteAsync((index, buffer), cancel.Token).ConfigureAwait(false);
+                    ImageData.SwapRedBlueInPlace(buffer);
+                    await frames.Writer.WriteAsync((index, buffer), token).ConfigureAwait(false);
                 }
             }
             catch (OperationCanceledException)
@@ -262,29 +271,13 @@ public sealed partial class VideoPlayer : ObservableObject, IDisposable
                 frames.Writer.TryComplete();
             }
         });
-    }
-    private static void Bgra(byte[] pixels)
-    {
-        Span<uint> words = MemoryMarshal.Cast<byte, uint>(pixels.AsSpan());
-        for (int i = 0; i < words.Length; i++)
-        {
-            uint p = words[i];
-            words[i] = (p & 0xFF00FF00u) | ((p & 0xFFu) << 16) | ((p >> 16) & 0xFFu);
-        }
+        _timer.Start();
     }
     private void StopProducer()
     {
         _decoding?.Cancel();
-        try
-        {
-            _producer?.Wait(TimeSpan.FromSeconds(5));
-        }
-        catch (AggregateException)
-        {
-        }
         _decoding?.Dispose();
         _decoding = null;
-        _producer = null;
         if (_frames is { } frames)
         {
             while (frames.Reader.TryRead(out (int, byte[] Bgra) stale))
@@ -298,6 +291,7 @@ public sealed partial class VideoPlayer : ObservableObject, IDisposable
     {
         if (_info is not { } info || _frames is not { } frames)
         {
+            _timer.Stop();
             return;
         }
         if (!IsPlaying)
@@ -306,6 +300,14 @@ public sealed partial class VideoPlayer : ObservableObject, IDisposable
             {
                 _awaitingFrame = false;
                 Present(first);
+            }
+            else if (frames.Reader.Completion.IsCompleted)
+            {
+                _awaitingFrame = false;
+            }
+            if (!_awaitingFrame)
+            {
+                _timer.Stop();
             }
             return;
         }

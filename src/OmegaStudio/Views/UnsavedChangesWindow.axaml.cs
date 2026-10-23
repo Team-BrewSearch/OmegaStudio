@@ -15,7 +15,6 @@ public partial class UnsavedChangesWindow : Window
     {
         InitializeComponent();
     }
-    public UnsavedChangesChoice Choice => _choice;
     public async Task<UnsavedChangesChoice> AskAsync(Window owner, string archive)
     {
         TextBlock? prompt = this.FindControl<TextBlock>("PromptText");

@@ -1,3 +1,5 @@
+using System.Numerics;
+using System.Runtime.InteropServices;
 namespace Omega.Plugins;
 public sealed class ImageData
 {
@@ -32,14 +34,19 @@ public sealed class ImageData
     public static byte[] SwapRedBlue(ReadOnlySpan<byte> pixels)
     {
         byte[] destination = new byte[pixels.Length];
-        for (int i = 0; i + 3 < pixels.Length; i += 4)
-        {
-            destination[i + 0] = pixels[i + 2];
-            destination[i + 1] = pixels[i + 1];
-            destination[i + 2] = pixels[i + 0];
-            destination[i + 3] = pixels[i + 3];
-        }
+        pixels[..(pixels.Length & ~3)].CopyTo(destination);
+        SwapRedBlueInPlace(destination);
         return destination;
+    }
+    public static void SwapRedBlueInPlace(Span<byte> pixels)
+    {
+        uint keep = BitConverter.IsLittleEndian ? 0xFF00FF00u : 0x00FF00FFu;
+        Span<uint> words = MemoryMarshal.Cast<byte, uint>(pixels);
+        for (int i = 0; i < words.Length; i++)
+        {
+            uint p = words[i];
+            words[i] = (p & keep) | BitOperations.RotateLeft(p & ~keep, 16);
+        }
     }
     public override string ToString()
     {

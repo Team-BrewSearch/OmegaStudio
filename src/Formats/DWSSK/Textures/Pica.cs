@@ -98,6 +98,11 @@ internal static class Pica
     {
         int pw = Bin.Align(w, 8);
         int ph = Bin.Align(h, 8);
+        long need = (long)pw * ph * Bpp(fmt) / 8;
+        if (data.Length < need || (long)pw * ph * 4 > Array.MaxLength)
+        {
+            throw new InvalidDataException($"PICA data holds {data.Length} bytes, a {w}x{h} surface needs {need}");
+        }
         byte[] img = new byte[pw * ph * 4];
         if (fmt is 12 or 13)
         {

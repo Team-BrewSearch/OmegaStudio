@@ -24,8 +24,7 @@ internal static class MatroskaWriter
         }
         int frameBytes = audio is null ? 0 : audio.Channels * (audio.BitsPerSample / 8);
         long totalMs = (long)Math.Round(info.Duration.TotalMilliseconds);
-        string temporary = path + ".partial";
-        using (FileStream file = new(temporary, FileMode.Create, FileAccess.ReadWrite, FileShare.None))
+        _ = AtomicSave.WriteToStream(path, file =>
         {
             file.Write(Master(0x1A45DFA3,
                 UInt(0x4286, 1), UInt(0x42F7, 1), UInt(0x42F2, 4), UInt(0x42F3, 8),
@@ -136,8 +135,8 @@ internal static class MatroskaWriter
             byte[] size = new byte[8];
             BinaryPrimitives.WriteUInt64BigEndian(size, (ulong)(end - segmentStart) | (1UL << 56));
             file.Write(size);
-        }
-        File.Move(temporary, path, true);
+        });
+        AtomicSave.Overwrite(path);
     }
     private static byte[] SeekHead(uint[] targets, long[] positions)
     {

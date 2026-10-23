@@ -1,3 +1,5 @@
+using Omega.Disc.IO;
+using Omega.Plugins;
 namespace Omega.Disc.Vfs
 {
     public enum EditKind
@@ -47,19 +49,7 @@ namespace Omega.Disc.Vfs
         public abstract bool CanReplace(long newLength);
         public abstract Stream OpenRead();
         public abstract void Replace(byte[]? payload, string? source);
-        protected static byte[] ReadAll(Stream stream, string what)
-        {
-            ArgumentNullException.ThrowIfNull(stream);
-            if (stream.Length > int.MaxValue)
-            {
-                throw new InvalidDataException(
-                    $"'{what}' holds {stream.Length} bytes, more than this host can read into one node");
-            }
-            byte[] buffer = new byte[stream.Length];
-            stream.Position = 0;
-            stream.ReadExactly(buffer);
-            return buffer;
-        }
+        protected static byte[] ReadAll(Stream stream, string what) => PayloadReader.ReadAll(stream, what);
     }
     public abstract class DiscVolume : IDisposable
     {
@@ -93,6 +83,6 @@ namespace Omega.Disc.Vfs
         public string SourcePath { get; }
         public Func<string, Stream> OpenEntry { get; }
         public Action<string> Log { get; }
-        public string TemporaryPath => SourcePath + ".tmp";
+        public string TemporaryPath => AtomicSave.TempPath(SourcePath);
     }
 }

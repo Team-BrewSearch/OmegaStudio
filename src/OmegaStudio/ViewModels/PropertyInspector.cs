@@ -4,7 +4,7 @@ using OmegaStudio.Plugins;
 namespace OmegaStudio.ViewModels;
 internal static class PropertyInspector
 {
-    public static IEnumerable<PropertyRow> Describe(IAssetNode? node, AudioInfo? audio = null)
+    public static IReadOnlyList<PropertyRow> Describe(IAssetNode? node, AudioInfo? audio = null)
     {
         if (node is null)
         {

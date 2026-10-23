@@ -66,7 +66,6 @@ internal sealed class RingArchiveHandle : IArchive
                 && RingArchive.Load(temporaries[0], _host).Root.Children.Count
                     == _archive.Root.Children.Count;
         });
-        _host?.Log(WriteGuard.Wrote(DisplayName, files));
         _archive.MarkSaved();
     }
     public void Dispose()

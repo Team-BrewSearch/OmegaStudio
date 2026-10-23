@@ -1,4 +1,5 @@
 using System.Numerics;
+using System.Runtime.InteropServices;
 using System.Text.Json;
 using Omega.Plugins.Gltf;
 namespace OmegaStudio.Services.Gltf;
@@ -125,6 +126,10 @@ internal static class GltfReader
                 throw new InvalidDataException(
                     $"Mesh '{name}' has an index count that is not a multiple of three.");
             }
+            if (!hasNormals)
+            {
+                FaceNormals(positions, normals, indices, first, count);
+            }
             primitives.Add(Primitive(primitive, materials, primitives.Count, indices));
         }
         return new GltfMesh
@@ -138,6 +143,32 @@ internal static class GltfReader
             Weights = [.. weights],
             Primitives = primitives,
         };
+    }
+    private static void FaceNormals(List<float> positions, List<float> normals, int[] indices, int first, int count)
+    {
+        Span<float> p = CollectionsMarshal.AsSpan(positions);
+        Span<float> n = CollectionsMarshal.AsSpan(normals);
+        n.Slice(first * 3, count * 3).Clear();
+        for (int t = 0; t + 2 < indices.Length; t += 3)
+        {
+            int a = indices[t] * 3, b = indices[t + 1] * 3, c = indices[t + 2] * 3;
+            Vector3 pa = new(p[a], p[a + 1], p[a + 2]);
+            Vector3 face = Vector3.Cross(new Vector3(p[b], p[b + 1], p[b + 2]) - pa, new Vector3(p[c], p[c + 1], p[c + 2]) - pa);
+            foreach (int v in (ReadOnlySpan<int>)[a, b, c])
+            {
+                n[v] += face.X;
+                n[v + 1] += face.Y;
+                n[v + 2] += face.Z;
+            }
+        }
+        for (int v = first * 3; v < (first + count) * 3; v += 3)
+        {
+            Vector3 normal = new(n[v], n[v + 1], n[v + 2]);
+            normal = normal.LengthSquared() > 1e-12f ? Vector3.Normalize(normal) : Vector3.UnitY;
+            n[v] = normal.X;
+            n[v + 1] = normal.Y;
+            n[v + 2] = normal.Z;
+        }
     }
     private static GltfPrimitive Primitive(
         JsonElement primitive, JsonElement[] materials, int ordinal, int[] indices)

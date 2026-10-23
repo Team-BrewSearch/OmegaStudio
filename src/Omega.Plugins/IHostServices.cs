@@ -22,4 +22,9 @@ public interface IHostServices
     IGltfCodec Gltf { get; }
     string PluginDirectory { get; }
     bool IsKnownPayload(ReadOnlySpan<byte> data);
+    void Defer(object key, Action flush)
+    {
+        ArgumentNullException.ThrowIfNull(flush);
+        flush();
+    }
 }

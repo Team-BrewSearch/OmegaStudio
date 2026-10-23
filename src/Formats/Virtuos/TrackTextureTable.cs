@@ -2,6 +2,7 @@ using SMath = System.Math;
 namespace Virtuos.Formats;
 public sealed class TrackTextureTable
 {
+    private const int MaxSlots = 4096;
     private readonly DwkArchive _archive;
     private readonly VirtuosResourceIndex? _resources;
     public TrackTextureTable(DwkArchive archive, VirtuosResourceIndex? resources)
@@ -16,6 +17,11 @@ public sealed class TrackTextureTable
         ArgumentNullException.ThrowIfNull(track);
         IReadOnlyList<int[]>? slots = _resources?.TextureSlots(trackEntry.Index);
         int count = SMath.Max((slots?.Count ?? 1) - 1, track.ReferencedSlotCount);
+        if (count > MaxSlots)
+        {
+            throw new InvalidDataException(
+                $"'{trackEntry.Name}' names {count} texture slots, past the {MaxSlots} a model can hold");
+        }
         List<DwkEntry?> table = new(count);
         bool resolved = false;
         for (int slot = 1; slot <= count; slot++)

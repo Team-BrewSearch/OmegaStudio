@@ -21,12 +21,13 @@ public sealed class ImageIO : IImageCodec
         WriteableBitmap bitmap = new(
             new PixelSize(image.Width, image.Height), new Vector(96, 96),
             PixelFormat.Bgra8888, AlphaFormat.Unpremul);
-        byte[] bgra = ImageData.SwapRedBlue(image.Rgba);
         using ILockedFramebuffer frame = bitmap.Lock();
-        int rowBytes = image.Width * 4;
+        byte[] row = new byte[image.Width * 4];
         for (int y = 0; y < image.Height; y++)
         {
-            Marshal.Copy(bgra, y * rowBytes, frame.Address + (y * frame.RowBytes), rowBytes);
+            image.Rgba.AsSpan(y * row.Length, row.Length).CopyTo(row);
+            ImageData.SwapRedBlueInPlace(row);
+            Marshal.Copy(row, 0, frame.Address + (y * frame.RowBytes), row.Length);
         }
         return bitmap;
     }
@@ -35,7 +36,7 @@ public sealed class ImageIO : IImageCodec
         ArgumentNullException.ThrowIfNull(image);
         ArgumentException.ThrowIfNullOrEmpty(path);
         _ = Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(path))!);
-        File.WriteAllBytes(path, Encode(image, Path.GetExtension(path)));
+        AtomicSave.Write(path, Encode(image, Path.GetExtension(path)));
     }
     public byte[] Encode(ImageData image, string extension)
     {
@@ -98,15 +99,9 @@ public sealed class ImageIO : IImageCodec
         Span<byte> pixels = span[(BmpFileHeader + BmpInfoHeader)..];
         for (int y = 0; y < image.Height; y++)
         {
-            int source = y * stride;
-            int destination = (image.Height - 1 - y) * stride;
-            for (int x = 0; x < stride; x += 4)
-            {
-                pixels[destination + x + 0] = image.Rgba[source + x + 2];
-                pixels[destination + x + 1] = image.Rgba[source + x + 1];
-                pixels[destination + x + 2] = image.Rgba[source + x + 0];
-                pixels[destination + x + 3] = image.Rgba[source + x + 3];
-            }
+            Span<byte> row = pixels.Slice((image.Height - 1 - y) * stride, stride);
+            image.Rgba.AsSpan(y * stride, stride).CopyTo(row);
+            ImageData.SwapRedBlueInPlace(row);
         }
         return file;
     }
@@ -130,18 +125,19 @@ public sealed class ImageIO : IImageCodec
         {
             throw new InvalidDataException($"image has no pixels ({width}x{height})");
         }
-        byte[] bgra = new byte[width * height * 4];
-        GCHandle handle = GCHandle.Alloc(bgra, GCHandleType.Pinned);
+        byte[] pixels = new byte[width * height * 4];
+        GCHandle handle = GCHandle.Alloc(pixels, GCHandleType.Pinned);
         try
         {
             bitmap.CopyPixels(
-                new PixelRect(0, 0, width, height), handle.AddrOfPinnedObject(), bgra.Length, width * 4);
+                new PixelRect(0, 0, width, height), handle.AddrOfPinnedObject(), pixels.Length, width * 4);
         }
         finally
         {
             handle.Free();
         }
-        return ImageData.Create(name, width, height, ImageData.SwapRedBlue(bgra));
+        ImageData.SwapRedBlueInPlace(pixels);
+        return ImageData.Create(name, width, height, pixels);
     }
     byte[] IImageCodec.EncodePng(ImageData image)
     {

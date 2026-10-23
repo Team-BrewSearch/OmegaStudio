@@ -1,13 +1,10 @@
 # Using Omega Studio
 
-This guide covers the application itself: opening archives, the panes, editing, and saving.
-For what each shipped format supports, see [FORMATS.md](FORMATS.md). For how the pieces work
-internally, see [ARCHITECTURE.md](ARCHITECTURE.md).
+Opening archives, the panes, editing, and saving. For what each shipped format supports, see [FORMATS.md](FORMATS.md). For how the pieces work internally, see [ARCHITECTURE.md](ARCHITECTURE.md).
 
 ## Opening an archive
 
-Choose **File ▸ Open** (or `Ctrl+O`) and pick a file. You can also pass one on the command
-line:
+Choose **File ▸ Open** (or `Ctrl+O`) and pick a file. You can also pass one on the command line:
 
 ```bash
 dotnet run --project src/OmegaStudio/OmegaStudio.csproj -- path/to/archive.bin
@@ -15,78 +12,55 @@ dotnet run --project src/OmegaStudio/OmegaStudio.csproj -- path/to/archive.bin
 
 One archive is open at a time. **File ▸ Close** closes it.
 
-The host asks each loaded format, in load order, whether it claims the file, and the first
-one that says yes opens it. If no format claims the file you get a message saying so, and the
-Console pane holds the detail. A format that throws while looking at the file is logged in the
-Console and counted as a no, so one bad sniffer does not stop the rest of the check.
+The host asks each loaded format, in load order, whether it claims the file, and the first one that says yes opens it. If no format claims the file you get a message saying so, and the Console pane holds the detail. A format that throws while looking at the file is logged in the Console and counted as a no, so one bad sniffer does not stop the rest of the check.
 
-Opening is lazy. The tree reads no payload to describe itself, so even a large container
-opens instantly and rows expand on demand.
+Opening is lazy. The tree reads no payload to describe itself, so even a large container opens instantly and rows expand on demand.
 
 ## The interface
 
-The window has three columns and a lower tray. The left column is the outliner with a search
-box above it. The middle column holds the panes; the lower tray holds the Console and, when
-the selected row has clips, the Animation pane. The right column is Properties. A status bar
-runs along the bottom.
+The window has three columns and a lower tray. The left column is the outliner with a search box above it. The middle column holds the panes; the lower tray holds the Console and, when the selected row has clips, the Animation pane. The right column is Properties. A status bar runs along the bottom.
 
 ### The outliner
 
-Every row inside the archive appears here with its name, a colour dot for its kind, and a
-short detail. Folders expand only when you open them.
+Every row inside the archive appears here with its name, a colour dot for its kind, and a short detail. Folders expand only when you open them.
 
-The search box above the tree filters the rows and highlights the part of each name that
-matched. Typing restarts the walk rather than queueing behind the previous one, and the
-result set is capped; when the cap trims matches, the status bar says so.
+The search box above the tree filters the rows and highlights the part of each name that matched. Typing restarts the walk rather than queueing behind the previous one, and the result set is capped; when the cap trims matches, the status bar says so. Results are the tree's own rows: a match inside a grouped container appears under that container as it does in the tree, and a command or property edit on a result changes the same asset the tree shows and can be undone either way.
+
+Only the rows on screen are built, so a folder with tens of thousands of entries scrolls as fast as a small one. The arrow keys move and, left and right, collapse and expand; Enter, Space, or a double-click toggles a folder.
 
 ### Viewport
 
-The Viewport appears for anything with geometry. Pick a shading mode from the toolbar:
-Textured, Shaded, Wireframe, Normals, or UV. **Reset Camera** puts the view back where it
-started.
+The Viewport appears for anything with geometry. Pick a shading mode from the toolbar: Textured, Shaded, Wireframe, Normals, or UV. **Reset Camera** puts the view back where it started.
 
 Drag to orbit, Shift-drag to pan, and use the wheel to zoom.
 
 ### Texture
 
-The Texture pane appears for anything that decodes to an image. **Fit** scales the image to
-the pane, **1:1** shows it at its true size, and the toolbar reports the current zoom. The
-wheel zooms and dragging pans.
+The Texture pane appears for anything that decodes to an image. **Fit** scales the image to the pane, **1:1** shows it at its true size, and the toolbar reports the current zoom. The wheel zooms and dragging pans.
 
 ### Audio
 
-The Audio pane appears for anything that decodes to sound. Clips in OGG or WAV play. The
-pane has a time readout, a seek bar, and Play, Pause / Resume, and Stop buttons. The
-transport follows the real play position, so the clock and the sound never disagree.
+The Audio pane appears for anything that decodes to sound. Clips in OGG or WAV play. The pane has a time readout, a seek bar, and Play, Pause / Resume, and Stop buttons. The transport follows the real play position, so the clock and the sound never disagree.
 
 ### Video
 
-The Video pane appears for anything that decodes to a movie. It shows the codec, size, frame
-rate and frame count, and plays the movie with its sound. The picture follows the sound's
-clock, so frames that cannot keep up are dropped rather than letting the two drift apart.
-Drag the seek bar to scrub; the frame under the bar shows when you let go, playing or paused.
-The readout gives the time and the frame number.
+The Video pane appears for anything that decodes to a movie. It shows the codec, size, frame rate and frame count, and plays the movie with its sound. The picture follows the sound's clock, so frames that cannot keep up are dropped rather than letting the two drift apart. Drag the seek bar to scrub; the frame under the bar shows when you let go, playing or paused. The readout gives the time and the frame number.
 
 ### Animation
 
-The Animation pane appears for anything with clips. Choose a clip, set the playback rate in
-frames per second, and play or stop it. The time readout counts seconds and the dope sheet
-below shows where you are in the clip.
+The Animation pane appears for anything with clips. Choose a clip, set the playback rate in frames per second, and play or stop it. The time readout counts seconds and the dope sheet below shows where you are in the clip.
 
 ### Properties
 
-The Properties pane lists what the selected row knows about itself. Some rows are editable,
-and the plugin decides how: a text box, a check box, or a drop-down. A text box commits when
-you leave it or press Enter.
+The Properties pane lists what the selected row knows about itself. Some rows are editable, and the plugin decides how: a text box, a check box, or a drop-down. A text box commits when you leave it or press Enter.
 
-A value the format cannot hold is refused. The message you see is the one the format threw,
-and the pane redraws from the format, so a rejected edit visibly reverts. Accepted edits are
-undoable like any other.
+A value the format cannot hold is refused. The message you see is the one the format threw, and the pane redraws from the format, so a rejected edit visibly reverts. Accepted edits are undoable like any other.
 
 ### Console
 
-The Console pane is a timestamped log of everything that happens: what loaded, what opened,
-what failed, and what was written. Every plugin that loads prints its SHA-256 here, so what ran is on the record.
+The Console pane is a timestamped log of everything that happens: what loaded, what opened, what failed, and what was written. Every plugin that loads prints its SHA-256 here, so what ran is on the record.
+
+Every Console line is also appended to `omega-studio.log` in `OmegaStudio/logs` under your application-data folder (`%APPDATA%` on Windows, `~/.config` on Linux), or `logs/` beside the executable if there is none; the Console's "Logging to …" line gives the exact path. The log rolls at 4 MB and keeps two older files (`.1`, `.2`). A crash report there also names the open archive, whether it had unsaved changes, and the selected row.
 
 ### Menus
 
@@ -97,69 +71,42 @@ what failed, and what was written. Every plugin that loads prints its SHA-256 he
 | Formats | Loaded, Failed to load, and the path of the formats folder |
 | Help | About |
 
-The Formats menu is also the plugin report. **Loaded** lists each plugin with its version,
-description, the formats it contributes, and its id and author. **Failed to load** lists the
-ones that were rejected, each with the reason.
+The Formats menu is also the plugin report. **Loaded** lists each plugin with its version, description, the formats it contributes, and its id and author. **Failed to load** lists the ones that were rejected, each with the reason.
 
 ## What a row can do
 
-Right-click a row. The menu is built from what the row can do, not from a fixed
-list:
+Right-click a row, or press the Menu key (or `Shift+F10`) for the selected one; right-clicking the empty space below the rows opens nothing. The menu is built from what the row can do, not from a fixed list. Selecting a large texture, model, or sound does not freeze the window: the previous row stays on screen until the new one is read, and a right-click on a row still loading opens its menu when it is ready.
 
 - **Extract** writes the row's raw bytes to a file of your choosing.
-- **Extract Audio** copies the row's sound out in the form it is stored in: an OGG clip keeps
-  its extension, and anything else is offered as a WAV.
-- **Export…** turns the row into a file: a PNG, JPEG, or BMP for an image, a glTF for a
-  scene, and for a movie the frame on screen as an image, the soundtrack as a WAV, or the
-  whole movie as an `.mkv` file (Motion JPEG with PCM sound). One entry offers every type the
-  row supports, and the extension you pick in the dialog decides which one runs.
+- **Extract Audio** copies the row's sound out in the form it is stored in: an OGG clip keeps its extension, and anything else is offered as a WAV.
+- **Export…** turns the row into a file: a PNG, JPEG, or BMP for an image, a glTF for a scene, and for a movie the frame on screen as an image, the soundtrack in the format the movie stores it (WAV, or OGG for Ogg Vorbis, offered only when the movie has sound), or the whole movie as an `.mkv` file (Motion JPEG with PCM sound). One entry offers every type the row supports, and the extension you pick in the dialog decides which one runs.
 - **Export all frames…** writes every frame of a movie to a folder as numbered PNG files.
-- **Replace…** writes a file back into the row: raw bytes, a PNG over an image, or a glTF
-  over a model, wherever the format supports it. Again one entry, decided by the file you
-  pick.
+- **Replace…** writes a file back into the row: raw bytes, a PNG over an image, or a glTF over a model, wherever the format supports it. Again one entry, decided by the file you pick. Raw bytes are refused if the file is empty or larger than 2 GB.
 - Plugin commands: anything specific to the format, such as a tool for one of its structures.
 
 ## Editing and history
 
 Every edit is undoable. `Ctrl+Z` steps back, `Ctrl+Y` steps forward.
 
-The history works from snapshots rather than from reversing operations, because the host
-does not know what any given edit did. Before an edit that can change something, it keeps
-the row's bytes as they were. The history holds up to 256 MB of snapshots; the oldest ones
-are dropped as new edits push past that, and an edit too large to snapshot is refused with a
-message instead of being stored where it cannot be undone.
+The history works from snapshots rather than from reversing operations, because the host does not know what any given edit did. Before an edit that can change something, it keeps the row's bytes as they were. The history holds snapshots up to an eighth of the app's memory figure (256 MB on an 8 GB machine); the oldest ones are dropped as new edits push past that, and an edit too large to snapshot is refused with a message instead of being stored where it cannot be undone.
 
-Two situations clear the history rather than offer a broken undo: an edit to something with
-no restorable bytes, and an edit that changed a row other than the one it ran on.
+Two situations clear the history rather than offer a broken undo: an edit to something with no restorable bytes, and an edit that changed a row other than the one it ran on.
 
-Editable Properties rows use the same history. The row's old text is handed back to the
-plugin to reverse the edit.
+Editable Properties rows use the same history. The row's old text is handed back to the plugin to reverse the edit.
 
 ## Saving
 
-Nothing is written until you save. **File ▸ Save** (`Ctrl+S`) rewrites the archive in place.
+Nothing is written until you save. **File ▸ Save** (`Ctrl+S`) rewrites the archive in place. Edits inside a WAD on a disc image are folded into the image when you save, and count as unsaved changes for the close prompt.
 
-The first save of a session copies every file the save will touch to `<name>.bak` first. A
-backup that already exists is never overwritten, so the pristine copy exists before anything
-has changed rather than after the damage.
+The first save of a session copies every file the save will touch to `<name>.bak` first. A backup that already exists is never overwritten, so the pristine copy exists before anything has changed rather than after the damage.
 
-The save itself is guarded. The rebuilt bytes go to a temporary file beside the original,
-are re-parsed from there, and a format that cannot read its own output is refused before
-anything moves. A replacement identical to what is already on disk is skipped. The final
-write flushes to disk and then renames, so a failed save leaves the original byte for byte
-intact. A multi-file archive takes a rollback copy of each original and restores the ones it
-already replaced if a later one fails.
+The save itself is guarded. The rebuilt bytes go to a temporary file beside the original, are re-parsed from there, and a format that cannot read its own output is refused before anything moves. A replacement identical to what is already on disk is skipped. The final write flushes to disk and then renames, so a failed save leaves the original byte for byte intact. A multi-file archive takes a rollback copy of each original and restores the ones it already replaced if a later one fails.
 
-Formats that only make same-length writes, such as a WBFS container, hold their edits in a
-deferred overlay until you save, then validate the whole set against the container's own
-tables, write, flush, and read one cluster back to prove it. A Wii image also has its hash
-chain rebuilt so that Dolphin and real hardware accept the patched file.
+Formats that only make same-length writes, such as a WBFS container, hold their edits in a deferred overlay until you save, then validate the whole set against the container's own tables, write, flush, and read one cluster back to prove it. A Wii image also has its hash chain rebuilt so that Dolphin and real hardware accept the patched file. While a WBFS is open, Omega Studio holds it for reading only, so other tools can still read it. On read-only media, or with the read-only attribute set, it still opens and can be browsed and edited; Save then reports that the file could not be opened for writing and leaves it unchanged. Make the file writable and save again.
 
-PlayStation 3, Xbox 360, and 3DS images are read-only. Saving one raises an error rather than
-writing something wrong.
+PlayStation 3, Xbox 360, and 3DS images are read-only. Saving one raises an error rather than writing something wrong.
 
-Closing the archive or exiting the app with unsaved changes asks whether to save, discard,
-or cancel.
+Closing the archive or exiting the app with unsaved changes asks whether to save, discard, or cancel.
 
 ## Shortcuts
 
@@ -173,16 +120,10 @@ or cancel.
 
 ## When something goes wrong
 
-**An archive will not open.** No loaded format claims it. The Console pane holds the failure
-message, along with any format that threw while looking at the file. If the file comes from a
-game this build does not ship a plugin for, that is the reason; a new plugin is all it takes
-to teach the host the format.
+**An archive will not open.** No loaded format claims it. The Console pane holds the failure message, along with any format that threw while looking at the file. If the file comes from a game this build does not ship a plugin for, that is the reason; a new plugin is all it takes to teach the host the format.
 
-**A plugin failed to load.** The reason is listed under **Formats ▸ Failed to load**, and the
-other plugins still load.
+**A plugin failed to load.** The reason is listed under **Formats ▸ Failed to load**, and the other plugins still load.
 
-**A save failed.** The original file is untouched; the message in the Console pane says what
-refused it.
+**A save failed.** The original file is untouched; the message in the Console pane says what refused it. If a nested container could not be written back, its edits are kept: change them and save again, or close without saving. The full log, with any crash report, is in `omega-studio.log` (see Console).
 
-**A row shows an error.** A plugin threw while reading that row. The rest of the application
-keeps working, and the failure costs you only that row.
+**A row shows an error.** A plugin threw while reading that row. The rest of the application keeps working, and the failure costs you only that row.

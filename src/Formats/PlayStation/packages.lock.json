@@ -1,0 +1,46 @@
+{
+  "version": 1,
+  "dependencies": {
+    "net10.0": {
+      "LTRData.DiscUtils.Iso9660": {
+        "type": "Direct",
+        "requested": "[1.0.89, )",
+        "resolved": "1.0.89",
+        "contentHash": "4neH353pC19A/KQdqkzPrFrBYMdVq2MqFMCOeJCXF1o91tfGHbkdZA/80cbqQs5Pnm8wlvo/IS+uYcUq4JGm5A==",
+        "dependencies": {
+          "LTRData.DiscUtils.Core": "1.0.89"
+        }
+      },
+      "LTRData.DiscUtils.Core": {
+        "type": "Transitive",
+        "resolved": "1.0.89",
+        "contentHash": "FqTBYiKuP4TYODFFGXLELiqx3Ibj00XN/SCsZuwTeP85XPPBrkQGZ+QIv4ROUyVz3dfJL7wY68m8GytSuT9Y7g==",
+        "dependencies": {
+          "LTRData.DiscUtils.Streams": "1.0.89"
+        }
+      },
+      "LTRData.DiscUtils.Streams": {
+        "type": "Transitive",
+        "resolved": "1.0.89",
+        "contentHash": "AQXgoGm/HOMo8qfIYuvY1cdNYOJ8TYIjz3/YU3VySlv9PvLrT9F6gc5bNl9AQJ/XDiOmyLaSIhvOwke5czbV4g==",
+        "dependencies": {
+          "LTRData.Extensions": "1.0.23"
+        }
+      },
+      "LTRData.Extensions": {
+        "type": "Transitive",
+        "resolved": "1.0.23",
+        "contentHash": "K+Lb4/siT7+K50r4kndp5QaJLgupf5zE4qe8QxqwF0uSAiZtodsiFc3+i9IQpkGGMDwi83isG9qYA3JOJrO7UA=="
+      },
+      "omega.disc": {
+        "type": "Project",
+        "dependencies": {
+          "Omega.Plugins": "[1.0.0, )"
+        }
+      },
+      "omega.plugins": {
+        "type": "Project"
+      }
+    }
+  }
+}

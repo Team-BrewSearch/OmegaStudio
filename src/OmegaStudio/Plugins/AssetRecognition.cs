@@ -117,7 +117,7 @@ internal sealed class AssetRecognition
     }
     private static bool HasContent(IAssetNode node)
     {
-        return node is ISceneAsset or IImageAsset or IAudioAsset or IAnimatedAsset;
+        return node is ISceneAsset or IImageAsset or IAudioAsset or IVideoAsset or IAnimatedAsset;
     }
     private static bool Claims(IAssetRecognizer recognizer, ReadOnlySpan<byte> data)
     {
@@ -125,7 +125,7 @@ internal sealed class AssetRecognition
         {
             return recognizer.Claims(data);
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is not OutOfMemoryException)
         {
             PluginGuard.Log?.Invoke($"Recogniser {recognizer.Id} failed while sniffing: {ex.Message}");
             return false;

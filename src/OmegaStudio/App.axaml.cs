@@ -17,28 +17,19 @@ public partial class App : Application
     {
         if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
         {
+            string? log = FileLog.Open(LogDirectory());
             MainWindow window = new();
             MainViewModel vm = new(new WindowStorageProvider(window.StorageProvider));
-            string? log = FileLog.Open(LogDirectory());
-            PluginGuard.Log = line =>
-            {
-                vm.Log(line);
-                FileLog.Write(line);
-            };
             if (log is not null)
             {
                 vm.Log($"Logging to {log}.");
             }
-            vm.RequestClose += () => _ = window.CloseAsync(vm);
+            vm.RequestClose += window.Close;
             vm.DiscardConfirmation = () => window.AskAboutUnsavedChangesAsync(vm);
             window.DataContext = vm;
             desktop.MainWindow = window;
-            desktop.ShutdownRequested += (_, _) => vm.Dispose();
-            CrashLog.Install(line =>
-            {
-                FileLog.Write(line);
-                vm.Log(line);
-            });
+            desktop.Exit += (_, _) => vm.Dispose();
+            CrashLog.Install(vm.Log, () => Context(vm));
             if (desktop.Args is { Length: > 0 } args)
             {
                 string? named = Array.Find(args, File.Exists);
@@ -55,9 +46,17 @@ public partial class App : Application
         }
         base.OnFrameworkInitializationCompleted();
     }
+    private static string Context(MainViewModel vm)
+    {
+        string archive = vm.Roots.Count == 0 ? "none" : $"'{vm.OpenArchiveName}'";
+        string changes = vm.HasUnsavedChanges ? " with unsaved changes" : string.Empty;
+        string selected = vm.SelectedItem?.Node is { } node ? $"'{NodeAccess.PathText(node)}'" : "none";
+        return $"Open archive: {archive}{changes}; selected row: {selected}.";
+    }
     private static string LogDirectory()
     {
-        string root = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
+        string root = Environment.GetFolderPath(
+            Environment.SpecialFolder.ApplicationData, Environment.SpecialFolderOption.Create);
         return string.IsNullOrEmpty(root)
             ? Path.Combine(AppContext.BaseDirectory, "logs")
             : Path.Combine(root, "OmegaStudio", "logs");

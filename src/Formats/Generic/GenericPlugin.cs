@@ -45,7 +45,7 @@ public sealed class ImageRecognizer : IAssetRecognizer
 internal sealed class AudioView(IAssetNode inner) : RecognizedAsset(inner), IAudioAsset
 {
     public override string Kind => AssetKinds.Audio;
-    public override string Extension => Magic.AudioExtension(Data);
+    public override string Extension => Magic.AudioExtension(Head);
     public ReadOnlySpan<byte> EncodedAudio => Data;
     public override IEnumerable<PropertyRow> Describe()
     {
@@ -60,9 +60,9 @@ internal sealed class ImageView(IAssetNode inner, IHostServices host)
     : RecognizedAsset(inner), IImageAsset
 {
     public override string Kind => AssetKinds.Texture;
-    public override string Extension => Magic.ImageExtension(Data);
+    public override string Extension => Magic.ImageExtension(Head);
     public ImageData Image { get => field ??= host.Images.Load(Data, Name); private set; }
-    public bool CanReplaceImage => CanReplaceBytes && Magic.IsPng(Data);
+    public bool CanReplaceImage => CanReplaceBytes && Magic.IsPng(Head);
     public void ReplaceImage(ImageData image)
     {
         ArgumentNullException.ThrowIfNull(image);
@@ -71,7 +71,7 @@ internal sealed class ImageView(IAssetNode inner, IHostServices host)
     }
     public override IEnumerable<PropertyRow> Describe()
     {
-        yield return PropertyRow.Of("Content", Magic.ImageFormat(Data));
+        yield return PropertyRow.Of("Content", Magic.ImageFormat(Head));
         foreach (PropertyRow row in base.Describe())
         {
             yield return row;

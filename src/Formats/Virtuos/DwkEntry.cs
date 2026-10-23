@@ -44,6 +44,10 @@ public sealed class DwkEntry
         IsDirty = true;
         Owner?.MarkChanged();
     }
+    internal void MarkSaved()
+    {
+        IsDirty = false;
+    }
     public override string ToString()
     {
         return $"[{Index}] {GdfPath} ({Size} B)";

@@ -20,6 +20,7 @@ dotnet build "%SOLUTION%" -c Release --nologo --verbosity minimal
 if errorlevel 1 (
     echo.
     echo [ERROR] Release build failed. Nothing was published.
+    set /a ERROR_COUNT+=1
     goto :Finish
 )
 call :Publish "win-x86"     "false"

@@ -3,37 +3,29 @@ namespace OmegaStudio.Rendering;
 internal readonly record struct DrawBatch(int First, int Count, int Texture, bool AlphaClip);
 internal sealed class MeshBuffer
 {
-    public const int Stride = 36;
-    private const int NormalOffset = 12;
-    private const int UvOffset = 24;
-    private const int ColorOffset = 32;
+    public const int PoseStride = 12;
+    public const int SurfaceStride = 12;
+    public const int ColorOffset = 8;
     private static readonly byte[] s_white = [255, 255, 255, 255];
-    private MeshBuffer(int vertexCount, List<DrawBatch> batches)
+    private MeshBuffer(SceneGeometry scene, int indexCount, List<DrawBatch> batches)
     {
-        VertexCount = vertexCount;
-        LineVertexCount = vertexCount * 2;
+        Scene = scene;
+        VertexCount = scene.VertexCount;
+        IndexCount = indexCount;
         Batches = batches;
-        Vertices = new byte[vertexCount * Stride];
     }
+    public SceneGeometry Scene { get; }
     public int VertexCount { get; }
-    public int LineVertexCount { get; }
-    public byte[] Vertices { get; }
-    public byte[]? Lines { get; private set; }
-    public void EnsureLines()
-    {
-        if (Lines is not null)
-        {
-            return;
-        }
-        Lines = new byte[checked(LineVertexCount * Stride)];
-    }
+    public int IndexCount { get; }
+    public int LineIndexCount => checked(IndexCount * 2);
+    public int NormalOffset => checked(VertexCount * PoseStride);
     public IReadOnlyList<DrawBatch> Batches { get; }
     public static MeshBuffer Build(SceneGeometry scene, IReadOnlyList<int> textures)
     {
         ArgumentNullException.ThrowIfNull(scene);
         ArgumentNullException.ThrowIfNull(textures);
         List<DrawBatch> batches = [];
-        int vertex = 0;
+        int index = 0;
         foreach (SceneMesh mesh in scene.Meshes)
         {
             foreach (SceneSubmesh submesh in mesh.Submeshes)
@@ -45,85 +37,59 @@ internal sealed class MeshBuffer
                 int texture = submesh.TextureIndex >= 0 && submesh.TextureIndex < textures.Count
                     ? textures[submesh.TextureIndex]
                     : 0;
-                batches.Add(new DrawBatch(vertex, submesh.Count, texture, submesh.AlphaClip));
-                vertex += submesh.Count;
+                batches.Add(new DrawBatch(index, submesh.Count, texture, submesh.AlphaClip));
+                index += submesh.Count;
             }
         }
-        MeshBuffer buffer = new(vertex, batches);
-        buffer.Pack(scene, null, null);
-        return buffer;
+        return new MeshBuffer(scene, index, batches);
     }
-    public void Pack(SceneGeometry scene, float[]? posedPositions, float[]? posedNormals)
+    public int[] Indices(bool lines)
     {
-        ArgumentNullException.ThrowIfNull(scene);
-        bool posed = posedPositions is not null && posedNormals is not null;
-        int vertex = 0;
-        int line = 0;
-        byte[]? lines = Lines;
-        int meshBase = 0;
-        foreach (SceneMesh mesh in scene.Meshes)
+        int[] indices = new int[lines ? LineIndexCount : IndexCount];
+        int at = 0;
+        int first = 0;
+        foreach (SceneMesh mesh in Scene.Meshes)
         {
-            float[] positions = posed ? posedPositions! : mesh.Positions;
-            float[] normals = posed ? posedNormals! : mesh.Normals;
-            int shift = posed ? meshBase : 0;
             foreach (SceneSubmesh submesh in mesh.Submeshes)
             {
-                for (int i = 0; i < submesh.Count; i++)
+                for (int i = submesh.First; i + 3 <= submesh.First + submesh.Count; i += 3)
                 {
-                    int source = mesh.Indices is { } indices
-                        ? indices[submesh.First + i]
-                        : submesh.First + i;
-                    WriteVertex(mesh, positions, normals, shift, source, vertex * Stride);
-                    vertex++;
-                    if (lines is not null && (i + 1) % 3 == 0)
-                    {
-                        line = WriteTriangleEdges(lines, vertex, line);
-                    }
+                    int a = first + Source(mesh, i);
+                    int b = first + Source(mesh, i + 1);
+                    int c = first + Source(mesh, i + 2);
+                    ReadOnlySpan<int> written = lines ? [a, b, b, c, c, a] : [a, b, c];
+                    written.CopyTo(indices.AsSpan(at));
+                    at += written.Length;
                 }
             }
-            meshBase += mesh.VertexCount * 3;
+            first += mesh.VertexCount;
         }
+        return indices;
     }
-    private void WriteVertex(
-        SceneMesh mesh, float[] positions, float[] normals, int shift, int source, int at)
+    public byte[] Surface()
     {
-        int from = shift + (source * 3);
-        if (from >= 0 && from + 3 <= positions.Length)
+        byte[] surface = new byte[checked(VertexCount * SurfaceStride)];
+        int at = 0;
+        foreach (SceneMesh mesh in Scene.Meshes)
         {
-            Write3(Vertices, at, positions, from);
+            for (int vertex = 0; vertex < mesh.VertexCount; vertex++, at += SurfaceStride)
+            {
+                if (mesh.Uvs.Length >= (vertex * 2) + 2)
+                {
+                    Span<byte> uv = surface.AsSpan(at);
+                    _ = BitConverter.TryWriteBytes(uv, mesh.Uvs[vertex * 2]);
+                    _ = BitConverter.TryWriteBytes(uv[4..], mesh.Uvs[(vertex * 2) + 1]);
+                }
+                ReadOnlySpan<byte> colour = mesh.Colors.Length >= (vertex * 4) + 4
+                    ? mesh.Colors.AsSpan(vertex * 4, 4)
+                    : s_white;
+                colour.CopyTo(surface.AsSpan(at + ColorOffset, 4));
+            }
         }
-        if (from >= 0 && from + 3 <= normals.Length)
-        {
-            Write3(Vertices, at + NormalOffset, normals, from);
-        }
-        if (mesh.Uvs.Length >= (source * 2) + 2)
-        {
-            Span<byte> uv = Vertices.AsSpan(at + UvOffset);
-            _ = BitConverter.TryWriteBytes(uv, mesh.Uvs[source * 2]);
-            _ = BitConverter.TryWriteBytes(uv[4..], mesh.Uvs[(source * 2) + 1]);
-        }
-        ReadOnlySpan<byte> colour = mesh.Colors.Length >= (source * 4) + 4
-            ? mesh.Colors.AsSpan(source * 4, 4)
-            : s_white;
-        colour.CopyTo(Vertices.AsSpan(at + ColorOffset, 4));
+        return surface;
     }
-    private int WriteTriangleEdges(byte[] lines, int vertex, int line)
+    private static int Source(SceneMesh mesh, int entry)
     {
-        int a = (vertex - 3) * Stride;
-        int b = (vertex - 2) * Stride;
-        int c = (vertex - 1) * Stride;
-        foreach (int edge in (ReadOnlySpan<int>)[a, b, b, c, c, a])
-        {
-            Vertices.AsSpan(edge, Stride).CopyTo(lines.AsSpan(line));
-            line += Stride;
-        }
-        return line;
-    }
-    private static void Write3(byte[] destination, int at, float[] source, int from)
-    {
-        Span<byte> span = destination.AsSpan(at);
-        _ = BitConverter.TryWriteBytes(span, source[from]);
-        _ = BitConverter.TryWriteBytes(span[4..], source[from + 1]);
-        _ = BitConverter.TryWriteBytes(span[8..], source[from + 2]);
+        return mesh.Indices is { } indices ? indices[entry] : entry;
     }
 }

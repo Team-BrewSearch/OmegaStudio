@@ -51,7 +51,7 @@ internal static class PluginLoader
             log($"No formats folder at {directory} — nothing to load.");
             return PluginCatalog.Empty;
         }
-        Dictionary<string, string> trusted = ReadAllowList(allowList, log);
+        Dictionary<string, string>? trusted = ReadAllowList(allowList, log);
         List<LoadedPlugin> loaded = [];
         List<PluginFailure> failures = [];
         HashSet<string> ids = new(StringComparer.OrdinalIgnoreCase);
@@ -60,13 +60,15 @@ internal static class PluginLoader
             string name = Path.GetFileName(file);
             try
             {
-                if (trusted.Count > 0 && !Allowed(file, trusted))
+                byte[] image = File.ReadAllBytes(file);
+                string digest = Digest(image);
+                if (trusted is not null && !Allowed(name, digest, trusted))
                 {
                     throw new InvalidOperationException(
                         $"its SHA-256 is not on the trusted list at {Path.GetFileName(allowList)}; Omega Studio "
                         + "loads only the plugins its build vouched for. See docs/PLUGINS.md.");
                 }
-                LoadedPlugin plugin = LoadOne(file);
+                LoadedPlugin plugin = LoadOne(file, image);
                 if (!ids.Add(plugin.Info.Id))
                 {
                     failures.Add(new PluginFailure(
@@ -74,7 +76,7 @@ internal static class PluginLoader
                     continue;
                 }
                 loaded.Add(plugin);
-                log($"Loaded {plugin.Info.DisplayName} {plugin.Info.Version} from {name}{Fingerprint(file, log)}.");
+                log($"Loaded {plugin.Info.DisplayName} {plugin.Info.Version} from {name} (sha256:{digest[..16]}…).");
             }
             catch (Exception ex)
             {
@@ -88,7 +90,7 @@ internal static class PluginLoader
         }
         return new PluginCatalog(loaded, failures);
     }
-    private static Dictionary<string, string> ReadAllowList(string? allowList, Action<string> log)
+    private static Dictionary<string, string>? ReadAllowList(string? allowList, Action<string> log)
     {
         if (allowList is null || !File.Exists(allowList))
         {
@@ -96,7 +98,7 @@ internal static class PluginLoader
             {
                 log($"No trusted plugin list at {Path.GetFileName(allowList)}; loading what it finds.");
             }
-            return [];
+            return null;
         }
         Dictionary<string, string> trusted = new(StringComparer.OrdinalIgnoreCase);
         foreach (string line in File.ReadAllLines(allowList))
@@ -107,44 +109,38 @@ internal static class PluginLoader
                 continue;
             }
             int at = text.IndexOf(AllowListPrefix, StringComparison.OrdinalIgnoreCase);
-            if (at < 0)
+            string digest = at < 0 ? string.Empty : text[(at + AllowListPrefix.Length)..].Trim();
+            if (digest.Length != 64)
             {
-                log($"Ignoring a line in {Path.GetFileName(allowList)} that names no digest.");
+                log($"Ignoring a line in {Path.GetFileName(allowList)} that names no SHA-256 digest.");
                 continue;
             }
-            string digest = text[(at + AllowListPrefix.Length)..].Trim();
-            if (digest.Length == 64)
-            {
-                trusted[digest.ToLowerInvariant()] = text[..at].Trim();
-            }
+            trusted[digest.ToLowerInvariant()] = text[..at].Trim();
+        }
+        if (trusted.Count == 0)
+        {
+            log($"{Path.GetFileName(allowList)} vouches for no plugin, so none will load.");
         }
         return trusted;
     }
-    private static bool Allowed(string file, Dictionary<string, string> trusted)
+    private static bool Allowed(string fileName, string digest, Dictionary<string, string> trusted)
     {
-        string digest = Digest(file);
-        return !trusted.TryGetValue(digest, out string? name)
-            || string.IsNullOrEmpty(name)
-            || name.Equals(Path.GetFileName(file), StringComparison.OrdinalIgnoreCase);
+        return trusted.TryGetValue(digest, out string? name)
+            && (name.Length == 0 || name.Equals(fileName, StringComparison.OrdinalIgnoreCase));
     }
-    private static string Fingerprint(string file, Action<string> log)
+    public static string Digest(ReadOnlySpan<byte> image)
     {
-        return $" (sha256:{Digest(file)[..16]}…)";
-    }
-    public static string Digest(string file)
-    {
-        using FileStream stream = new(file, FileMode.Open, FileAccess.Read, FileShare.Read);
-        return Convert.ToHexString(SHA256.HashData(stream)).ToLowerInvariant();
+        return Convert.ToHexString(SHA256.HashData(image)).ToLowerInvariant();
     }
     private static IEnumerable<string> Discover(string directory)
     {
         return Directory.EnumerateFiles(directory, "*" + Suffix).Order(StringComparer.Ordinal);
     }
-    private static LoadedPlugin LoadOne(string file)
+    private static LoadedPlugin LoadOne(string file, byte[] image)
     {
         string full = Path.GetFullPath(file);
         PluginLoadContext context = new(full);
-        Assembly assembly = context.LoadPlugin();
+        Assembly assembly = context.LoadPlugin(image);
         OmegaPluginAttribute? attribute = assembly.GetCustomAttribute<OmegaPluginAttribute>();
         if (attribute is null)
         {

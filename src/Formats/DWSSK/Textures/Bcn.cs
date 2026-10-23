@@ -20,7 +20,7 @@ internal static class Bcn
         int bw = Math.Max(1, (w + 3) / 4);
         int bh = Math.Max(1, (h + 3) / 4);
         int blockSize = n == 1 ? 8 : 16;
-        if (data.Length < bw * bh * blockSize)
+        if (data.Length < (long)bw * bh * blockSize)
         {
             throw new InvalidDataException($"BC{n} data holds {data.Length} bytes, a {w}x{h} surface needs {bw * bh * blockSize}");
         }

@@ -4,25 +4,12 @@ on:
     branches: [ "main" ]
   pull_request:
     branches: [ "main" ]
+permissions:
+  contents: read
 jobs:
-  test:
-    name: Test
-    runs-on: ubuntu-latest
-    steps:
-    - name: Checkout
-      uses: actions/checkout@v4
-      with:
-        fetch-depth: 0
-    - name: Setup .NET
-      uses: actions/setup-dotnet@v4
-      with:
-        dotnet-version: '10'
-    - name: Restore dependencies
-      run: dotnet restore src/OmegaStudio.slnx
   build:
     name: Build ${{ matrix.rid }}
     runs-on: ${{ matrix.os }}
-    needs: test
     strategy:
       matrix:
         include:
@@ -41,16 +28,18 @@ jobs:
     steps:
     - name: Checkout
       uses: actions/checkout@v4
-      with:
-        fetch-depth: 0
     - name: Setup .NET
       uses: actions/setup-dotnet@v4
       with:
         dotnet-version: '10'
+        cache: true
+        cache-dependency-path: '**/packages.lock.json'
+    - name: Restore dependencies
+      run: dotnet restore src/OmegaStudio.slnx --locked-mode
     - name: Build solution so the plugins exist
-      run: dotnet build src/OmegaStudio.slnx --configuration Release --nologo --verbosity minimal
+      run: dotnet build src/OmegaStudio.slnx --configuration Release --no-restore --nologo --verbosity minimal
     - name: Publish
-      run: dotnet publish src/OmegaStudio/OmegaStudio.csproj --configuration Release --runtime ${{ matrix.rid }} --self-contained ${{ matrix.self-contained }} -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true ${{ matrix.self-contained == 'true' && '-p:EnableCompressionInSingleFile=true' || '' }} --output src/publish/${{ matrix.rid }} --nologo --verbosity minimal
+      run: dotnet publish src/OmegaStudio/OmegaStudio.csproj --configuration Release --runtime ${{ matrix.rid }} --self-contained ${{ matrix.self-contained }} -p:RestoreLockedMode=true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true ${{ matrix.self-contained == 'true' && '-p:EnableCompressionInSingleFile=true' || '' }} --output src/publish/${{ matrix.rid }} --nologo --verbosity minimal
     - name: Verify the release can open something
       shell: bash
       run: |

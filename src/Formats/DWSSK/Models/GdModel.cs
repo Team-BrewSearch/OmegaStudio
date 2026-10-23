@@ -267,7 +267,7 @@ internal static class GdReader
         }
         private int[] Strip(int cnt, int off)
         {
-            Bin.Need(b, off, cnt * 2);
+            Bin.Need(b, off, cnt * 2L);
             int[] s = new int[cnt];
             for (int i = 0; i < cnt; i++)
             {
@@ -277,7 +277,7 @@ internal static class GdReader
         }
         private GdVertices Buffer(int count, int stride, int offset, string layout)
         {
-            Bin.Need(b, offset, count * stride);
+            Bin.Need(b, offset, count * (long)stride);
             return new GdVertices(b.AsSpan(offset, count * stride).ToArray(), count, layout);
         }
         private List<(int Op, int[][] Idx)> GxDl(int dl, int size, int perVertex)
@@ -431,7 +431,7 @@ internal static class GdReader
                 uint[] p = Us(o + 8, 5);
                 int vc = (int)U(o + 36);
                 int vo = (int)U(o + 40);
-                Bin.Need(b, vo, vc * 24);
+                Bin.Need(b, vo, vc * 24L);
                 byte[] vbuf = b.AsSpan(vo, vc * 24).ToArray();
                 List<GdPrim> prims = [];
                 for (int q = (int)p[0]; q < (int)p[4]; q += 0x10)
@@ -671,7 +671,7 @@ internal static class GdReader
             {
                 return [];
             }
-            Bin.Need(b, offset, count * size);
+            Bin.Need(b, offset, count * (long)size);
             return b.AsSpan(offset, count * size).ToArray();
         }
         private static void Copy(byte[] src, int stride, int index, int from, int n, byte[] dst, int at)

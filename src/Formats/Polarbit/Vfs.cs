@@ -237,7 +237,7 @@ internal sealed class VfsEntry
             {
                 uint rawSize = Le.U32(current, 4);
                 uint compressed = Le.U32(current, 8);
-                Le.Need(compressed == current.Length - 12 && rawSize <= Zlib.MaxInflated,
+                Le.Need(compressed == current.Length - 12 && rawSize <= Zlib.MaxInflated && rawSize <= compressed * (long)Zlib.MaxRatio,
                     $"PLZP header claims {compressed} compressed and {rawSize} raw bytes in a {current.Length}-byte entry.");
                 byte[] inner = Zlib.Inflate(current.AsSpan(12), (int)rawSize);
                 layers.Add(new Layer(true, Level(current[13])));
@@ -291,6 +291,7 @@ internal sealed class VfsEntry
 internal static class Zlib
 {
     public const int MaxInflated = 256 << 20;
+    public const int MaxRatio = 1032;
     public static byte[] Inflate(ReadOnlySpan<byte> z, int size)
     {
         byte[] output = new byte[size];

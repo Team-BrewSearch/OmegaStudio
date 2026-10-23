@@ -52,11 +52,10 @@ public sealed class WavDecoder : IAudioDecoder
                 sampleRate = BinaryPrimitives.ReadInt32LittleEndian(data[(body + 4)..]);
                 bitsPerSample = BinaryPrimitives.ReadUInt16LittleEndian(data[(body + 14)..]);
             }
-            else if (chunkId == DataChunk)
+            else if (chunkId == DataChunk && dataOffset == 0)
             {
                 dataOffset = body;
                 dataLength = Math.Min(chunkSize, data.Length - dataOffset);
-                break;
             }
             long next = (long)body + chunkSize + (chunkSize & 1);
             if (next <= offset || next > data.Length)
@@ -65,7 +64,12 @@ public sealed class WavDecoder : IAudioDecoder
             }
             offset = (int)next;
         }
-        if (sampleRate <= 0 || channels <= 0 || bitsPerSample is not (8 or 16) || dataLength <= 0)
+        if (sampleRate <= 0 || channels <= 0 || bitsPerSample is not (8 or 16))
+        {
+            return false;
+        }
+        dataLength -= dataLength % (channels * (bitsPerSample / 8));
+        if (dataLength <= 0)
         {
             return false;
         }

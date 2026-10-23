@@ -1,12 +1,11 @@
 using System.Diagnostics;
 using CommunityToolkit.Mvvm.ComponentModel;
-using Omega.Plugins;
-using OmegaStudio.Plugins;
 namespace OmegaStudio.ViewModels;
 public partial class MainViewModel
 {
     private static readonly TimeSpan s_searchDebounce = TimeSpan.FromMilliseconds(200);
     private const int HitLimit = 5000;
+    private const int DepthLimit = 256;
     private CancellationTokenSource? _searchCts;
     [ObservableProperty]
     public partial string SearchFilter { get; set; } = "";
@@ -44,38 +43,31 @@ public partial class MainViewModel
             await Task.Delay(s_searchDebounce, token);
             Status = "Searching...";
             Stopwatch elapsed = Stopwatch.StartNew();
-            (List<SearchHit> hits, int matches, bool truncated) = await Task.Run(() =>
+            TreeItemViewModel[] roots = [.. Roots];
+            SearchWalk walk = new(text, token);
+            List<TreeItemViewModel> results = await Task.Run(() =>
             {
-                List<SearchHit> found = [];
-                bool capped = false;
-                int total = 0;
-                foreach (TreeItemViewModel root in Roots)
+                List<TreeItemViewModel> found = [];
+                for (int index = 0; index < roots.Length && !walk.Full; index++)
                 {
-                    token.ThrowIfCancellationRequested();
-                    if (total >= HitLimit)
+                    if (Filter(roots[index], index, walk, 0) is { } hit && Resolve(hit, roots, walk) is { } row)
                     {
-                        capped = true;
-                        break;
-                    }
-                    int inRoot = 0;
-                    if (Filter(root, ref inRoot, text, token) is { } hit)
-                    {
-                        found.Add(hit);
-                        total += inRoot;
+                        found.Add(row);
                     }
                 }
-                return (found, total, capped);
+                return found;
             }, token);
             token.ThrowIfCancellationRequested();
             SearchResults.Clear();
             IsSearchActive = true;
-            foreach (SearchHit hit in hits)
+            foreach (TreeItemViewModel row in results)
             {
-                SearchResults.Add(ToViewModel(hit, text));
+                SearchResults.Add(row);
             }
+            int matches = walk.Matches;
             Status = matches == 0
                 ? "No matches found."
-                : truncated
+                : walk.Full
                     ? $"Found {matches}+ match{(matches == 1 ? "" : "es")} in {elapsed.ElapsedMilliseconds}ms; "
                       + $"showing the first {HitLimit}."
                     : $"Found {matches} match{(matches == 1 ? "" : "es")} in {elapsed.ElapsedMilliseconds}ms.";
@@ -84,70 +76,69 @@ public partial class MainViewModel
         {
         }
     }
-    private sealed record SearchHit(
-        TreeItemViewModel Source,
-        string Header,
-        string Detail,
-        string Kind,
-        IAssetNode? Node,
-        List<SearchHit> Children);
-    private SearchHit? Filter(
-        TreeItemViewModel item, ref int matches, string text, CancellationToken token)
+    private sealed class SearchWalk(string text, CancellationToken token)
     {
-        token.ThrowIfCancellationRequested();
-        bool self = item.Header.Contains(text, StringComparison.OrdinalIgnoreCase);
-        List<SearchHit> children = [];
-        if (item.Node is { } node)
+        public string Text { get; } = text;
+        public CancellationToken Token { get; } = token;
+        public int Matches { get; set; }
+        public bool Full => Matches >= HitLimit;
+    }
+    private sealed record SearchHit(int Index, string Header, List<SearchHit> Children);
+    private static SearchHit? Filter(TreeItemViewModel item, int index, SearchWalk walk, int depth)
+    {
+        walk.Token.ThrowIfCancellationRequested();
+        bool self = item.Header.Contains(walk.Text, StringComparison.OrdinalIgnoreCase);
+        if (self)
         {
-            foreach (IAssetNode child in ChildrenOf(node, token))
+            walk.Matches++;
+        }
+        List<SearchHit> children = [];
+        if (depth < DepthLimit)
+        {
+            int position = 0;
+            foreach (TreeItemViewModel child in item.PeekChildren())
             {
-                token.ThrowIfCancellationRequested();
-                int inChild = 0;
-                TreeItemViewModel row = TreeRow(child);
-                if (Filter(row, ref inChild, text, token) is { } hit)
+                if (walk.Full)
+                {
+                    break;
+                }
+                if (Filter(child, position++, walk, depth + 1) is { } hit)
                 {
                     children.Add(hit);
-                    matches += inChild;
                 }
             }
         }
-        if (self)
+        return self || children.Count > 0 ? new SearchHit(index, item.Header, children) : null;
+    }
+    private static TreeItemViewModel? Resolve(SearchHit hit, IReadOnlyList<TreeItemViewModel> rows, SearchWalk walk)
+    {
+        walk.Token.ThrowIfCancellationRequested();
+        if (hit.Index >= rows.Count || rows[hit.Index].Header != hit.Header)
         {
-            matches++;
+            return null;
         }
-        return self || children.Count > 0
-            ? new SearchHit(item, item.Header, item.Detail, item.Kind, item.Node, children)
-            : null;
-    }
-    private static IReadOnlyList<IAssetNode> ChildrenOf(IAssetNode node, CancellationToken token)
-    {
-        token.ThrowIfCancellationRequested();
-        return PluginGuard.Try(
-            $"Reading the contents of '{NodeAccess.Name(node)}'",
-            () => (IReadOnlyList<IAssetNode>)[.. node.GetChildren()],
-            []);
-    }
-    private TreeItemViewModel TreeRow(IAssetNode node)
-    {
-        IAssetNode shown = _recognition.Enrich(node);
-        return new TreeItemViewModel(NodeAccess.Name(shown), NodeAccess.Detail(shown), NodeAccess.Resolve(shown))
+        TreeItemViewModel row = rows[hit.Index];
+        TreeItemViewModel item = new(row.Header, row.Detail, row.Kind)
         {
-            Node = shown,
-        };
-    }
-    private static TreeItemViewModel ToViewModel(SearchHit hit, string text)
-    {
-        TreeItemViewModel item = new(hit.Header, hit.Detail, hit.Kind)
-        {
-            Node = hit.Node,
+            Node = row.Node,
             IsExpanded = true,
-            Source = hit.Source,
+            Source = row,
+            Highlight = walk.Text,
         };
-        item.UpdateSearchHighlight(text);
+        if (hit.Children.Count == 0)
+        {
+            return item;
+        }
+        IReadOnlyList<TreeItemViewModel> children = row.BuildChildren();
+        List<TreeItemViewModel> found = [];
         foreach (SearchHit child in hit.Children)
         {
-            item.Children.Add(ToViewModel(child, text));
+            if (Resolve(child, children, walk) is { } resolved)
+            {
+                found.Add(resolved);
+            }
         }
+        item.SetChildren(found);
         return item;
     }
     private void ClearHighlights()
@@ -158,7 +149,7 @@ public partial class MainViewModel
         }
         static void Clear(TreeItemViewModel item)
         {
-            item.UpdateSearchHighlight(null);
+            item.Highlight = null;
             foreach (TreeItemViewModel child in item.Children)
             {
                 Clear(child);

@@ -43,7 +43,7 @@ public partial class MainViewModel
         {
             return;
         }
-        await LoadAudioAsync(audio);
+        await LoadAudioAsync(audio, null);
         _audioPlayer.Play();
     }
     [RelayCommand]
@@ -58,24 +58,23 @@ public partial class MainViewModel
     }
     private int _audioGeneration;
     private readonly SemaphoreSlim _audioGate = new(1, 1);
-    public Task LoadAudioAsync(IAudioAsset audio)
+    public Task LoadAudioAsync(IAudioAsset audio, byte[]? data)
     {
         if (_audioLoad is not null && ReferenceEquals(audio, _currentAudio))
         {
             return _audioLoad;
         }
         _currentAudio = audio;
-        _audioLoad = RunAudioLoadAsync(audio);
+        _audioLoad = RunAudioLoadAsync(audio, data);
         return _audioLoad;
     }
-    private async Task RunAudioLoadAsync(IAudioAsset audio)
+    private async Task RunAudioLoadAsync(IAudioAsset audio, byte[]? data)
     {
         int generation = Interlocked.Increment(ref _audioGeneration);
         await _audioGate.WaitAsync();
         try
         {
-            byte[] data = NodeAccess.EncodedAudio(audio).ToArray();
-            await Task.Run(() => _audioPlayer.Load(data));
+            await Task.Run(() => _audioPlayer.Load(data ?? NodeAccess.EncodedAudio(audio).ToArray()));
             if (Interlocked.CompareExchange(ref _audioGeneration, generation, generation) != generation)
             {
                 return;

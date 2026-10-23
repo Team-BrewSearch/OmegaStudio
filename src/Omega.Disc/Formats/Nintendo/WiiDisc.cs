@@ -37,7 +37,7 @@ namespace Omega.Disc.Formats.Nintendo
         public long BlockCount => DataSize / WiiDisc.BlockTotalSize;
         public long DecryptedSize => BlockCount * WiiDisc.BlockDataSize;
     }
-    public sealed record WiiFstEntry(string Name, uint Offset, uint Length, uint NextIndex, int Index, bool IsDirectory);
+    public sealed record WiiFstEntry(string Name, long Offset, uint Length, uint NextIndex, int Index, bool IsDirectory);
     public static class WiiCommonKeys
     {
         public static readonly byte[] Retail =
@@ -75,6 +75,9 @@ namespace Omega.Disc.Formats.Nintendo
         public const uint WiiMagic = 0x5D1C9EA3;
         public const int OffsetShift = 2;
         public const long PartitionTableOffset = 0x40000;
+        public const int MaxFileSystemSize = 128 * 1024 * 1024;
+        private const int PartitionInfoSize = 0x10000;
+        private const int TitleMetadataHead = 0x420;
         private readonly Stream _image;
         private readonly SharedStream? _gate;
         private readonly List<WiiPartitionHeader> _partitions = [];
@@ -162,8 +165,14 @@ namespace Omega.Disc.Formats.Nintendo
             byte[] boot = new byte[0x430];
             data.ReadExactly(boot);
             SpanReader reader = SpanReader.At(boot, 0x424);
-            uint fstOffset = reader.UInt32Big() << OffsetShift;
-            uint fstSize = reader.UInt32Big() << OffsetShift;
+            long fstOffset = (long)reader.UInt32Big() << OffsetShift;
+            long fstSize = (long)reader.UInt32Big() << OffsetShift;
+            if (fstSize > MaxFileSystemSize)
+            {
+                throw new InvalidDataException(
+                    $"the partition at 0x{partition.Offset:X} declares a {fstSize}-byte file system table, past "
+                    + $"the {MaxFileSystemSize} bytes a Wii could load");
+            }
             if (fstSize < 24 || fstOffset + fstSize > partition.DecryptedSize)
             {
                 throw new InvalidDataException(
@@ -188,7 +197,7 @@ namespace Omega.Disc.Formats.Nintendo
         private static WiiFstEntry[] ReadEntries(byte[] table)
         {
             uint count = BinaryPrimitives.ReadUInt32BigEndian(table.AsSpan(8, 4));
-            if (count < 1 || (count * 12) + 1 > table.Length)
+            if (count < 1 || (count * 12L) + 1 > table.Length)
             {
                 throw new InvalidDataException(
                     $"a file system table of {table.Length} bytes cannot hold {count} entries");
@@ -208,7 +217,7 @@ namespace Omega.Disc.Formats.Nintendo
                     : ReadName(table, nameTable, nameOffset, index);
                 entries[index] = new WiiFstEntry(
                     name,
-                    isDirectory ? 0 : offset << OffsetShift,
+                    isDirectory ? 0 : (long)offset << OffsetShift,
                     isDirectory ? 0 : size,
                     isDirectory ? size : (uint)(index + 1),
                     index,
@@ -264,7 +273,13 @@ namespace Omega.Disc.Formats.Nintendo
                     continue;
                 }
                 long tableOffset = (long)tableValue << 2;
-                if (tableOffset < 0 || tableOffset + (count * 8L) > _image.Length)
+                if (count * 8L > PartitionInfoSize)
+                {
+                    throw new InvalidDataException(
+                        $"group {group} of the partition table lists {count} partitions, more than the "
+                        + $"{PartitionInfoSize}-byte partition information area holds");
+                }
+                if (tableOffset + (count * 8L) > _image.Length)
                 {
                     throw new InvalidDataException(
                         $"the partition table at 0x{tableOffset:X} holds {count} entries, past the end of the "
@@ -346,7 +361,7 @@ namespace Omega.Disc.Formats.Nintendo
                 return partition;
             }
             _image.Position = at;
-            byte[] tmd = new byte[partition.TmdSize];
+            byte[] tmd = new byte[Math.Min(partition.TmdSize, TitleMetadataHead)];
             _image.ReadExactly(tmd);
             SpanReader reader = SpanReader.Over(tmd);
             uint signatureType = reader.UInt32Big();

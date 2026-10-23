@@ -18,7 +18,7 @@ public sealed class RingBone
     public static RingBone Parse(ReadOnlySpan<byte> blob, int off, int end, int index)
     {
         int count = (int)BinaryRead.U32(blob, off + WeightCountOffset);
-        if (off + WeightsOffset + ((long)count * WeightStride) > end)
+        if (count < 0 || off + WeightsOffset + ((long)count * WeightStride) > end)
         {
             count = System.Math.Max(0, (end - off - WeightsOffset) / WeightStride);
         }

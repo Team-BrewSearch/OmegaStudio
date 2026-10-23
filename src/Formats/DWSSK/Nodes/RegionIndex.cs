@@ -60,7 +60,7 @@ internal sealed class RegionIndex
                 {
                     JObj man = J.O(PyJson.Loads(File.ReadAllBytes(Path.Combine(wad, "_manifest.json"))));
                     return (Platforms.Parse(J.S(man["platform"])), J.A(man["entries"]).Select(J.O).Select(m => (J.I(m["type"]), J.S(m["file"]), J.U(m["hash"]))));
-                }, file => File.ReadAllBytes(Path.Combine(wad, file)))
+                }, file => File.ReadAllBytes(NodeFactory.Inside(wad, file)))
                 : FromBytes(wad, () => File.ReadAllBytes(wad), Paths.PlatformOf(wad));
         }
     }

@@ -1,37 +1,33 @@
+using System.ComponentModel;
 using CommunityToolkit.Mvvm.ComponentModel;
 using Omega.Plugins;
 namespace OmegaStudio.ViewModels;
 public partial class TreeItemViewModel : ObservableObject
 {
+    private static readonly PropertyChangedEventArgs s_hasChildrenChanged = new(nameof(HasChildren));
     [ObservableProperty]
     public partial bool IsExpanded { get; set; }
-    private readonly Lock _loadLock = new();
-    private volatile List<TreeItemViewModel>? _built;
+    [ObservableProperty]
+    public partial string? Highlight { get; set; }
+    private int _generation;
     private bool _published;
+    private Lazy<List<TreeItemViewModel>>? _rows;
     public void EnsureLoaded()
     {
-        if (_published || Loader is null)
+        if (_published || _rows is not { } rows)
         {
             return;
         }
         _published = true;
-        Children.Clear();
-        Children.Add(new TreeItemViewModel("…", string.Empty, "loading"));
-        _ = BuildAsync();
+        SetChildren([new TreeItemViewModel("…", string.Empty, "loading")]);
+        _ = BuildAsync(rows, _generation);
     }
-    internal void CancelPendingBuild()
-    {
-        _pendingCts?.Cancel();
-        _pendingCts = null;
-    }
-    private CancellationTokenSource? _pendingCts;
     internal Action<string, int, long>? OnBuilt { get; set; }
     public TreeItemViewModel(string header, string detail = "", string kind = "")
     {
         Header = header;
         Detail = detail;
         Kind = kind;
-        HeaderSegments.Add(new TextSegment(header, false));
     }
     public string Header { get; }
     [ObservableProperty]
@@ -40,27 +36,56 @@ public partial class TreeItemViewModel : ObservableObject
     public partial string Detail { get; set; }
     public IAssetNode? Node { get; set; }
     public TreeItemViewModel? Source { get; init; }
-    public ObservableCollection<TreeItemViewModel> Children { get; } = [];
-    public ObservableCollection<TextSegment> HeaderSegments { get; } = [];
+    public TreeItemViewModel? Parent { get; private set; }
+    public int Depth
+    {
+        get
+        {
+            int depth = 0;
+            for (TreeItemViewModel? up = Parent; up is not null; up = up.Parent)
+            {
+                depth++;
+            }
+            return depth;
+        }
+    }
+    public IReadOnlyList<TreeItemViewModel> Children { get; private set; } = [];
+    public bool HasChildren => Children.Count > 0 || (_rows is not null && !_published);
+    internal OutlinerRows? Outline { get; set; }
     public Func<IEnumerable<TreeItemViewModel>>? Loader
     {
         get;
         set
         {
             field = value;
-            CancelPendingBuild();
-            _built = null;
+            _generation++;
             _published = false;
-            Children.Clear();
-            if (value is not null)
-            {
-                Children.Add(new TreeItemViewModel("…"));
-            }
+            _rows = value is null ? null : new Lazy<List<TreeItemViewModel>>(() => Build(value));
+            SetChildren([]);
         }
+    }
+    public IReadOnlyList<TreeItemViewModel> BuildChildren()
+    {
+        return _rows?.Value ?? [];
+    }
+    public IEnumerable<TreeItemViewModel> PeekChildren()
+    {
+        Lazy<List<TreeItemViewModel>>? rows = _rows;
+        return rows is { IsValueCreated: true } ? rows.Value : Loader?.Invoke() ?? [];
+    }
+    public void SetChildren(IReadOnlyList<TreeItemViewModel> rows)
+    {
+        ArgumentNullException.ThrowIfNull(rows);
+        foreach (TreeItemViewModel row in rows)
+        {
+            row.Parent = this;
+        }
+        Children = rows;
+        OnPropertyChanged(s_hasChildrenChanged);
+        Changed();
     }
     public void Reload(Func<IEnumerable<TreeItemViewModel>> loader)
     {
-        CancelPendingBuild();
         bool wasExpanded = IsExpanded;
         Loader = loader;
         if (wasExpanded)
@@ -74,92 +99,51 @@ public partial class TreeItemViewModel : ObservableObject
         {
             EnsureLoaded();
         }
+        Changed();
     }
-    private async Task BuildAsync()
+    private void Changed()
     {
-        IReadOnlyList<TreeItemViewModel> items;
+        TreeItemViewModel row = this;
+        while (row.Parent is { } parent)
+        {
+            if (!parent.IsExpanded)
+            {
+                return;
+            }
+            row = parent;
+        }
+        row.Outline?.Refresh(this);
+    }
+    private async Task BuildAsync(Lazy<List<TreeItemViewModel>> rows, int generation)
+    {
         System.Diagnostics.Stopwatch watch = System.Diagnostics.Stopwatch.StartNew();
+        List<TreeItemViewModel> items = await Task.Run(() => rows.Value);
+        await Avalonia.Threading.Dispatcher.UIThread.InvokeAsync(() =>
+        {
+            if (generation != _generation)
+            {
+                return;
+            }
+            OnBuilt?.Invoke(Header, items.Count, watch.ElapsedMilliseconds);
+            SetChildren(items);
+        });
+    }
+    private List<TreeItemViewModel> Build(Func<IEnumerable<TreeItemViewModel>> loader)
+    {
+        List<TreeItemViewModel> rows;
         try
         {
-            CancellationTokenSource cts = new();
-            _pendingCts = cts;
-            items = await Task.Run(Build, cts.Token);
+            rows = [.. loader()];
         }
-        finally
+        catch (Exception ex)
         {
-            _pendingCts = null;
+            rows = [new TreeItemViewModel("Error", ex.Message)];
         }
-        watch.Stop();
-        OnBuilt?.Invoke(Header, items.Count, watch.ElapsedMilliseconds);
-        await Avalonia.Threading.Dispatcher.UIThread.InvokeAsync(
-            () => Publish((IReadOnlyList<TreeItemViewModel>)items));
-    }
-    private void Publish(IReadOnlyList<TreeItemViewModel> items)
-    {
-        if (!_published)
+        foreach (TreeItemViewModel row in rows)
         {
-            return;
+            row.Parent = this;
         }
-        Children.Clear();
-        foreach (TreeItemViewModel child in items)
-        {
-            Children.Add(child);
-        }
-    }
-    public IReadOnlyList<TreeItemViewModel> Build()
-    {
-        if (_built is { } already)
-        {
-            return already;
-        }
-        lock (_loadLock)
-        {
-            if (_built is { } raced)
-            {
-                return raced;
-            }
-            if (Loader is not { } loader)
-            {
-                return _built = [];
-            }
-            try
-            {
-                return _built = [.. loader()];
-            }
-            catch (Exception ex)
-            {
-                return _built = [new TreeItemViewModel("Error", ex.Message)];
-            }
-        }
-    }
-    public void UpdateSearchHighlight(string? searchText)
-    {
-        HeaderSegments.Clear();
-        if (string.IsNullOrEmpty(Header))
-        {
-            HeaderSegments.Add(new TextSegment("", false));
-            return;
-        }
-        if (string.IsNullOrEmpty(searchText))
-        {
-            HeaderSegments.Add(new TextSegment(Header, false));
-            return;
-        }
-        int startIndex = 0;
-        int matchIndex;
-        while ((matchIndex = Header.IndexOf(searchText, startIndex, StringComparison.OrdinalIgnoreCase)) >= 0)
-        {
-            if (matchIndex > startIndex)
-            {
-                HeaderSegments.Add(new TextSegment(Header[startIndex..matchIndex], false));
-            }
-            HeaderSegments.Add(new TextSegment(Header.Substring(matchIndex, searchText.Length), true));
-            startIndex = matchIndex + searchText.Length;
-        }
-        if (startIndex < Header.Length)
-        {
-            HeaderSegments.Add(new TextSegment(Header[startIndex..], false));
-        }
+        return rows;
     }
     public override string ToString()
     {

@@ -14,9 +14,9 @@ internal static class Failure
 }
 internal static class Bin
 {
-    public static void Need(ReadOnlySpan<byte> b, int o, int n)
+    public static void Need(ReadOnlySpan<byte> b, int o, long n)
     {
-        if (o < 0 || n < 0 || (long)o + n > b.Length)
+        if (o < 0 || n < 0 || o + n > b.Length)
         {
             throw new StructException(
                 $"reading {n} byte(s) at 0x{Math.Max(0, o):X} runs past the end of a {b.Length}-byte blob");
@@ -64,7 +64,7 @@ internal static class Bin
     }
     public static uint[] U32s(ReadOnlySpan<byte> b, int o, int n, bool big)
     {
-        Need(b, o, 4 * n);
+        Need(b, o, 4L * n);
         uint[] v = new uint[n];
         for (int i = 0; i < n; i++)
         {
@@ -74,7 +74,7 @@ internal static class Bin
     }
     public static float[] F32s(ReadOnlySpan<byte> b, int o, int n, bool big)
     {
-        Need(b, o, 4 * n);
+        Need(b, o, 4L * n);
         float[] v = new float[n];
         for (int i = 0; i < n; i++)
         {

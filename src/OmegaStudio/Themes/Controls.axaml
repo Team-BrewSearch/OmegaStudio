@@ -1,12 +1,85 @@
 <Styles xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+  <Styles.Resources>
+    <StreamGeometry x:Key="OutlinerCollapsedChevron">M 1,0 10,10 l -9,10 -1,-1 L 8,10 -0,1 Z</StreamGeometry>
+    <StreamGeometry x:Key="OutlinerExpandedChevron">M0,1 L10,10 20,1 19,0 10,8 1,0 Z</StreamGeometry>
+    <ControlTheme x:Key="OutlinerChevron" TargetType="ToggleButton">
+      <Setter Property="Width" Value="12" />
+      <Setter Property="Height" Value="12" />
+      <Setter Property="Margin" Value="12,0,6,0" />
+      <Setter Property="Focusable" Value="False" />
+      <Setter Property="VerticalAlignment" Value="Center" />
+      <Setter Property="Template">
+        <ControlTemplate>
+          <Border Background="Transparent">
+            <Path Name="ChevronPath"
+                  Data="{StaticResource OutlinerCollapsedChevron}"
+                  Fill="{DynamicResource TreeViewItemForeground}"
+                  Stretch="Uniform"
+                  HorizontalAlignment="Center"
+                  VerticalAlignment="Center" />
+          </Border>
+        </ControlTemplate>
+      </Setter>
+      <Style Selector="^:checked /template/ Path#ChevronPath">
+        <Setter Property="Data" Value="{StaticResource OutlinerExpandedChevron}" />
+      </Style>
+      <Style Selector="^:disabled /template/ Path#ChevronPath">
+        <Setter Property="IsVisible" Value="False" />
+      </Style>
+    </ControlTheme>
+    <ControlTheme x:Key="OutlinerRow" TargetType="ListBoxItem">
+      <Setter Property="Background" Value="{DynamicResource TreeViewItemBackground}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource TreeViewItemBorderBrush}" />
+      <Setter Property="BorderThickness" Value="{DynamicResource TreeViewItemBorderThemeThickness}" />
+      <Setter Property="Foreground" Value="{DynamicResource TreeViewItemForeground}" />
+      <Setter Property="MinHeight" Value="{DynamicResource RowHeight}" />
+      <Setter Property="VerticalContentAlignment" Value="Center" />
+      <Setter Property="Template">
+        <ControlTemplate>
+          <ContentPresenter Name="PART_ContentPresenter"
+                            Background="{TemplateBinding Background}"
+                            BorderBrush="{TemplateBinding BorderBrush}"
+                            BorderThickness="{TemplateBinding BorderThickness}"
+                            CornerRadius="{TemplateBinding CornerRadius}"
+                            ContentTemplate="{TemplateBinding ContentTemplate}"
+                            Content="{TemplateBinding Content}"
+                            Padding="{TemplateBinding Padding}"
+                            VerticalContentAlignment="{TemplateBinding VerticalContentAlignment}"
+                            HorizontalContentAlignment="{TemplateBinding HorizontalContentAlignment}" />
+        </ControlTemplate>
+      </Setter>
+      <Style Selector="^:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+        <Setter Property="Background" Value="{DynamicResource TreeViewItemBackgroundPointerOver}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource TreeViewItemBorderBrushPointerOver}" />
+        <Setter Property="Foreground" Value="{DynamicResource TreeViewItemForegroundPointerOver}" />
+      </Style>
+      <Style Selector="^:pressed:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+        <Setter Property="Background" Value="{DynamicResource TreeViewItemBackgroundPressed}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource TreeViewItemBorderBrushPressed}" />
+        <Setter Property="Foreground" Value="{DynamicResource TreeViewItemForegroundPressed}" />
+      </Style>
+      <Style Selector="^:selected /template/ ContentPresenter#PART_ContentPresenter">
+        <Setter Property="Background" Value="{DynamicResource TreeViewItemBackgroundSelected}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource TreeViewItemBorderBrushSelected}" />
+        <Setter Property="Foreground" Value="{DynamicResource TreeViewItemForegroundSelected}" />
+      </Style>
+      <Style Selector="^:selected:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+        <Setter Property="Background" Value="{DynamicResource TreeViewItemBackgroundSelectedPointerOver}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource TreeViewItemBorderBrushSelectedPointerOver}" />
+        <Setter Property="Foreground" Value="{DynamicResource TreeViewItemForegroundSelectedPointerOver}" />
+      </Style>
+      <Style Selector="^:selected:pressed:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+        <Setter Property="Background" Value="{DynamicResource TreeViewItemBackgroundSelectedPressed}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource TreeViewItemBorderBrushSelectedPressed}" />
+        <Setter Property="Foreground" Value="{DynamicResource TreeViewItemForegroundSelectedPressed}" />
+      </Style>
+    </ControlTheme>
+  </Styles.Resources>
   <Style Selector="TabItem">
     <Setter Property="FontSize" Value="{DynamicResource FontSizeBody}" />
     <Setter Property="Padding" Value="12,5" />
     <Setter Property="MinHeight" Value="30" />
-  </Style>
-  <Style Selector="TreeViewItem">
-    <Setter Property="MinHeight" Value="{DynamicResource RowHeight}" />
   </Style>
   <Style Selector="MenuItem">
     <Setter Property="FontSize" Value="{DynamicResource FontSizeBody}" />
@@ -55,7 +128,7 @@
     <Setter Property="Foreground" Value="{DynamicResource TextMuted}" />
     <Setter Property="VerticalAlignment" Value="Center" />
   </Style>
-  <Style Selector="TextBlock.hit">
+  <Style Selector="Run.hit">
     <Setter Property="Foreground" Value="{DynamicResource SearchHit}" />
     <Setter Property="FontWeight" Value="SemiBold" />
   </Style>

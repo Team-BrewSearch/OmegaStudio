@@ -160,31 +160,4 @@ namespace Omega.Disc.IO
             return rem == 0 ? 0 : unit - rem;
         }
     }
-    public static class Endian
-    {
-        public static bool Spells(ReadOnlySpan<byte> bytes, string ascii)
-        {
-            return bytes.SequenceEqual(Encoding.ASCII.GetBytes(ascii));
-        }
-        public static string Hex(ReadOnlySpan<byte> bytes)
-        {
-            if (bytes.Length == 0)
-            {
-                return string.Empty;
-            }
-            return string.Create(bytes.Length * 2, bytes, static (span, source) =>
-            {
-                for (int i = 0; i < source.Length; i++)
-                {
-                    byte value = source[i];
-                    span[i * 2] = HexDigit(value >> 4);
-                    span[(i * 2) + 1] = HexDigit(value & 0xF);
-                }
-            });
-        }
-        private static char HexDigit(int nibble)
-        {
-            return (char)(nibble < 10 ? ('0' + nibble) : ('a' + (nibble - 10)));
-        }
-    }
 }

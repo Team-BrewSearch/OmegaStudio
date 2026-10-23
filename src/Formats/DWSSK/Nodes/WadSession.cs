@@ -1,3 +1,4 @@
+using System.Runtime.CompilerServices;
 using DWSSK.Formats.Core;
 using DWSSK.Formats.Wad;
 using Omega.Plugins;
@@ -125,38 +126,39 @@ internal sealed class WadGroup : SlotGroup
         return Sessions.Select(s => s.Slots);
     }
 }
-internal static class GlobalWads
+internal sealed class GlobalWads
 {
-    private static readonly Lock s_lock = new();
-    private static Func<WadGroup?>? s_latest;
-    private static RegionIndex? s_region;
-    public static void Offer(Func<WadGroup?> provider, RegionIndex? region)
+    private static readonly ConditionalWeakTable<IAssetNode, GlobalWads> s_below = new();
+    private readonly Lazy<WadGroup?> _wad;
+    public GlobalWads(Func<GlobalWads, WadGroup?> open, RegionIndex? region)
     {
-        Lazy<WadGroup?> once = new(provider);
-        lock (s_lock)
-        {
-            s_latest = () => once.Value;
-            s_region = region;
-        }
+        _wad = new(() => open(this));
+        Region = region;
     }
-    public static RegionIndex? LatestRegion
+    public RegionIndex? Region { get; }
+    public WadGroup? Open()
     {
-        get
+        return _wad.Value;
+    }
+    public static GlobalWads? Above(IEnumerable<IAssetNode> children)
+    {
+        foreach (IAssetNode child in children)
         {
-            lock (s_lock)
+            if (s_below.TryGetValue(child is RecognizedAsset r ? r.Inner : child, out GlobalWads? found))
             {
-                return s_region;
+                return found;
             }
         }
+        return null;
     }
-    public static WadGroup? Latest()
+    public IReadOnlyList<IAssetNode> Adopt(IEnumerable<IAssetNode> children)
     {
-        Func<WadGroup?>? f;
-        lock (s_lock)
+        List<IAssetNode> list = [.. children];
+        foreach (IAssetNode child in list)
         {
-            f = s_latest;
+            s_below.AddOrUpdate(child, this);
         }
-        return f?.Invoke();
+        return list;
     }
     public static string? FindNear(string path)
     {

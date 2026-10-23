@@ -54,19 +54,20 @@ public class AudioPlaybackEngine : IDisposable
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
         Reset();
-        _ = Api();
-        _ = _al!.GetError();
-        _source = _al.GenSource();
-        _buffer = _al.GenBuffer();
+        AL al = Api();
+        _ = al.GetError();
+        _source = al.GenSource();
+        _buffer = al.GenBuffer();
     }
     public void UploadPcm(byte[] pcm, int channels, int bitsPerSample, int sampleRate)
     {
         ArgumentNullException.ThrowIfNull(pcm);
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(sampleRate);
-        if (_al is null)
+        if (_al is null || _source == 0 || _buffer == 0)
         {
             throw new InvalidOperationException("Engine not initialized");
         }
+        _context?.MakeCurrent();
         BufferFormat format = (channels, bitsPerSample) switch
         {
             (1, 8) => BufferFormat.Mono8,
@@ -84,7 +85,7 @@ public class AudioPlaybackEngine : IDisposable
     }
     public void Play()
     {
-        if (_al is null)
+        if (_al is null || _source == 0)
         {
             return;
         }
@@ -94,7 +95,7 @@ public class AudioPlaybackEngine : IDisposable
     }
     public void Pause()
     {
-        if (_al is null)
+        if (_al is null || _source == 0)
         {
             return;
         }
@@ -104,7 +105,7 @@ public class AudioPlaybackEngine : IDisposable
     }
     public void Stop()
     {
-        if (_al is null)
+        if (_al is null || _source == 0)
         {
             return;
         }
@@ -117,6 +118,7 @@ public class AudioPlaybackEngine : IDisposable
     {
         if (_al is not null)
         {
+            _context?.MakeCurrent();
             if (_source != 0)
             {
                 _al.SourceStop(_source);
@@ -127,14 +129,11 @@ public class AudioPlaybackEngine : IDisposable
                 _al.DeleteBuffer(_buffer);
             }
             _ = _al.GetError();
-            _al.Dispose();
         }
         _source = 0;
         _buffer = 0;
         _sampleRate = 0;
         _frameCount = 0;
-        _al = null;
-        ReleaseContext();
     }
     private void ReleaseContext()
     {
@@ -148,15 +147,11 @@ public class AudioPlaybackEngine : IDisposable
         _context?.Dispose();
         _context = null;
     }
-    private AL? Api()
+    private AL Api()
     {
-        if (_al is not null)
-        {
-            return _al;
-        }
-        ObjectDisposedException.ThrowIf(_disposed, this);
-        _context = new AudioContext(null, 0, 0, true);
-        _al = AL.GetApi(true);
+        _context ??= new AudioContext(null, 0, 0, true);
+        _al ??= AL.GetApi(true);
+        _context.MakeCurrent();
         return _al;
     }
     private void Queue()
@@ -183,6 +178,9 @@ public class AudioPlaybackEngine : IDisposable
         }
         _disposed = true;
         Reset();
+        _al?.Dispose();
+        _al = null;
+        ReleaseContext();
         GC.SuppressFinalize(this);
     }
 }

@@ -100,6 +100,11 @@ internal sealed class WadArchive
         int dsize = checked((int)Bin.U32(raw, 0x50, false));
         int csize = checked((int)Bin.U32(raw, 0x54, false));
         ReadOnlySpan<byte> comp = Bin.Slice(raw, Header, Header + csize);
+        if (dsize < 0 || dsize > Tjzip.MaxOutput(comp.Length) || dsize > Array.MaxLength - Header)
+        {
+            throw new InvalidDataException(
+                $"HIG! container declares {dsize} bytes at 0x50, more than its {comp.Length} compressed bytes hold");
+        }
         byte[] image = new byte[Header + dsize];
         raw[..Header].CopyTo(image);
         Tjzip.Decompress(comp, dsize).CopyTo(image, Header);

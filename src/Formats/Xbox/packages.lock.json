@@ -1,0 +1,16 @@
+{
+  "version": 1,
+  "dependencies": {
+    "net10.0": {
+      "omega.disc": {
+        "type": "Project",
+        "dependencies": {
+          "Omega.Plugins": "[1.0.0, )"
+        }
+      },
+      "omega.plugins": {
+        "type": "Project"
+      }
+    }
+  }
+}

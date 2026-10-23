@@ -4,7 +4,6 @@ using Avalonia.Controls;
 using Avalonia.Controls.Primitives;
 using Avalonia.Input;
 using Avalonia.Interactivity;
-using Avalonia.LogicalTree;
 using Avalonia.Markup.Xaml;
 using OmegaStudio.Rendering;
 using OmegaStudio.ViewModels;
@@ -17,14 +16,15 @@ public partial class MainWindow : Window
     private readonly GlViewport? _vp;
     private readonly ScrollViewer? _consoleScroll;
     private readonly TextureView? _texture;
-    private readonly TreeView? _outliner;
+    private readonly Outliner? _outliner;
     public MainWindow()
     {
         InitializeComponent();
         _vp = this.FindControl<GlViewport>("Viewport");
         _consoleScroll = this.FindControl<ScrollViewer>("ConsoleScroll");
         _texture = this.FindControl<TextureView>("TexturePreviewView");
-        _outliner = this.FindControl<TreeView>("OutlinerTree");
+        _outliner = this.FindControl<Outliner>("OutlinerTree");
+        _outliner?.AddHandler(ContextRequestedEvent, Tree_OnContextRequested, RoutingStrategies.Tunnel);
         Slider? seek = this.FindControl<Slider>("AudioSeek");
         if (seek is not null)
         {
@@ -44,10 +44,22 @@ public partial class MainWindow : Window
         }
         DataContextChanged += OnDataContextChanged;
     }
-    public async Task CloseAsync(MainViewModel vm)
+    private bool _closeConfirmed;
+    protected override void OnClosing(WindowClosingEventArgs e)
+    {
+        base.OnClosing(e);
+        if (_closeConfirmed || e.Cancel || DataContext is not MainViewModel { HasUnsavedChanges: true } vm)
+        {
+            return;
+        }
+        e.Cancel = true;
+        _ = ConfirmCloseAsync(vm);
+    }
+    private async Task ConfirmCloseAsync(MainViewModel vm)
     {
         if (await vm.CanDiscardAsync())
         {
+            _closeConfirmed = true;
             Close();
         }
     }
@@ -117,6 +129,20 @@ public partial class MainWindow : Window
             {
                 Avalonia.Threading.Dispatcher.UIThread.Post(() => _consoleScroll?.ScrollToEnd());
             }
+            else if (args.PropertyName == nameof(MainViewModel.SelectedItem))
+            {
+                _menuWaits = false;
+            }
+            else if (args.PropertyName == nameof(MainViewModel.HasCommands) && _menuWaits && !vm.IsPresenting)
+            {
+                _menuWaits = false;
+                if (vm is { HasCommands: true, SelectedItem: { } item }
+                    && _outliner is { ContextMenu: { } menu } outliner
+                    && outliner.ContainerFromItem(item) is { } row)
+                {
+                    menu.Open(row);
+                }
+            }
         };
         vm.PropertyChanged += _consolePropertyChangedHandler;
     }
@@ -128,19 +154,20 @@ public partial class MainWindow : Window
     }
     private bool _dragging, _panning;
     private Point _lastPointer;
-    private void Tree_OnPointerPressed(object? sender, PointerPressedEventArgs e)
+    private bool _menuWaits;
+    private void TreeMenu_OnOpening(object? sender, CancelEventArgs e)
     {
-        if (!e.GetCurrentPoint(this).Properties.IsRightButtonPressed || DataContext is not MainViewModel vm)
+        if (DataContext is MainViewModel { IsPresenting: true })
         {
-            return;
+            e.Cancel = true;
+            _menuWaits = true;
         }
-        TreeViewItem? row = (e.Source as Visual)
-            ?.GetLogicalAncestors()
-            .OfType<TreeViewItem>()
-            .FirstOrDefault();
-        if (row?.DataContext is TreeItemViewModel under)
+    }
+    private void Tree_OnContextRequested(object? sender, ContextRequestedEventArgs e)
+    {
+        if (e.TryGetPosition(null, out _) && Outliner.RowUnder(e.Source) is null)
         {
-            vm.SelectedItem = under;
+            e.Handled = true;
         }
     }
     private void Overlay_OnPointerPressed(object? sender, PointerPressedEventArgs e)

@@ -9,7 +9,6 @@ public abstract class StreamingAssetNode : BinaryAssetNode, IBinaryAsset
 {
     public const int HeadWindow = 4096;
     private readonly IPayloadSource _source;
-    private byte[]? _cache;
     private byte[]? _head;
     protected StreamingAssetNode(
         string name,
@@ -28,14 +27,22 @@ public abstract class StreamingAssetNode : BinaryAssetNode, IBinaryAsset
     {
         get
         {
-            return _cache ??= _source.ReadAll();
+            byte[]? cached = Cached;
+            if (cached is not null)
+            {
+                PayloadCache.Touch(this);
+                return cached;
+            }
+            byte[] payload = _source.ReadAll();
+            PayloadCache.Keep(this, payload);
+            return payload;
         }
     }
     ReadOnlySpan<byte> IBinaryAsset.Head
     {
         get
         {
-            byte[]? cached = _cache;
+            byte[]? cached = Cached;
             if (cached is not null)
             {
                 return cached.Length <= HeadWindow ? cached : cached.AsSpan(0, HeadWindow);
@@ -51,13 +58,16 @@ public abstract class StreamingAssetNode : BinaryAssetNode, IBinaryAsset
         }
     }
     protected IPayloadSource Source => _source;
+    internal byte[]? Cached { get; set; }
+    internal LinkedListNode<PayloadCache.Entry>? Kept { get; set; }
     public void ReleasePayload()
     {
-        _cache = null;
+        PayloadCache.Release(this);
     }
+    [Obsolete("Use ReleasePayload; the head window is small and is kept. This will be removed at the next contract version.")]
     public void ReleaseAll()
     {
-        _cache = null;
+        PayloadCache.Release(this);
         _head = null;
     }
 }

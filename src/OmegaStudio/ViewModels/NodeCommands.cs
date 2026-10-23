@@ -1,5 +1,4 @@
 using Omega.Plugins;
-using OmegaStudio.Audio;
 using OmegaStudio.Plugins;
 using OmegaStudio.Services;
 namespace OmegaStudio.ViewModels;
@@ -14,7 +13,8 @@ internal static class NodeCommands
         new FileFilter("BMP image", "*.bmp"),
     ];
     private static readonly FileFilter s_imageRead = new("Image", "*.png", "*.jpg", "*.jpeg", "*.bmp");
-    public static IReadOnlyList<AssetCommand> For(IAssetNode node, AnimationClip? clip, float fps, Func<int> videoFrame)
+    public static IReadOnlyList<AssetCommand> For(
+        IAssetNode node, AnimationClip? clip, float fps, Func<int> videoFrame, string audioExtension, string? soundtrackExtension)
     {
         List<AssetCommand> own = [], exports = [], replacements = [], extra = [];
         if (node is IBinaryAsset binary)
@@ -25,9 +25,9 @@ internal static class NodeCommands
                 replacements.Add(ReplaceBytes(node));
             }
         }
-        if (node is IAudioAsset audio)
+        if (node is IAudioAsset)
         {
-            own.Add(ExtractAudio(node, audio));
+            own.Add(ExtractAudio(node, audioExtension));
         }
         if (node is IImageAsset image)
         {
@@ -45,7 +45,10 @@ internal static class NodeCommands
         {
             exports.Add(ExportFrame(node, videoFrame));
             exports.Add(ExportVideo(node));
-            exports.Add(ExportSoundtrack(node));
+            if (soundtrackExtension is not null)
+            {
+                exports.Add(ExportSoundtrack(node, soundtrackExtension));
+            }
             extra.Add(ExportFrames(node));
         }
         if (node is ICommandSource source)
@@ -85,7 +88,7 @@ internal static class NodeCommands
     }
     private static AssetCommand Extract(IAssetNode node, IBinaryAsset binary)
     {
-        string extension = string.IsNullOrEmpty(NodeAccess.Extension(binary)) ? ".bin" : NodeAccess.Extension(binary);
+        string extension = NodeAccess.Extension(binary) is { Length: > 0 } found ? found : ".bin";
         return new AssetCommand
         {
             Title = "Extract…",
@@ -112,11 +115,16 @@ internal static class NodeCommands
             Execute = context =>
             {
                 IBinaryAsset target = (IBinaryAsset)context.Node;
-                byte[] bytes = File.ReadAllBytes(context.Path!);
-                if (bytes.Length == 0)
+                long length = new FileInfo(context.Path!).Length;
+                if (length == 0)
                 {
                     throw new InvalidDataException("the file is empty");
                 }
+                if (length > Array.MaxLength)
+                {
+                    throw new InvalidDataException($"the file is {Sizes.Describe(length)}, over the {Sizes.Describe(Array.MaxLength)} limit");
+                }
+                byte[] bytes = File.ReadAllBytes(context.Path!);
                 int was = target.Size;
                 target.ReplaceBytes(bytes);
                 string delta = bytes.Length == was
@@ -129,13 +137,13 @@ internal static class NodeCommands
             },
         };
     }
-    private static AssetCommand ExtractAudio(IAssetNode node, IAudioAsset audio)
+    private static string AudioLabel(string extension)
     {
-        string extension = PluginGuard.Try(
-            $"Reading the audio of '{NodeAccess.Name(node)}'",
-            () => AudioFormats.ExtensionOf(NodeAccess.EncodedAudio(audio)),
-            ".wav");
-        string label = extension == ".ogg" ? "OGG Vorbis" : "WAV audio";
+        return extension == ".ogg" ? "OGG Vorbis" : "WAV audio";
+    }
+    private static AssetCommand ExtractAudio(IAssetNode node, string extension)
+    {
+        string label = AudioLabel(extension);
         return new AssetCommand
         {
             Title = "Extract Audio…",
@@ -307,15 +315,15 @@ internal static class NodeCommands
             },
         };
     }
-    private static AssetCommand ExportSoundtrack(IAssetNode node)
+    private static AssetCommand ExportSoundtrack(IAssetNode node, string extension)
     {
         return new AssetCommand
         {
             Title = "Export soundtrack",
             Kind = AssetCommandKind.SaveFile,
             Role = AssetCommandRole.Export,
-            Filters = [new FileFilter("Soundtrack (WAV or Ogg Vorbis, as the video stores it)", "*.wav", "*.ogg")],
-            SuggestedFileName = SuggestName(node, ".wav"),
+            Filters = [new FileFilter($"Soundtrack ({AudioLabel(extension)})", "*" + extension)],
+            SuggestedFileName = SuggestName(node, extension),
             Execute = context =>
             {
                 byte[] sound = ((IVideoAsset)context.Node).Soundtrack.ToArray();
@@ -323,9 +331,8 @@ internal static class NodeCommands
                 {
                     throw new InvalidOperationException("this video has no soundtrack");
                 }
-                string path = Path.ChangeExtension(context.Path!, AudioFormats.ExtensionOf(sound));
-                AtomicSave.Write(path, sound);
-                context.Log($"Exported the soundtrack of {NodeAccess.Name(node)} to {Path.GetFileName(path)} ({Sizes.Describe(sound.Length)}).");
+                AtomicSave.Write(context.Path!, sound);
+                context.Log($"Exported the soundtrack of {NodeAccess.Name(node)} to {Path.GetFileName(context.Path!)} ({Sizes.Describe(sound.Length)}).");
             },
         };
     }

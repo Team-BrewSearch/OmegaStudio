@@ -6,17 +6,20 @@ internal sealed class PluginLoadContext : AssemblyLoadContext
     private const string EmbeddedPrefix = "omega/deps/";
     private static readonly string[] s_shared = ["Omega.Plugins"];
     private readonly AssemblyDependencyResolver _resolver;
-    private readonly string _path;
     private Assembly? _plugin;
     public PluginLoadContext(string assemblyPath)
         : base(name: Path.GetFileNameWithoutExtension(assemblyPath), isCollectible: false)
     {
-        _path = assemblyPath;
         _resolver = new AssemblyDependencyResolver(assemblyPath);
     }
-    public Assembly LoadPlugin()
+    public Assembly LoadPlugin(byte[] image)
     {
-        return _plugin ??= LoadFromAssemblyPath(_path);
+        if (_plugin is null)
+        {
+            using MemoryStream stream = new(image, writable: false);
+            _plugin = LoadFromStream(stream);
+        }
+        return _plugin;
     }
     protected override Assembly? Load(AssemblyName assemblyName)
     {

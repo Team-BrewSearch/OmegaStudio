@@ -76,8 +76,9 @@ namespace Omega.Disc.Formats.Nintendo
         public const int DiscHeaderSize = 0x100;
         public const int DiscTableOffset = 0x0C;
         public const int WiiSectorShiftValue = 15;
+        public const int MaxClusterShift = 30;
         private const uint Magic = 0x57424653;
-        private const int DeferredBudget = (int)MemoryBudget.DeferredWrites;
+        private static int DeferredBudget => (int)Math.Min(MemoryBudget.DeferredWrites, int.MaxValue / 2);
         private readonly SharedStream _shared;
         private readonly WbfsSlot?[] _slots;
         private readonly bool[] _free;
@@ -157,12 +158,26 @@ namespace Omega.Disc.Formats.Nintendo
                     $"a WBFS header at 0x08 and 0x09 declares clusters of 2^{geometry.WbfsSectorShift} bytes inside "
                     + $"container sectors of 2^{geometry.HdSectorShift} bytes, and a cluster has to be the larger");
             }
+            if (geometry.WbfsSectorShift is < WiiSectorShiftValue or > MaxClusterShift
+                || geometry.WbfsSectorSize > shared.Length)
+            {
+                throw new InvalidDataException(
+                    $"a WBFS header at 0x09 declares clusters of 2^{geometry.WbfsSectorShift} bytes, and the format "
+                    + $"uses 2^{WiiSectorShiftValue} to 2^{MaxClusterShift}, no larger than the "
+                    + $"{shared.Length}-byte file");
+            }
             long declared = geometry.HdSectorSize * (long)geometry.SectorCount;
             if (declared > shared.Length * 1.01)
             {
                 throw new InvalidDataException(
                     $"a WBFS header claims {geometry.SectorCount} container sectors of {geometry.HdSectorSize} bytes, "
                     + $"which is {declared} bytes, past the end of the {stream.Length}-byte file");
+            }
+            if (geometry.MaxSlots < 1)
+            {
+                throw new InvalidDataException(
+                    $"a WBFS header declares {geometry.TotalWbfsSectors} clusters of {geometry.WbfsSectorSize} bytes, "
+                    + "whose free-block map leaves no room for a disc table");
             }
             return new WbfsContainer(shared, geometry, ReadSlots(shared.Stream, geometry), ReadFreeBlocks(shared.Stream, geometry));
         }
@@ -263,20 +278,32 @@ namespace Omega.Disc.Formats.Nintendo
                 }
                 writes.Add((WriteOffset(slot, clusterIndex), bytes));
             }
-            foreach ((long destination, byte[] cluster) in writes)
+            bool reopened = !_shared.CanWrite;
+            _shared.Reopen(readOnly: false);
+            try
             {
-                _shared.WriteAt(destination, cluster);
+                foreach ((long destination, byte[] cluster) in writes)
+                {
+                    _shared.WriteAt(destination, cluster);
+                }
+                _shared.Flush();
+                (long check, byte[] expected) = writes[0];
+                byte[] verify = new byte[expected.Length];
+                _shared.ReadExactlyAt(check, verify);
+                if (!verify.AsSpan().SequenceEqual(expected))
+                {
+                    throw new IOException(
+                        $"a cluster written to the container at 0x{check:X} did not read back as it was written");
+                }
+                _deferred.Clear();
             }
-            _shared.Flush();
-            (long check, byte[] expected) = writes[0];
-            byte[] verify = new byte[expected.Length];
-            _shared.ReadExactlyAt(check, verify);
-            if (!verify.AsSpan().SequenceEqual(expected))
+            finally
             {
-                throw new IOException(
-                    $"a cluster written to the container at 0x{check:X} did not read back as it was written");
+                if (reopened)
+                {
+                    _shared.Reopen(readOnly: true);
+                }
             }
-            _deferred.Clear();
         }
         public void VerifyTables()
         {
@@ -386,7 +413,7 @@ namespace Omega.Disc.Formats.Nintendo
         public long Capacity => _slot.LbaTable.Length * (long)_sectorSize;
         public override bool CanRead => _wbfs.Shared.CanWrite || true;
         public override bool CanSeek => true;
-        public override bool CanWrite => _wbfs.Shared.CanWrite;
+        public override bool CanWrite => _wbfs.Shared.CanWrite || _wbfs.Shared.CanReopen;
         public override long Position
         {
             get => _position;

@@ -395,7 +395,9 @@ internal static class PyJson
     }
     private sealed class Parser(string s)
     {
+        private const int MaxDepth = 512;
         private int _i;
+        private int _depth;
         public bool AtEnd => _i >= s.Length;
         public InvalidDataException Error(string what)
         {
@@ -441,9 +443,9 @@ internal static class PyJson
             switch (c)
             {
                 case '{':
-                    return Object();
+                    return Nested(Object);
                 case '[':
-                    return Array();
+                    return Nested(Array);
                 case '"':
                     return String();
                 case 't' when Lit("true"):
@@ -460,6 +462,21 @@ internal static class PyJson
                     return double.NegativeInfinity;
                 default:
                     return Number();
+            }
+        }
+        private object Nested(Func<object> parse)
+        {
+            if (++_depth > MaxDepth)
+            {
+                throw Error($"nesting deeper than {MaxDepth} levels");
+            }
+            try
+            {
+                return parse();
+            }
+            finally
+            {
+                _depth--;
             }
         }
         private JObj Object()

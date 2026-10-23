@@ -1,3 +1,4 @@
+using Omega.Plugins;
 namespace Generic.Formats;
 internal static class Magic
 {
@@ -20,7 +21,7 @@ internal static class Magic
     }
     public static bool IsImage(ReadOnlySpan<byte> data)
     {
-        return Match(s_images, data) is not null;
+        return Match(s_images, data) is not null && (!StartsWith(data, "BM"u8) || IsBitmap(data));
     }
     public static bool IsPng(ReadOnlySpan<byte> data)
     {
@@ -54,6 +55,21 @@ internal static class Magic
     private static bool IsWave(ReadOnlySpan<byte> data)
     {
         return data.Length >= 12 && data.Slice(8, 4).SequenceEqual("WAVE"u8);
+    }
+    private static bool IsBitmap(ReadOnlySpan<byte> data)
+    {
+        if (data.Length < 18)
+        {
+            return false;
+        }
+        long size = BinaryRead.U32(data, 2);
+        long pixels = BinaryRead.U32(data, 10);
+        long header = BinaryRead.U32(data, 14);
+        return BinaryRead.U32(data, 6) == 0
+            && header is >= 12 and <= 124
+            && pixels >= 14 + header
+            && size >= pixels
+            && (size <= data.Length || data.Length >= StreamingAssetNode.HeadWindow);
     }
     private static bool StartsWith(ReadOnlySpan<byte> data, ReadOnlySpan<byte> prefix)
     {

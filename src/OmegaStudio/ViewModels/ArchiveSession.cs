@@ -10,7 +10,8 @@ internal sealed class ArchiveSession : IDisposable
     public string? Path { get; private set; }
     public LoadedPlugin? Owner { get; private set; }
     public string? DisplayName => Archive?.DisplayName;
-    public bool HasChanges => Archive is { IsDirty: true };
+    public PendingFlushes? Pending { get; private set; }
+    public bool HasChanges => Archive is { IsDirty: true } || Pending is { Any: true };
     public async Task<IArchive?> OpenAsync(
         string path, PluginCatalog catalog, AssetRecognition recognition)
     {
@@ -45,13 +46,15 @@ internal sealed class ArchiveSession : IDisposable
         }
         try
         {
-            HostServices services = new(chosen.Owner, line => Logged?.Invoke(line), recognition);
+            PendingFlushes pending = new();
+            HostServices services = new(chosen.Owner, line => Logged?.Invoke(line), recognition, pending);
             IArchive archive = await Task.Run(() => chosen.Format.Open(path, services));
             Close();
             Archive = archive;
             Path = path;
             Owner = chosen.Owner;
-            await BackUpAsync(archive);
+            Pending = pending;
+            pending.Open();
             Logged?.Invoke($"Opened {name} as {chosen.Format.DisplayName}.");
             return archive;
         }
@@ -63,6 +66,8 @@ internal sealed class ArchiveSession : IDisposable
     }
     public void Close()
     {
+        Pending?.Close();
+        Pending = null;
         if (Archive is { } archive)
         {
             PluginGuard.Try("Closing the archive", archive.Dispose);
@@ -74,10 +79,24 @@ internal sealed class ArchiveSession : IDisposable
     }
     public async Task SaveAsync()
     {
-        if (Archive is not { IsDirty: true } archive)
+        if (Archive is not { } archive || !HasChanges)
         {
             Logged?.Invoke("Nothing to save.");
             return;
+        }
+        string name = System.IO.Path.GetFileName(Path ?? "The archive");
+        if (Pending is { Any: true } pending)
+        {
+            try
+            {
+                await Task.Run(pending.Flush);
+            }
+            catch (Exception ex)
+            {
+                Logged?.Invoke($"Save failed: an edited container could not be written back into {name}: {ex.GetType().Name}: {ex.Message}");
+                Logged?.Invoke($"{name} was not written and its edits are kept: change them and save again, or close without saving.");
+                return;
+            }
         }
         try
         {
@@ -90,8 +109,8 @@ internal sealed class ArchiveSession : IDisposable
             Logged?.Invoke($"Save failed: {ex.GetType().Name}: {ex.Message}");
             Logged?.Invoke(ex.StackTrace is { Length: > 0 } trace ? $"  {trace}" : string.Empty);
             Logged?.Invoke(
-                $"{System.IO.Path.GetFileName(Path ?? "The archive")} was not written. The copy beside it holds what "
-                + "the archive looked like when it was opened, so close this one and start again from that if needed.");
+                $"{System.IO.Path.GetFileName(Path ?? "The archive")} was not written. Any .bak beside it holds the file "
+                + "as it was before Omega Studio first saved over it, so close this one and start again from that if needed.");
         }
     }
     private async Task BackUpAsync(IArchive archive)

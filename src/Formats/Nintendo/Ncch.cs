@@ -286,6 +286,8 @@ internal static class NcchReader
             || dirMetaLength == 0
             || fileMetaOffset < dirMetaOffset + dirMetaLength
             || fileMetaLength == 0
+            || dirMetaLength > Array.MaxLength
+            || fileMetaLength > Array.MaxLength
             || fileDataOffset < fileMetaOffset + fileMetaLength
             || level3 + dirMetaOffset + dirMetaLength > limit
             || level3 + fileMetaOffset + fileMetaLength > limit)

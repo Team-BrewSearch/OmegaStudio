@@ -13,10 +13,15 @@ internal abstract class AssetSnapshot
     {
         return node switch
         {
-            IBinaryAsset { CanReplaceBytes: true } binary => new BytesSnapshot(binary.Data.ToArray()),
+            IBinaryAsset { CanReplaceBytes: true } binary => Fits(binary) ? new BytesSnapshot(binary.Data.ToArray()) : null,
             IImageAsset { CanReplaceImage: true } image => new ImageSnapshot(image.Image),
             _ => null,
         };
+    }
+    private static bool Fits(IBinaryAsset binary)
+    {
+        long length = binary.TryGetLength();
+        return (length >= 0 ? length : binary.Size) <= EditHistory.Budget / 2;
     }
     public static AssetSnapshot ForProperty(Action<string> apply, string value)
     {
@@ -91,7 +96,7 @@ internal sealed record AssetEdit(
     AssetChange Changed);
 internal sealed class EditHistory
 {
-    private const long Budget = MemoryBudget.Undo;
+    public static long Budget => MemoryBudget.Undo;
     private readonly List<AssetEdit> _edits = [];
     private int _applied;
     private long _bytes;
@@ -99,7 +104,6 @@ internal sealed class EditHistory
     public bool CanRedo => _applied < _edits.Count;
     public string? UndoTitle => CanUndo ? _edits[_applied - 1].Title : null;
     public string? RedoTitle => CanRedo ? _edits[_applied].Title : null;
-    public long UsedBytes => _bytes;
     public bool Push(AssetEdit edit)
     {
         long needed = edit.Before.Bytes + edit.After.Bytes;

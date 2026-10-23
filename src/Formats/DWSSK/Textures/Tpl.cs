@@ -55,8 +55,12 @@ internal static class Tpl
         (int tw, int th, int bits) = Tiles(fmt);
         int pw = Bin.CeilDiv(w, tw) * tw;
         int ph = Bin.CeilDiv(h, th) * th;
+        if ((long)pw * ph * 4 > Array.MaxLength)
+        {
+            throw new InvalidDataException($"a {w}x{h} GX texture is larger than one image can hold");
+        }
         int n = pw * ph;
-        Bin.Need(data, 0, n * bits / 8);
+        Bin.Need(data, 0, (long)n * bits / 8);
         byte[] units = new byte[n * 4];
         for (int i = 0; i < n; i++)
         {

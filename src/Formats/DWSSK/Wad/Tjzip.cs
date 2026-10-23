@@ -4,8 +4,14 @@ internal static class Tjzip
 {
     private const int MaxDist = 0x7FFF;
     private const int MaxLen = 0xFFFF;
+    public static long MaxOutput(int compressed) => ((compressed / 6L) + 1) * MaxLen;
     public static byte[] Decompress(ReadOnlySpan<byte> comp, int size)
     {
+        if (size < 0 || size > MaxOutput(comp.Length))
+        {
+            throw new InvalidDataException(
+                $"a {comp.Length}-byte TJZIP stream cannot hold the {size} bytes its header declares");
+        }
         byte[] output = new byte[size];
         int n = 0;
         int i = Literal(comp, 0, output, ref n);

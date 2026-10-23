@@ -35,7 +35,7 @@ public sealed class WbfsArchiveFormat : IArchiveFormat
     public IArchive Open(string path, IHostServices host)
     {
         ArgumentNullException.ThrowIfNull(host);
-        WbfsArchive archive = WbfsArchive.OpenReadWrite(path, host);
+        WbfsArchive archive = WbfsArchive.Open(path, host);
         WbfsContainer container = archive.Container;
         host.Log($"{archive.DisplayName}: WBFS, {container.DiscCount} disc(s), "
             + $"{1 << container.Geometry.HdSectorShift}-byte sectors, "

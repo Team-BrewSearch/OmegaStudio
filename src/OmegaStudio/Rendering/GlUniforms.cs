@@ -1,65 +1,27 @@
 using System.Numerics;
-using System.Reflection;
-using System.Runtime.InteropServices;
 using Avalonia.OpenGL;
 using Omega.Plugins;
 namespace OmegaStudio.Rendering;
-internal sealed class GlUniforms : IDisposable
+internal sealed class GlUniforms
 {
-    private readonly GlInterface _gl;
-    private readonly MethodInfo? _uniformMatrix4fv;
-    private readonly Dictionary<int, object?[]> _argsByLocation = [];
+    private readonly UniformMatrix4fvProc? _uniformMatrix4fv;
     private readonly float[] _scratch = new float[16];
-    private readonly IntPtr _scratchAddress;
-    private GCHandle _pin;
-    private bool _disposed;
-    private GlUniforms(GlInterface gl, MethodInfo? uniformMatrix4fv)
+    private GlUniforms(UniformMatrix4fvProc? uniformMatrix4fv)
     {
-        _gl = gl;
         _uniformMatrix4fv = uniformMatrix4fv;
-        _pin = GCHandle.Alloc(_scratch, GCHandleType.Pinned);
-        _scratchAddress = _pin.AddrOfPinnedObject();
     }
+    private delegate void UniformMatrix4fvProc(int location, int count, byte transpose, float[] value);
     public static GlUniforms Create(GlInterface gl)
     {
-        return new GlUniforms(
-            gl,
-            typeof(GlInterface).GetMethod(
-                "UniformMatrix4fv", BindingFlags.Public | BindingFlags.Instance));
+        return new GlUniforms(Gl.Resolve<UniformMatrix4fvProc>(gl, "glUniformMatrix4fv"));
     }
     public void Matrix(int location, in Matrix4x4 m)
     {
-        if (_uniformMatrix4fv is null || _disposed)
+        if (_uniformMatrix4fv is null)
         {
             return;
         }
         MatrixOps.CopyTo(m, _scratch);
-        if (!_argsByLocation.TryGetValue(location, out object?[]? args))
-        {
-            args = [location, 1, false, _scratchAddress];
-            _argsByLocation[location] = args;
-        }
-        _ = _uniformMatrix4fv.Invoke(_gl, args);
-    }
-    ~GlUniforms()
-    {
-        Release();
-    }
-    public void Dispose()
-    {
-        Release();
-        GC.SuppressFinalize(this);
-    }
-    private void Release()
-    {
-        if (_disposed)
-        {
-            return;
-        }
-        _disposed = true;
-        if (_pin.IsAllocated)
-        {
-            _pin.Free();
-        }
+        _uniformMatrix4fv(location, 1, 0, _scratch);
     }
 }

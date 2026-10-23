@@ -92,6 +92,7 @@ internal sealed class DwkArchiveHandle : IArchive
             reread.Pack();
             return reread.Entries.Count == _archive.Entries.Count;
         });
+        _archive.MarkSaved();
     }
     public void Dispose()
     {

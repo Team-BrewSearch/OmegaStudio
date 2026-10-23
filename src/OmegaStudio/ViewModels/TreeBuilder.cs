@@ -4,11 +4,11 @@ namespace OmegaStudio.ViewModels;
 internal sealed class TreeBuilder
 {
     private readonly AssetRecognition _recognition;
-    private readonly Action<string>? _logged;
+    private readonly Action<string, int, long> _built;
     public TreeBuilder(AssetRecognition recognition, Action<string>? log = null)
     {
         _recognition = recognition;
-        _logged = log;
+        _built = (name, count, ms) => log?.Invoke($"Expanded '{name}': {count} row(s) in {ms} ms.");
     }
     public TreeItemViewModel ForArchive(IArchive archive)
     {
@@ -25,11 +25,7 @@ internal sealed class TreeBuilder
     }
     public IEnumerable<TreeItemViewModel> Children(IAssetNode node)
     {
-        IReadOnlyList<IAssetNode> children = PluginGuard.Try(
-            $"Reading the contents of '{NodeAccess.Name(node)}'",
-            () => (IReadOnlyList<IAssetNode>)[.. node.GetChildren()],
-            []);
-        children = [.. children.Select(_recognition.Enrich)];
+        IReadOnlyList<IAssetNode> children = [.. NodeAccess.Children(node).Select(_recognition.Enrich)];
         return _recognition.Group(children).Select(Row);
     }
     private TreeItemViewModel Row(IAssetNode shown)
@@ -37,13 +33,12 @@ internal sealed class TreeBuilder
         TreeItemViewModel row = new(NodeAccess.Name(shown), NodeAccess.Detail(shown), NodeAccess.Resolve(shown))
         {
             Node = shown,
+            OnBuilt = _built,
         };
         if (NodeAccess.HasChildren(shown))
         {
             row.Loader = () => Children(shown);
         }
-        row.OnBuilt = (name, count, ms) =>
-            _logged?.Invoke($"Expanded '{name}': {count} row(s) in {ms} ms.");
         return row;
     }
 }

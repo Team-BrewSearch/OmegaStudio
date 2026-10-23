@@ -5,7 +5,6 @@
         xmlns:views="clr-namespace:OmegaStudio.Views"
         xmlns:up="clr-namespace:Omega.Plugins;assembly=Omega.Plugins"
         x:Class="OmegaStudio.Views.MainWindow"
-        x:Name="RootWindow"
         x:DataType="vm:MainViewModel"
         Title="Omega Studio" Width="1280" Height="760"
         Background="{DynamicResource SurfaceWell}"
@@ -87,56 +86,41 @@
                    Text="{Binding SearchFilter, Mode=TwoWay}"
                    PlaceholderText="Search assets"
                    Margin="8,8,8,4" />
-          <TreeView Name="OutlinerTree"
-                    ItemsSource="{Binding CurrentItems}"
-                    SelectedItem="{Binding SelectedItem, Mode=TwoWay}"
-                    Background="Transparent" BorderThickness="0"
-                    Padding="4,0,4,8"
-                    PointerPressed="Tree_OnPointerPressed">
-            <TreeView.Styles>
-              <Style Selector="TreeViewItem" x:DataType="vm:TreeItemViewModel">
-                <Setter Property="IsExpanded" Value="{Binding IsExpanded, Mode=TwoWay}" />
-                <Setter Property="ContextMenu">
-                  <ContextMenu DataContext="{Binding DataContext, ElementName=RootWindow}"
-                               x:DataType="vm:MainViewModel"
-                               IsVisible="{Binding HasCommands}"
-                               ItemsSource="{Binding Commands}">
-                    <ContextMenu.ItemTemplate>
-                      <DataTemplate x:DataType="vm:AssetCommandViewModel">
-                        <TextBlock Text="{Binding Title}" />
-                      </DataTemplate>
-                    </ContextMenu.ItemTemplate>
-                    <ContextMenu.Styles>
-                      <Style Selector="MenuItem" x:DataType="vm:AssetCommandViewModel">
-                        <Setter Property="Command" Value="{Binding Command}" />
-                      </Style>
-                    </ContextMenu.Styles>
-                  </ContextMenu>
-                </Setter>
-              </Style>
-            </TreeView.Styles>
-            <TreeView.ItemTemplate>
-              <TreeDataTemplate ItemsSource="{Binding Children}" x:DataType="vm:TreeItemViewModel">
+          <views:Outliner Name="OutlinerTree"
+                          Roots="{Binding CurrentItems}"
+                          SelectedRow="{Binding SelectedItem, Mode=TwoWay}"
+                          Background="Transparent" BorderThickness="0"
+                          Padding="4,0,4,8"
+                          ScrollViewer.HorizontalScrollBarVisibility="Auto"
+                          ItemContainerTheme="{StaticResource OutlinerRow}">
+            <views:Outliner.ContextMenu>
+              <ContextMenu Opening="TreeMenu_OnOpening" IsVisible="{Binding HasCommands}" ItemsSource="{Binding Commands}">
+                <ContextMenu.ItemTemplate>
+                  <DataTemplate x:DataType="vm:AssetCommandViewModel">
+                    <TextBlock Text="{Binding Title}" />
+                  </DataTemplate>
+                </ContextMenu.ItemTemplate>
+                <ContextMenu.Styles>
+                  <Style Selector="MenuItem" x:DataType="vm:AssetCommandViewModel">
+                    <Setter Property="Command" Value="{Binding Command}" />
+                  </Style>
+                </ContextMenu.Styles>
+              </ContextMenu>
+            </views:Outliner.ContextMenu>
+            <views:Outliner.ItemTemplate>
+              <DataTemplate x:DataType="vm:TreeItemViewModel">
                 <StackPanel Orientation="Horizontal" Spacing="{DynamicResource SpaceS}">
+                  <ToggleButton Theme="{StaticResource OutlinerChevron}"
+                                IsChecked="{Binding IsExpanded}"
+                                IsEnabled="{Binding HasChildren}" />
                   <Border Width="7" Height="7" CornerRadius="4" VerticalAlignment="Center"
                           Background="{Binding Kind, Converter={StaticResource AssetKindBrush}}" />
-                  <ItemsControl ItemsSource="{Binding HeaderSegments}">
-                    <ItemsControl.ItemsPanel>
-                      <ItemsPanelTemplate>
-                        <StackPanel Orientation="Horizontal" />
-                      </ItemsPanelTemplate>
-                    </ItemsControl.ItemsPanel>
-                    <ItemsControl.ItemTemplate>
-                      <DataTemplate x:DataType="vm:TextSegment">
-                        <TextBlock Text="{Binding Text}" Classes.hit="{Binding IsHighlight}" />
-                      </DataTemplate>
-                    </ItemsControl.ItemTemplate>
-                  </ItemsControl>
+                  <views:HighlightTextBlock Text="{Binding Header}" Highlight="{Binding Highlight}" />
                   <TextBlock Text="{Binding Detail}" Classes="meta" />
                 </StackPanel>
-              </TreeDataTemplate>
-            </TreeView.ItemTemplate>
-          </TreeView>
+              </DataTemplate>
+            </views:Outliner.ItemTemplate>
+          </views:Outliner>
         </DockPanel>
       </Border>
       <GridSplitter Grid.Column="1" ResizeDirection="Columns" />

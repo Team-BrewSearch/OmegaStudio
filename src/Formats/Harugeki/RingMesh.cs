@@ -28,19 +28,12 @@ public sealed class RingMesh
         }
         int[] counts = ReadTriangleCounts(blob, off, end);
         int triangles = counts.Sum();
-        long vertices = (long)triangles * 3;
         int countsOff = FindCountBlock(blob, off, end, triangles);
         int skinVertexCount = (int)BinaryRead.U32(blob, countsOff);
         int positionsOff = countsOff + PositionArrayOffset;
         if (positionsOff + ((long)skinVertexCount * SkinVertexStride) > end)
         {
             throw new ArgumentException("mesh arrays overrun");
-        }
-        long strideBudget = (end - (positionsOff + ((long)skinVertexCount * SkinVertexStride))) / RingModel.VertexStride;
-        if (vertices > strideBudget)
-        {
-            throw new ArgumentException(
-                $"mesh draw stream wants {vertices} vertex record(s) where {strideBudget} fit");
         }
         (float[] skinPositions, float[] skinNormals) = ReadSkinArrays(blob, positionsOff, skinVertexCount, end);
         DrawStream draw = ReadDrawStream(
@@ -141,10 +134,11 @@ public sealed class RingMesh
     private static DrawStream ReadDrawStream(ReadOnlySpan<byte> blob, int at, int end, int triangles)
     {
         int n = triangles * 3;
-        if ((long)n * (RingModel.VertexStride + RingModel.FaceTrailer) > end - at)
+        const int FaceStride = (3 * RingModel.VertexStride) + RingModel.FaceTrailer;
+        if ((long)triangles * FaceStride > end - at)
         {
             throw new ArgumentException(
-                $"draw stream wants {triangles} triangle(s) where {(end - at) / (RingModel.VertexStride + RingModel.FaceTrailer)} fit");
+                $"draw stream wants {triangles} triangle(s) where {(end - at) / FaceStride} fit");
         }
         float[] positions = new float[checked(n * 3)];
         float[] normals = new float[checked(n * 3)];

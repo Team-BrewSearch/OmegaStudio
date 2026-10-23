@@ -7,15 +7,27 @@ namespace Omega.Disc.Streams;
 public sealed class SharedStream : IDisposable
 {
     private readonly Lock _gate = new();
-    private readonly System.IO.Stream _source;
-    internal SharedStream(System.IO.Stream source)
+    private readonly string? _path;
+    private System.IO.Stream _source;
+    internal SharedStream(System.IO.Stream source, string? path = null)
     {
         ArgumentNullException.ThrowIfNull(source);
         _source = source;
+        _path = path;
     }
-    public long Length => _source.Length;
+    public long Length
+    {
+        get
+        {
+            lock (_gate)
+            {
+                return _source.Length;
+            }
+        }
+    }
     public System.IO.Stream Stream => _source;
     public bool CanWrite => _source.CanWrite;
+    public bool CanReopen => _path is not null;
     public int ReadAt(long at, Span<byte> destination)
     {
         ArgumentOutOfRangeException.ThrowIfNegative(at);
@@ -37,7 +49,7 @@ public sealed class SharedStream : IDisposable
                     $"reading {destination.Length.ToString(System.Globalization.CultureInfo.InvariantCulture)} "
                     + $"byte(s) at 0x{at:X} ran out with "
                     + $"{(destination.Length - total).ToString(System.Globalization.CultureInfo.InvariantCulture)} "
-                    + $"to go, against a {_source.Length}-byte file");
+                    + $"to go, against a {Length}-byte file");
             }
             total += read;
         }
@@ -62,19 +74,51 @@ public sealed class SharedStream : IDisposable
             }
         }
     }
+    public void Reopen(bool readOnly)
+    {
+        lock (_gate)
+        {
+            if (_source.CanWrite != readOnly)
+            {
+                return;
+            }
+            if (_path is null)
+            {
+                throw new System.IO.IOException(
+                    "the stream was handed over open for reading only, so it cannot be reopened for writing");
+            }
+            _source.Dispose();
+            try
+            {
+                _source = OpenFile(_path, readOnly);
+            }
+            catch (Exception ex) when (ex is System.IO.IOException or UnauthorizedAccessException)
+            {
+                _source = OpenFile(_path, !readOnly);
+                throw new System.IO.IOException(
+                    $"{System.IO.Path.GetFileName(_path)} could not be opened for "
+                    + $"{(readOnly ? "reading only" : "writing")}: {ex.Message}",
+                    ex);
+            }
+        }
+    }
     public void Dispose()
     {
-        _source.Dispose();
+        lock (_gate)
+        {
+            _source.Dispose();
+        }
         GC.SuppressFinalize(this);
     }
     public static SharedStream Open(string path, bool readOnly)
     {
         ArgumentException.ThrowIfNullOrEmpty(path);
-        System.IO.FileStream stream = new(
+        return new SharedStream(OpenFile(path, readOnly), System.IO.Path.GetFullPath(path));
+    }
+    private static System.IO.FileStream OpenFile(string path, bool readOnly) =>
+        new(
             path,
             System.IO.FileMode.Open,
             readOnly ? System.IO.FileAccess.Read : System.IO.FileAccess.ReadWrite,
             System.IO.FileShare.Read);
-        return new SharedStream(stream);
-    }
 }

@@ -26,6 +26,11 @@ public partial class MainViewModel : ObservableObject, ISelectionView, ICommandR
         get => _audioInfo;
         set => _audioInfo = value;
     }
+    IAssetNode? ISelectionView.SceneSource
+    {
+        get => _sceneSource;
+        set => _sceneSource = value;
+    }
     TreeItemViewModel? ISelectionView.Owner => SelectedItem;
     Action<string> ISelectionView.Log => Log;
     private bool _disposed;
@@ -44,7 +49,7 @@ public partial class MainViewModel : ObservableObject, ISelectionView, ICommandR
             if (changed.PropertyName is (nameof(AnimationPlayer.SelectedClip))
                 or (nameof(AnimationPlayer.Fps)))
             {
-                RebuildCommands(_commandNode);
+                _presenter?.RefreshCommands();
             }
         };
         PluginGuard.Log = Log;
@@ -117,29 +122,19 @@ public partial class MainViewModel : ObservableObject, ISelectionView, ICommandR
     public bool HasVideo => Node is IVideoAsset;
     public bool HasAnimation => Animation.IsAvailable;
     public bool HasCommands => Commands.Count > 0;
-    public string TextureStatus => Node is not IImageAsset image
-        ? "No texture selected"
-        : PluginGuard.Try(
-            "Reading the selected texture",
-            () => $"{image.Image.Name}   {image.Image.Width} x {image.Image.Height}   {image.Image.FormatLabel}",
-            "Texture could not be read");
+    public bool IsPresenting => _presenter?.IsPresenting ?? false;
+    public string TextureStatus { get; set; } = SelectionPresenter.NoTexture;
     private SelectionPresenter? _presenter;
+    private SelectionPresenter Presenter => _presenter ??= new SelectionPresenter(this);
     partial void OnSelectedItemChanged(TreeItemViewModel? value)
     {
         Present(value?.Node);
     }
     public void Present(IAssetNode? node)
     {
-        (_presenter ??= new SelectionPresenter(this)).Present(node);
-    }
-    public void RebuildProperties(IAssetNode? node)
-    {
-        Properties.Clear();
-        TreeItemViewModel? owner = SelectedItem;
-        foreach (PropertyRow row in PropertyInspector.Describe(node, _audioInfo))
+        if (node is null || ReferenceEquals(node, Node))
         {
-            Properties.Add(PropertyItem.For(
-                row, (edited, value) => CommitProperty(edited, value, owner, node)));
+            Presenter.Present(node);
         }
     }
     public void CommitProperty(
@@ -163,23 +158,9 @@ public partial class MainViewModel : ObservableObject, ISelectionView, ICommandR
             }
             else
             {
-                RebuildProperties(node);
+                Presenter.RebuildProperties(node);
             }
         });
-    }
-    private IAssetNode? _commandNode;
-    private void RebuildCommands(IAssetNode? node)
-    {
-        _commandNode = node;
-        Commands.Clear();
-        if (node is null)
-        {
-            return;
-        }
-        foreach (AssetCommand command in NodeCommands.For(node, Animation.ExportClip, Animation.ExportFps, () => Video.CurrentFrame))
-        {
-            Commands.Add(new AssetCommandViewModel(command, this));
-        }
     }
     public void NotifyCapabilities()
     {

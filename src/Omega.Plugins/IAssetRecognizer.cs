@@ -28,6 +28,8 @@ public abstract class RecognizedAsset : IAssetNode, IBinaryAsset, IDescribable, 
     }
     public int Size => _bytes.Size;
     public ReadOnlySpan<byte> Data => _bytes.Data;
+    public ReadOnlySpan<byte> Head => _bytes.Head;
+    public long TryGetLength() => _bytes.TryGetLength();
     public virtual string Extension => _bytes.Extension;
     public bool CanReplaceBytes => _bytes.CanReplaceBytes;
     public void ReplaceBytes(byte[] payload)

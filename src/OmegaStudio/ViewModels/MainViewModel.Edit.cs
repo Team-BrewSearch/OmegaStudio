@@ -5,6 +5,8 @@ namespace OmegaStudio.ViewModels;
 public partial class MainViewModel
 {
     private const int MaxLabelLength = 34;
+    private const AssetChange Everything = AssetChange.Bytes | AssetChange.Scene | AssetChange.Image
+        | AssetChange.Children | AssetChange.Properties | AssetChange.Dirty;
     private readonly EditHistory _history = new();
     public bool CanUndo => _history.CanUndo;
     public bool CanRedo => _history.CanRedo;
@@ -58,22 +60,37 @@ public partial class MainViewModel
         }
         row = row.Source ?? row;
         AssetSnapshot? after = AssetSnapshot.Capture(row.Node);
-        if (before is null || after is null || before.GetType() != after.GetType())
+        bool comparable = before is not null && after is not null && before.GetType() == after.GetType();
+        if (comparable && before!.SameAs(after!))
+        {
+            return;
+        }
+        if (!comparable || !_history.Push(new AssetEdit(Describe(title), row, before!, after!, changed)))
         {
             ClearHistory();
             _console.Append($"{Describe(title)} cannot be undone; the edit history was cleared.");
             return;
         }
-        if (before.SameAs(after))
-        {
-            return;
-        }
-        if (!_history.Push(new AssetEdit(Describe(title), row, before, after, changed)))
-        {
-            _console.Append($"{Describe(title)} is too large for the edit history; it cannot be undone.");
-            return;
-        }
         HistoryChanged();
+    }
+    private void RollBack(string title, TreeItemViewModel row, IAssetNode node, AssetSnapshot? before)
+    {
+        if (before is not null && AssetSnapshot.Capture(node) is { } now && before.SameAs(now))
+        {
+            return;
+        }
+        bool restored = before is not null && PluginGuard.Try(
+            $"Rolling back {Describe(title)}",
+            () => { before.Restore(node); return true; },
+            false);
+        ApplyChanges(row, node, Everything);
+        if (restored)
+        {
+            Log($"Rolled back {Describe(title)}, so {NodeAccess.Name(node)} is as it was before.");
+            return;
+        }
+        ClearHistory();
+        Log($"{Describe(title)} may have changed {NodeAccess.Name(node)} before it failed and cannot be undone; the edit history was cleared.");
     }
     private void RecordPropertyEdit(PropertyRow row, TreeItemViewModel item, string before, string after)
     {
@@ -88,7 +105,8 @@ public partial class MainViewModel
             AssetSnapshot.ForProperty(apply, after),
             row.Changed | AssetChange.Properties)))
         {
-            _console.Append($"{Describe($"Set {row.Name}")} is too large for the edit history; it cannot be undone.");
+            ClearHistory();
+            _console.Append($"{Describe($"Set {row.Name}")} cannot be undone; the edit history was cleared.");
             return;
         }
         HistoryChanged();

@@ -19,8 +19,15 @@ public enum ShadingMode
 internal static class Gl
 {
     public const int Lines = 0x0001;
+    public const int UnsignedInt = 0x1405;
     public const int Repeat = 0x2901;
     public const int DynamicDraw = 0x88E8;
+    public static T? Resolve<T>(GlInterface gl, string name)
+        where T : Delegate
+    {
+        IntPtr entry = gl.GetProcAddress(name);
+        return entry == IntPtr.Zero ? null : Marshal.GetDelegateForFunctionPointer<T>(entry);
+    }
 }
 public class GlViewport : OpenGlControlBase
 {
@@ -40,7 +47,8 @@ public class GlViewport : OpenGlControlBase
     private GlProgram? _flat;
     private GlProgram? _vertexColor;
     private GlUniforms? _uniforms;
-    private int _vao, _lineVao, _vbo, _lineVbo, _white;
+    private BufferSubDataProc? _bufferSubData;
+    private int _vao, _poseVbo, _surfaceVbo, _triangleIbo, _lineIbo, _white;
     private int _uMvp, _uView, _uMode, _uHasTex, _uTex, _uAlphaClip, _uVertexLit;
     private int _gridVao, _gridVbo, _gridMvp, _gridVertexCount;
     private int _gridR, _gridG, _gridB;
@@ -49,7 +57,7 @@ public class GlViewport : OpenGlControlBase
     private MeshBuffer? _buffer;
     private bool _ready;
     private SceneGeometry? _framedFor;
-    private int _lineUploaded = -1;
+    private bool _linesUploaded;
     private float[]? _posePositions;
     private float[]? _poseNormals;
     private (float R, float G, float B) _background = (0.1f, 0.1f, 0.1f);
@@ -168,9 +176,11 @@ public class GlViewport : OpenGlControlBase
         _geometryDirty = true;
         RequestNextFrameRendering();
     }
+    private delegate void BufferSubDataProc(int target, IntPtr offset, IntPtr size, float[] data);
     protected override void OnOpenGlInit(GlInterface gl)
     {
         _uniforms = GlUniforms.Create(gl);
+        _bufferSubData = Gl.Resolve<BufferSubDataProc>(gl, "glBufferSubData");
         string header = Shaders.Header(GlVersion);
         _model = GlProgram.Build(gl, header, Shaders.ModelVertex, Shaders.ModelFragment, "model");
         _uMvp = _model.Uniform(gl, "uMvp");
@@ -189,9 +199,10 @@ public class GlViewport : OpenGlControlBase
             gl, header, Shaders.VertexColorVertex, Shaders.VertexColorFragment, "axis");
         _axisMvp = _vertexColor.Uniform(gl, "uMvp");
         _vao = gl.GenVertexArray();
-        _lineVao = gl.GenVertexArray();
-        _vbo = gl.GenBuffer();
-        _lineVbo = gl.GenBuffer();
+        _poseVbo = gl.GenBuffer();
+        _surfaceVbo = gl.GenBuffer();
+        _triangleIbo = gl.GenBuffer();
+        _lineIbo = gl.GenBuffer();
         _white = MakeSolidTexture(gl, 0xFFFFFFFF);
         _gridVao = gl.GenVertexArray();
         _gridVbo = gl.GenBuffer();
@@ -209,12 +220,13 @@ public class GlViewport : OpenGlControlBase
             return;
         }
         ReleaseTextures(gl);
-        gl.DeleteBuffer(_vbo);
-        gl.DeleteBuffer(_lineVbo);
+        gl.DeleteBuffer(_poseVbo);
+        gl.DeleteBuffer(_surfaceVbo);
+        gl.DeleteBuffer(_triangleIbo);
+        gl.DeleteBuffer(_lineIbo);
         gl.DeleteBuffer(_gridVbo);
         gl.DeleteBuffer(_axisVbo);
         gl.DeleteVertexArray(_vao);
-        gl.DeleteVertexArray(_lineVao);
         gl.DeleteVertexArray(_gridVao);
         gl.DeleteVertexArray(_axisVao);
         gl.DeleteTexture(_white);
@@ -222,9 +234,9 @@ public class GlViewport : OpenGlControlBase
         _flat?.Delete(gl);
         _vertexColor?.Delete(gl);
         _model = _flat = _vertexColor = null;
-        _uniforms?.Dispose();
         _uniforms = null;
-        _vao = _lineVao = _vbo = _lineVbo = _white = 0;
+        _bufferSubData = null;
+        _vao = _poseVbo = _surfaceVbo = _triangleIbo = _lineIbo = _white = 0;
         _uMvp = _uView = _uMode = _uHasTex = _uTex = 0;
         _gridVao = _gridVbo = _gridMvp = _gridVertexCount = 0;
         _gridR = _gridG = _gridB = 0;
@@ -235,6 +247,7 @@ public class GlViewport : OpenGlControlBase
         _poseDirty = false;
         _geometryDirty = true;
         _framedFor = null;
+        _linesUploaded = false;
         _ready = false;
     }
     protected override void OnOpenGlRender(GlInterface gl, int fb)
@@ -320,7 +333,7 @@ public class GlViewport : OpenGlControlBase
     }
     private void DrawModel(GlInterface gl, in Matrix4x4 mvp, in Matrix4x4 view)
     {
-        if (_buffer is null || _buffer.VertexCount == 0 || _model is null || _uniforms is null)
+        if (_buffer is null || _buffer.IndexCount == 0 || _model is null || _uniforms is null)
         {
             return;
         }
@@ -328,22 +341,25 @@ public class GlViewport : OpenGlControlBase
         _uniforms.Matrix(_uMvp, mvp);
         _uniforms.Matrix(_uView, view);
         gl.Uniform1i(_uTex, 0);
+        gl.BindVertexArray(_vao);
         if (Shading == ShadingMode.Wireframe)
         {
             gl.Uniform1i(_uMode, (int)ShadingMode.Wireframe);
             gl.Uniform1f(_uHasTex, 0f);
             gl.Uniform1f(_uAlphaClip, 0f);
             gl.Uniform1f(_uVertexLit, 0f);
-            _buffer.EnsureLines();
-            UploadLineBuffer(gl);
-            gl.BindVertexArray(_lineVao);
-            gl.DrawArrays(Gl.Lines, 0, _buffer.LineVertexCount);
+            gl.BindBuffer(GL_ELEMENT_ARRAY_BUFFER, _lineIbo);
+            if (!_linesUploaded)
+            {
+                BufferData(gl, GL_ELEMENT_ARRAY_BUFFER, _buffer.Indices(lines: true), GL_STATIC_DRAW);
+                _linesUploaded = true;
+            }
+            gl.DrawElements(Gl.Lines, _buffer.LineIndexCount, Gl.UnsignedInt, 0);
             return;
         }
-        gl.BindVertexArray(_vao);
+        gl.BindBuffer(GL_ELEMENT_ARRAY_BUFFER, _triangleIbo);
         gl.Uniform1i(_uMode, (int)Shading);
-        gl.Uniform1f(_uVertexLit, Scene?.Lighting == SceneLighting.VertexBaked ? 1f : 0f);
-        EnableBlending(gl);
+        gl.Uniform1f(_uVertexLit, _buffer.Scene.Lighting == SceneLighting.VertexBaked ? 1f : 0f);
         foreach ((int first, int count, int texture, bool alphaClip) in _buffer.Batches)
         {
             bool textured = Shading == ShadingMode.Textured && texture != 0;
@@ -351,39 +367,8 @@ public class GlViewport : OpenGlControlBase
             gl.BindTexture(GL_TEXTURE_2D, textured ? texture : _white);
             gl.Uniform1f(_uHasTex, textured ? 1f : 0f);
             gl.Uniform1f(_uAlphaClip, textured && alphaClip ? 1f : 0f);
-            gl.DrawArrays(GL_TRIANGLES, first, count);
+            gl.DrawElements(GL_TRIANGLES, count, Gl.UnsignedInt, first * sizeof(int));
         }
-        if (_blendFunc is not null)
-        {
-            gl.Disable((int)BlendCap);
-        }
-    }
-    private static Action<uint, uint>? _blendFunc;
-    private const uint BlendCap = 0x0BE2;
-    private const uint SrcAlphaFactor = 0x0302;
-    private const uint OneMinusSrcAlphaFactor = 0x0303;
-    private static void EnableBlending(GlInterface gl)
-    {
-        if (_blendFunc is null)
-        {
-            try
-            {
-                IntPtr entry = gl.GetProcAddress("glBlendFunc");
-                _blendFunc = entry == IntPtr.Zero
-                    ? null
-                    : Marshal.GetDelegateForFunctionPointer<Action<uint, uint>>(entry);
-            }
-            catch (Exception ex) when (ex is not OutOfMemoryException)
-            {
-                _blendFunc = null;
-            }
-        }
-        if (_blendFunc is null)
-        {
-            return;
-        }
-        gl.Enable((int)BlendCap);
-        _blendFunc(SrcAlphaFactor, OneMinusSrcAlphaFactor);
     }
     private Vector3 EyePosition()
     {
@@ -395,6 +380,7 @@ public class GlViewport : OpenGlControlBase
     {
         ReleaseTextures(gl);
         _buffer = null;
+        _linesUploaded = false;
         SceneGeometry? scene = Scene;
         if (scene is null || scene.Meshes.Count == 0)
         {
@@ -411,24 +397,36 @@ public class GlViewport : OpenGlControlBase
                 _textures.Add(0);
             }
         }
-        _buffer = MeshBuffer.Build(scene, _textures);
-        if (_poseDirty && _posePositions?.Length == scene.VertexCount * 3)
+        MeshBuffer buffer = MeshBuffer.Build(scene, _textures);
+        _buffer = buffer;
+        gl.BindVertexArray(_vao);
+        gl.BindBuffer(GL_ARRAY_BUFFER, _poseVbo);
+        gl.BufferData(GL_ARRAY_BUFFER, new IntPtr(buffer.NormalOffset * 2L), IntPtr.Zero, Gl.DynamicDraw);
+        gl.VertexAttribPointer(0, 3, GL_FLOAT, 0, MeshBuffer.PoseStride, 0);
+        gl.VertexAttribPointer(1, 3, GL_FLOAT, 0, MeshBuffer.PoseStride, buffer.NormalOffset);
+        WritePose(buffer, null, null);
+        if (_poseDirty && _posePositions?.Length == buffer.VertexCount * 3)
         {
-            _buffer.Pack(scene, _posePositions, _poseNormals);
-            _poseDirty = false;
+            WritePose(buffer, _posePositions, _poseNormals);
         }
         else
         {
             _posePositions = null;
             _poseNormals = null;
-            _poseDirty = false;
         }
-        UploadBuffers(gl, GL_STATIC_DRAW);
-        gl.BindVertexArray(_vao);
-        BindAttribs(gl, _vbo);
-        gl.BindVertexArray(_lineVao);
-        BindAttribs(gl, _lineVbo);
+        _poseDirty = false;
+        gl.BindBuffer(GL_ARRAY_BUFFER, _surfaceVbo);
+        BufferData(gl, GL_ARRAY_BUFFER, buffer.Surface(), GL_STATIC_DRAW);
+        gl.VertexAttribPointer(2, 2, GL_FLOAT, 0, MeshBuffer.SurfaceStride, 0);
+        gl.VertexAttribPointer(3, 4, GL_UNSIGNED_BYTE, 1, MeshBuffer.SurfaceStride, MeshBuffer.ColorOffset);
+        for (int i = 0; i < 4; i++)
+        {
+            gl.EnableVertexAttribArray(i);
+        }
+        gl.BindBuffer(GL_ELEMENT_ARRAY_BUFFER, _triangleIbo);
+        BufferData(gl, GL_ELEMENT_ARRAY_BUFFER, buffer.Indices(lines: false), GL_STATIC_DRAW);
         gl.BindVertexArray(0);
+        gl.BindBuffer(GL_ARRAY_BUFFER, 0);
         if (!ReferenceEquals(_framedFor, scene))
         {
             _framedFor = scene;
@@ -437,54 +435,39 @@ public class GlViewport : OpenGlControlBase
     }
     private void UploadPose(GlInterface gl)
     {
-        SceneGeometry? scene = Scene;
-        if (_buffer is null || scene is null)
-        {
-            return;
-        }
-        if (_posePositions is not null && _posePositions.Length != scene.VertexCount * 3)
-        {
-            return;
-        }
-        _buffer.Pack(scene, _posePositions, _poseNormals);
-        UploadBuffers(gl, Gl.DynamicDraw);
-    }
-    private void UploadBuffers(GlInterface gl, int usage)
-    {
         if (_buffer is null)
         {
             return;
         }
-        gl.BindBuffer(GL_ARRAY_BUFFER, _vbo);
-        BufferData(gl, _buffer.Vertices, _buffer.VertexCount * MeshBuffer.Stride, usage);
-        gl.BindBuffer(GL_ARRAY_BUFFER, _lineVbo);
-        if (_buffer.Lines is { } lines)
-        {
-            BufferData(gl, lines, _buffer.LineVertexCount * MeshBuffer.Stride, usage);
-        }
-        gl.BindBuffer(GL_ARRAY_BUFFER, 0);
-    }
-    private void UploadLineBuffer(GlInterface gl)
-    {
-        if (_buffer is not { Lines: { } lines } || _lineUploaded >= _buffer.LineVertexCount)
+        if (_posePositions is not null && _posePositions.Length != _buffer.VertexCount * 3)
         {
             return;
         }
-        gl.BindBuffer(GL_ARRAY_BUFFER, _lineVbo);
-        BufferData(gl, lines, _buffer.LineVertexCount * MeshBuffer.Stride, Gl.DynamicDraw);
+        gl.BindBuffer(GL_ARRAY_BUFFER, _poseVbo);
+        WritePose(_buffer, _posePositions, _poseNormals);
         gl.BindBuffer(GL_ARRAY_BUFFER, 0);
-        _lineUploaded = _buffer.LineVertexCount;
     }
-    private static void BindAttribs(GlInterface gl, int buffer)
+    private void WritePose(MeshBuffer buffer, float[]? positions, float[]? normals)
     {
-        gl.BindBuffer(GL_ARRAY_BUFFER, buffer);
-        gl.VertexAttribPointer(0, 3, GL_FLOAT, 0, MeshBuffer.Stride, 0);
-        gl.VertexAttribPointer(1, 3, GL_FLOAT, 0, MeshBuffer.Stride, 12);
-        gl.VertexAttribPointer(2, 2, GL_FLOAT, 0, MeshBuffer.Stride, 24);
-        gl.VertexAttribPointer(3, 4, GL_UNSIGNED_BYTE, 1, MeshBuffer.Stride, 32);
-        for (int i = 0; i < 4; i++)
+        if (_bufferSubData is not { } write)
         {
-            gl.EnableVertexAttribArray(i);
+            return;
+        }
+        if (positions is not null && normals is not null)
+        {
+            write(GL_ARRAY_BUFFER, 0, buffer.NormalOffset, positions);
+            int covered = Math.Min(normals.Length / 3, buffer.VertexCount);
+            write(GL_ARRAY_BUFFER, buffer.NormalOffset, covered * MeshBuffer.PoseStride, normals);
+            return;
+        }
+        int at = 0;
+        foreach (SceneMesh mesh in buffer.Scene.Meshes)
+        {
+            int length = mesh.Positions.Length;
+            write(GL_ARRAY_BUFFER, at, length * sizeof(float), mesh.Positions);
+            float[] rest = mesh.Normals.Length == length ? mesh.Normals : new float[length];
+            write(GL_ARRAY_BUFFER, buffer.NormalOffset + at, length * sizeof(float), rest);
+            at += length * sizeof(float);
         }
     }
     private void ReleaseTextures(GlInterface gl)
@@ -518,7 +501,7 @@ public class GlViewport : OpenGlControlBase
         [
             0f, 0f, 0f, 1f, 0f, 0f, length, 0f, 0f, 1f, 0f, 0f,
             0f, 0f, 0f, 0f, 1f, 0f, 0f, length, 0f, 0f, 1f, 0f,
-            0f, 0f, 0f, 0f, 0f, 1f, 0f, 0f, -length, 0f, 0f, 1f,
+            0f, 0f, 0f, 0f, 0f, 1f, 0f, 0f, length, 0f, 0f, 1f,
         ];
         _axisVertexCount = positions.Length / 6;
         UploadStaticLines(gl, _axisVao, _axisVbo, positions, stride: 24, colored: true);
@@ -526,10 +509,8 @@ public class GlViewport : OpenGlControlBase
     private static void UploadStaticLines(
         GlInterface gl, int vao, int vbo, float[] positions, int stride, bool colored)
     {
-        byte[] data = new byte[positions.Length * sizeof(float)];
-        Buffer.BlockCopy(positions, 0, data, 0, data.Length);
         gl.BindBuffer(GL_ARRAY_BUFFER, vbo);
-        BufferData(gl, data, data.Length, GL_STATIC_DRAW);
+        BufferData(gl, GL_ARRAY_BUFFER, positions, GL_STATIC_DRAW);
         gl.BindVertexArray(vao);
         gl.BindBuffer(GL_ARRAY_BUFFER, vbo);
         gl.EnableVertexAttribArray(0);
@@ -542,12 +523,12 @@ public class GlViewport : OpenGlControlBase
         gl.BindVertexArray(0);
         gl.BindBuffer(GL_ARRAY_BUFFER, 0);
     }
-    private static void BufferData(GlInterface gl, byte[] data, int length, int usage)
+    private static void BufferData(GlInterface gl, int target, Array data, int usage)
     {
         GCHandle handle = GCHandle.Alloc(data, GCHandleType.Pinned);
         try
         {
-            gl.BufferData(GL_ARRAY_BUFFER, new IntPtr(length), handle.AddrOfPinnedObject(), usage);
+            gl.BufferData(target, Buffer.ByteLength(data), handle.AddrOfPinnedObject(), usage);
         }
         finally
         {

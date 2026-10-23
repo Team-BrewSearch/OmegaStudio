@@ -1,13 +1,15 @@
+using System.Buffers;
 namespace Omega.Plugins;
 public static class AtomicSave
 {
     public const string TempSuffix = ".omega-save.tmp";
     public const string RollbackSuffix = ".omega-save.orig";
+    private const int Chunk = 1 << 20;
     public static void Write(string path, byte[] rebuilt)
     {
         ArgumentException.ThrowIfNullOrEmpty(path);
         ArgumentNullException.ThrowIfNull(rebuilt);
-        WriteToTemp(path, rebuilt);
+        WriteToStream(path, file => file.Write(rebuilt));
         Overwrite(path);
     }
     public static void WriteAll(IReadOnlyList<string> paths, IReadOnlyList<byte[]> rebuilt)
@@ -19,39 +21,20 @@ public static class AtomicSave
             throw new ArgumentException(
                 $"{paths.Count} path(s) were named for {rebuilt.Count} replacement(s)", nameof(rebuilt));
         }
-        if (paths.Count == 0)
-        {
-            return;
-        }
-        for (int i = 0; i < paths.Count; i++)
-        {
-            ArgumentException.ThrowIfNullOrEmpty(paths[i]);
-            WriteToTemp(paths[i], rebuilt[i]);
-        }
-        if (paths.Count == 1)
-        {
-            Overwrite(paths[0]);
-            return;
-        }
-        List<string> rollbacks = TakeRollbackCopies(paths);
+        List<string> temporaries = [];
         try
         {
-            foreach (string path in paths)
+            for (int i = 0; i < paths.Count; i++)
             {
-                Overwrite(path);
+                ArgumentException.ThrowIfNullOrEmpty(paths[i]);
+                byte[] bytes = rebuilt[i];
+                temporaries.Add(WriteToStream(paths[i], file => file.Write(bytes)));
             }
-        }
-        catch
-        {
-            Restore(paths, rollbacks);
-            throw;
+            OverwriteAll(paths);
         }
         finally
         {
-            foreach (string rollback in rollbacks)
-            {
-                TryDelete(rollback);
-            }
+            temporaries.ForEach(TryDelete);
         }
     }
     public static string WriteToStream(string path, Action<Stream> write)
@@ -61,9 +44,10 @@ public static class AtomicSave
         string temporary = TempPath(path);
         try
         {
-            using (FileStream file = OpenTemporary(temporary))
+            using (FileStream file = new(temporary, FileMode.Create, FileAccess.Write, FileShare.None))
             {
                 write(file);
+                file.Flush(flushToDisk: true);
             }
             return temporary;
         }
@@ -73,6 +57,7 @@ public static class AtomicSave
             throw;
         }
     }
+    [Obsolete("Use WriteToStream, which flushes to the disk itself. This will be removed at the next contract version.")]
     public static void FlushToDisk(Stream stream)
     {
         ArgumentNullException.ThrowIfNull(stream);
@@ -93,6 +78,31 @@ public static class AtomicSave
         }
         File.Move(temporary, path, overwrite: true);
     }
+    internal static void OverwriteAll(IReadOnlyList<string> paths)
+    {
+        if (paths.Count == 1)
+        {
+            Overwrite(paths[0]);
+            return;
+        }
+        List<string> rollbacks = TakeRollbackCopies(paths);
+        try
+        {
+            foreach (string path in paths)
+            {
+                Overwrite(path);
+            }
+        }
+        catch
+        {
+            Restore(paths, rollbacks);
+            throw;
+        }
+        finally
+        {
+            rollbacks.ForEach(TryDelete);
+        }
+    }
     public static string TempPath(string path)
     {
         ArgumentException.ThrowIfNullOrEmpty(path);
@@ -103,22 +113,64 @@ public static class AtomicSave
     {
         ArgumentException.ThrowIfNullOrEmpty(path);
         ArgumentNullException.ThrowIfNull(rebuilt);
+        return Compare(path, file => file.Length == rebuilt.Length && Matches(file, rebuilt));
+    }
+    internal static bool SameFiles(string path, string other)
+    {
+        return Compare(path, file => Compare(other, copy => file.Length == copy.Length && Matches(file, copy)));
+    }
+    private static bool Compare(string path, Func<FileStream, bool> test)
+    {
         try
         {
-            return new FileInfo(path) is { Length: long length } info
-                && length == rebuilt.Length
-                && ReadAll(path, rebuilt.Length).AsSpan().SequenceEqual(rebuilt);
-            static byte[] ReadAll(string at, long length)
-            {
-                byte[] bytes = new byte[length];
-                using FileStream file = System.IO.File.OpenRead(at);
-                file.ReadExactly(bytes);
-                return bytes;
-            }
+            using FileStream file = new(path, FileMode.Open, FileAccess.Read, FileShare.Read, 1, FileOptions.SequentialScan);
+            return test(file);
         }
-        catch (Exception ex) when (ex is IOException or FileNotFoundException or UnauthorizedAccessException)
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
             return false;
+        }
+    }
+    private static bool Matches(Stream file, ReadOnlySpan<byte> expected)
+    {
+        byte[] chunk = ArrayPool<byte>.Shared.Rent(Chunk);
+        try
+        {
+            while (!expected.IsEmpty)
+            {
+                int want = Math.Min(chunk.Length, expected.Length);
+                if (file.ReadAtLeast(chunk.AsSpan(0, want), want, throwOnEndOfStream: false) != want
+                    || !chunk.AsSpan(0, want).SequenceEqual(expected[..want]))
+                {
+                    return false;
+                }
+                expected = expected[want..];
+            }
+            return true;
+        }
+        finally
+        {
+            ArrayPool<byte>.Shared.Return(chunk);
+        }
+    }
+    private static bool Matches(Stream file, Stream copy)
+    {
+        byte[] chunk = ArrayPool<byte>.Shared.Rent(Chunk);
+        try
+        {
+            int read;
+            while ((read = copy.ReadAtLeast(chunk, chunk.Length, throwOnEndOfStream: false)) > 0)
+            {
+                if (!Matches(file, chunk.AsSpan(0, read)))
+                {
+                    return false;
+                }
+            }
+            return true;
+        }
+        finally
+        {
+            ArrayPool<byte>.Shared.Return(chunk);
         }
     }
     public static void TryDelete(string path)
@@ -133,16 +185,6 @@ public static class AtomicSave
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
         }
-    }
-    private static void WriteToTemp(string path, byte[] rebuilt)
-    {
-        using FileStream file = OpenTemporary(TempPath(path));
-        file.Write(rebuilt);
-        file.Flush(flushToDisk: true);
-    }
-    private static FileStream OpenTemporary(string path)
-    {
-        return new FileStream(path, FileMode.Create, FileAccess.Write, FileShare.None);
     }
     private static List<string> TakeRollbackCopies(IReadOnlyList<string> paths)
     {
@@ -165,26 +207,22 @@ public static class AtomicSave
         }
         catch
         {
-            foreach (string rollback in rollbacks)
-            {
-                TryDelete(rollback);
-            }
+            rollbacks.ForEach(TryDelete);
             throw;
         }
         return rollbacks;
     }
     private static void Restore(IReadOnlyList<string> paths, List<string> rollbacks)
     {
-        for (int i = 0; i < paths.Count; i++)
+        for (int i = 0; i < paths.Count && i < rollbacks.Count; i++)
         {
-            string rollback = i < rollbacks.Count ? rollbacks[i] : string.Empty;
-            if (string.IsNullOrEmpty(rollback) || !File.Exists(rollback))
+            if (rollbacks[i].Length == 0 || !File.Exists(rollbacks[i]))
             {
                 continue;
             }
             try
             {
-                File.Copy(rollback, paths[i], overwrite: true);
+                File.Copy(rollbacks[i], paths[i], overwrite: true);
             }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
             {

@@ -2,5 +2,6 @@
   <PropertyGroup>
     <RootNamespace>Omega.Plugins</RootNamespace>
     <AssemblyName>Omega.Plugins</AssemblyName>
+    <RuntimeIdentifiers>win-x64;win-x86;linux-x64;linux-arm64</RuntimeIdentifiers>
   </PropertyGroup>
 </Project>

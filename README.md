@@ -1,11 +1,6 @@
 # Omega Studio
 
-Desktop app for browsing and editing game asset archives. Navigate, extract, and modify
-assets across formats. The app knows no format itself; every format it can open arrives as a
-plugin dropped into a `formats` folder beside the executable.
-
-Built with [.NET 10](https://dotnet.microsoft.com/) and
-[Avalonia](https://avaloniaui.net/). Cross-platform: same codebase runs on Windows and Linux.
+Browse and edit game asset archives. It ships no formats itself; every format it opens arrives as a plugin dropped into the `formats` folder beside the executable. Built with [.NET 10](https://dotnet.microsoft.com/) and [Avalonia](https://avaloniaui.net/), it runs on Windows and Linux from one codebase.
 
 ## Quick start
 
@@ -18,21 +13,19 @@ dotnet build src/OmegaStudio.slnx
 dotnet run --project src/OmegaStudio/OmegaStudio.csproj
 ```
 
-Building the solution copies each plugin into the host's `formats` folder, so a plain
-`dotnet build` yields a working app. Building only `OmegaStudio.csproj` yields one that opens
-nothing. Pass an archive on the command line to open it straight away:
+Build the solution, not just the host project. Building `OmegaStudio.csproj` alone leaves `formats/` empty and an app with no plugins opens nothing. Building the solution copies each plugin into the host's `formats` folder, so a plain `dotnet build` yields a working app.
+
+Open an archive straight away by passing it on the command line:
 
 ```bash
 dotnet run --project src/OmegaStudio/OmegaStudio.csproj -- path/to/archive.bin
 ```
 
-The [user guide](docs/USER-GUIDE.md) covers the app in full.
-[DEVELOPMENT.md](docs/DEVELOPMENT.md) covers building from source and the release publisher.
+The [user guide](docs/USER-GUIDE.md) covers the app. [DEVELOPMENT.md](docs/DEVELOPMENT.md) covers building from source and the release publisher.
 
 ## What it does
 
-Open an archive and you get a tree of everything inside it. Select a row and the panes that
-make sense for it appear:
+Open an archive and you get a tree of everything inside it. Select a row and the panes that make sense for it appear:
 
 | Pane | Appears for | What it gives you |
 | --- | --- | --- |
@@ -43,19 +36,13 @@ make sense for it appear:
 | Animation | anything with clips | Clip picker, transport, and a dope sheet |
 | Console | always | Every load, edit, and failure, timestamped |
 
-The Properties pane lists what the selected row knows about itself. A plugin can also make a
-row editable: a text box, a check box, or a drop-down beside the label, written straight back
-into the format.
+The Properties pane lists what the selected row knows about itself. A plugin can make a row editable: a text box, a check box, or a drop-down beside the label, written straight back into the format.
 
-Each row carries a context menu built from what it can do: extract the raw bytes,
-replace them from a file, export a PNG or a glTF, replace an image from a PNG, plus whatever
-commands the owning plugin adds.
+Each row carries a context menu built from what it can do: extract the raw bytes, replace them from a file, export a PNG or a glTF, replace an image from a PNG, plus whatever commands the owning plugin adds.
 
-Editing is undoable. The history keeps up to 256 MB of before-and-after snapshots, so
-`Ctrl+Z` works across formats the host has never heard of.
+Editing is undoable. The history keeps up to 256 MB of before-and-after snapshots, so `Ctrl+Z` works across formats the host has never heard of.
 
-Nothing is written until you ask. `File ▸ Save` rewrites the archive in place, and the first
-save of a session copies each affected file to `<name>.bak` first.
+Nothing is written until you ask. `File ▸ Save` rewrites the archive in place, and the first save of a session copies each affected file to `<name>.bak` first.
 
 ## Formats it ships with
 
@@ -76,13 +63,9 @@ Eight plugins are built from this repository:
 
 ## Writing a plugin
 
-A plugin is one assembly named `*.Formats.dll`, referencing `Omega.Plugins` and nothing else
-of the host's. Libraries it depends on are embedded in it, so it stays a single file.
-Implement `IFormatPlugin`, name it with an assembly attribute, drop the file in `formats`,
-and it loads on the next launch.
+A plugin is one assembly named `*.Formats.dll`, referencing `Omega.Plugins` and nothing else of the host's. Libraries it depends on are embedded in it, so it stays a single file. Implement `IFormatPlugin`, name it with an assembly attribute, drop the file in `formats/`, and it loads on the next launch.
 
-See [docs/PLUGINS.md](docs/PLUGINS.md) for the walkthrough and
-[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for how the host uses what you implement.
+See [docs/PLUGINS.md](docs/PLUGINS.md) for the walkthrough and [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for how the host uses what you implement.
 
 ## Documentation
 

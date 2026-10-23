@@ -45,7 +45,7 @@ internal static class PluginGuard
             return false;
         }
     }
-    private static void Report(string what, Exception ex)
+    internal static void Report(string what, Exception ex)
     {
         string trace = ex.StackTrace is { Length: > 0 } stack ? $"  {stack.Replace("\n", "\n  ", StringComparison.Ordinal)}" : string.Empty;
         Log?.Invoke($"{what} failed: {ex.GetType().FullName}: {ex.Message}{Environment.NewLine}{trace}");

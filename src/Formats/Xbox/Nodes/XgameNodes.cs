@@ -1,4 +1,5 @@
 using Omega.Disc.Formats.Xbox;
+using Omega.Disc.IO;
 using Omega.Plugins;
 using Sizes = Omega.Plugins.Sizes;
 namespace Xbox.Formats.Nodes;
@@ -86,9 +87,7 @@ internal sealed class XgameFileNode : StreamingAssetNode
                 return [];
             }
             using Stream stream = archive.Volume.OpenRead(entry);
-            byte[] payload = new byte[stream.Length];
-            stream.ReadExactly(payload);
-            return payload;
+            return PayloadReader.ReadAll(stream, entry.Name);
         }
     }
 }

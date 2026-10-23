@@ -114,11 +114,11 @@ public sealed class SceneGeometry
             }
             foreach (SceneSubmesh submesh in mesh.Submeshes)
             {
-                if (submesh.First < 0 || submesh.Count < 0 || submesh.First + submesh.Count > limit)
+                if (submesh.First < 0 || submesh.Count < 0 || submesh.First > limit - submesh.Count)
                 {
                     throw new InvalidDataException(
                         $"{where}: submesh '{submesh.Name}' covers [{submesh.First}, " +
-                        $"{submesh.First + submesh.Count}) of only {limit} entries.");
+                        $"{(long)submesh.First + submesh.Count}) of only {limit} entries.");
                 }
                 if (submesh.Count % 3 != 0)
                 {

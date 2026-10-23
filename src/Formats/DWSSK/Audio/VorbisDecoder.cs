@@ -37,9 +37,13 @@ internal static class VorbisDecoder
         int setupAt = (int)Bin.U32(wem, v + 0x10, big);
         int audioAt = (int)Bin.U32(wem, v + 0x14, big);
         int nch = info.Channels;
+        if (nch is < 1 or > 255)
+        {
+            throw new InvalidDataException($"Wwise Vorbis declares {nch} channels, and Vorbis carries 1 to 255");
+        }
         Setup setup = ReadSetup(new Reader(data, setupAt + 2, Bin.U16(data, setupAt, big)), nch, 1 << wem[v + 0x28], 1 << wem[v + 0x29]);
         Dsp dsp = new(setup, nch, Bin.U16(wem, fo + 0x32, big));
-        short[] pcm = new short[Math.Max(1024, (int)Math.Min(int.MaxValue / 4, Bin.U32(wem, v, big)) * nch)];
+        short[] pcm = new short[Math.Max(1024, Math.Min(Math.Min(Bin.U32(wem, v, big), data.Length * 4L) * nch, Array.MaxLength))];
         int frames = 0;
         for (int at = audioAt; at + 2 <= data.Length;)
         {

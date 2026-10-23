@@ -17,6 +17,7 @@ public sealed class Ps3DiscArchive : IArchive
         Root = new Nodes.Ps3RootNode(this, DisplayName);
     }
     public CDReader Reader { get; }
+    internal Lock Gate { get; } = new();
     public string Description { get; }
     public IHostServices Host { get; }
     public string DisplayName { get; }

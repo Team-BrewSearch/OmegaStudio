@@ -13,8 +13,14 @@ internal static class WiiTree
         data.Position = 0;
         data.ReadExactly(boot);
         SpanReader reader = SpanReader.At(boot, 0x424);
-        uint fstOffset = reader.UInt32Big() << WiiDisc.OffsetShift;
-        uint fstSize = reader.UInt32Big() << WiiDisc.OffsetShift;
+        long fstOffset = (long)reader.UInt32Big() << WiiDisc.OffsetShift;
+        long fstSize = (long)reader.UInt32Big() << WiiDisc.OffsetShift;
+        if (fstSize > WiiDisc.MaxFileSystemSize)
+        {
+            throw new InvalidDataException(
+                $"the {label} declares a {fstSize.ToString(CultureInfo.InvariantCulture)}-byte file system table, "
+                + $"past the {WiiDisc.MaxFileSystemSize.ToString(CultureInfo.InvariantCulture)} bytes a Wii could load");
+        }
         if (fstSize < 0x18 || fstOffset + fstSize > data.Length)
         {
             throw new InvalidDataException(
@@ -42,7 +48,7 @@ internal static class WiiTree
         {
             if (!entry.IsDirectory)
             {
-                wanted = Math.Max(wanted, (long)entry.Offset + entry.Length);
+                wanted = Math.Max(wanted, entry.Offset + entry.Length);
             }
         }
         if (data is WiiPartitionStream partition && wanted > data.Length)
@@ -101,7 +107,7 @@ internal sealed class WiiFolderNode : AssetNode
 internal sealed class WiiFileNode : StreamingAssetNode
 {
     private readonly Stream _data;
-    private readonly uint _offset;
+    private readonly long _offset;
     private readonly Action? _onEdit;
     private byte[]? _edited;
     public WiiFileNode(
@@ -145,7 +151,7 @@ internal sealed class WiiFileNode : StreamingAssetNode
         _edited = payload;
         _onEdit?.Invoke();
     }
-    private sealed class PartitionWindow(Stream data, uint offset, uint length) : IPayloadSource
+    private sealed class PartitionWindow(Stream data, long offset, uint length) : IPayloadSource
     {
         public long Length => length;
         public int Head(Span<byte> destination)
@@ -164,6 +170,13 @@ internal sealed class WiiFileNode : StreamingAssetNode
             if (length == 0)
             {
                 return [];
+            }
+            if (length > Array.MaxLength || offset + length > data.Length)
+            {
+                throw new InvalidDataException(
+                    $"a {length.ToString(CultureInfo.InvariantCulture)}-byte file at 0x{offset:X} runs past the "
+                    + $"{data.Length.ToString(CultureInfo.InvariantCulture)}-byte partition data, or past what one "
+                    + "node can hold");
             }
             byte[] payload = new byte[length];
             data.Position = offset;

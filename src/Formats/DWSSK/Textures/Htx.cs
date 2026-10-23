@@ -3,6 +3,8 @@ namespace DWSSK.Formats.Textures;
 internal sealed class Htx
 {
     public const uint Magic = 0xFC000001;
+    private const int MaxSide = 16384;
+    private const int MaxMips = 32;
     private Htx(byte[] blob, int width, int height, int mips, int format, int flag, bool big, int dataOffset)
     {
         Blob = blob;
@@ -94,8 +96,18 @@ internal sealed class Htx
             _ => throw new InvalidDataException($"HTX format {fmt} is not block compressed"),
         };
     }
+    private void CheckHeader()
+    {
+        if (Width is <= 0 or > MaxSide || Height is <= 0 or > MaxSide || Mips is < 0 or > MaxMips)
+        {
+            throw new InvalidDataException(
+                $"HTX header declares a {Width}x{Height} texture with {Mips} mip level(s), past the "
+                + $"{MaxSide}x{MaxSide} and {MaxMips} levels a console texture can have");
+        }
+    }
     public List<(int Offset, int Width, int Height, int Pitch)> X360Mips()
     {
+        CheckHeader();
         (int bs, int bpb) = BlockOf(Format);
         List<(int, int, int, int)> output = [];
         int off = 0;
@@ -113,6 +125,7 @@ internal sealed class Htx
     }
     public List<(int Offset, int Size, int Width, int Height)> LevelSizes(Platform platform)
     {
+        CheckHeader();
         List<(int, int, int, int)> output = [];
         if (platform == Platform.Xbox360)
         {
@@ -186,8 +199,8 @@ internal sealed class Htx
             }
             return (px, lw, lh);
         }
-        byte[] units = new byte[lw * lh * 4];
         Need(raw, lw * lh * 2);
+        byte[] units = new byte[lw * lh * 4];
         for (int i = 0; i < lw * lh; i++)
         {
             Color16(Format, Bin.U16(raw, i * 2, true), units, i);

@@ -39,7 +39,6 @@ namespace Omega.Disc.Formats.Xbox
         public uint RootSector { get; private init; }
         public uint RootSize { get; private init; }
         public IReadOnlyList<GdfxEntry> Entries => _entries;
-        public int DirectoryCount => _entries.Count(entry => entry.IsDirectory);
         public IReadOnlyList<GdfxEntry> Table(uint sector, uint size)
         {
             lock (_tables)

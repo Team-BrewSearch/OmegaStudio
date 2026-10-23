@@ -25,7 +25,7 @@ internal static class GltfContainer
         {
             return ParseGlb(raw);
         }
-        JsonDocument document = JsonDocument.Parse(raw);
+        using JsonDocument document = JsonDocument.Parse(raw);
         return (document.RootElement.Clone(), null);
     }
     private static (JsonElement Root, byte[]? Bin) ParseGlb(byte[] raw)
@@ -48,7 +48,8 @@ internal static class GltfContainer
             }
             if (type == ChunkJson)
             {
-                root = JsonDocument.Parse(raw.AsMemory(at, length)).RootElement.Clone();
+                using JsonDocument json = JsonDocument.Parse(raw.AsMemory(at, length));
+                root = json.RootElement.Clone();
             }
             else if (type == ChunkBin)
             {
@@ -135,27 +136,30 @@ internal static class GltfContainer
         }
         List<(int, Matrix4x4)> flat = [];
         HashSet<int> seen = [];
-        foreach (int start in roots)
+        Stack<(int Node, Matrix4x4 Parent)> pending = new();
+        for (int i = roots.Count - 1; i >= 0; i--)
         {
-            Visit(start, Matrix4x4.Identity);
+            pending.Push((roots[i], Matrix4x4.Identity));
         }
-        return flat;
-        void Visit(int node, Matrix4x4 parent)
+        while (pending.TryPop(out (int Node, Matrix4x4 Parent) next))
         {
+            int node = next.Node;
             if (node < 0 || node >= nodes.Length || !seen.Add(node))
             {
-                return;
+                continue;
             }
-            Matrix4x4 world = LocalTransform(nodes[node]) * parent;
+            Matrix4x4 world = LocalTransform(nodes[node]) * next.Parent;
             flat.Add((node, world));
             if (nodes[node].TryGetProperty("children", out JsonElement children))
             {
-                foreach (JsonElement c in children.EnumerateArray())
+                int[] kids = [.. children.EnumerateArray().Select(child => child.GetInt32())];
+                for (int k = kids.Length - 1; k >= 0; k--)
                 {
-                    Visit(c.GetInt32(), world);
+                    pending.Push((kids[k], world));
                 }
             }
         }
+        return flat;
     }
     private static Matrix4x4 LocalTransform(JsonElement node)
     {

@@ -1,6 +1,8 @@
+using System.Buffers;
 using System.Buffers.Binary;
+using System.Buffers.Text;
 using System.Numerics;
-using System.Text;
+using System.Runtime.InteropServices;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using Omega.Plugins;
@@ -8,6 +10,7 @@ namespace OmegaStudio.Services.Gltf;
 internal static class GltfWriter
 {
     private const int Float = 5126, UShort = 5123, UInt = 5125;
+    private const int Base64Chunk = 3 << 14;
     public static void Write(SceneGeometry scene, string path)
     {
         ArgumentNullException.ThrowIfNull(scene);
@@ -16,23 +19,19 @@ internal static class GltfWriter
         _ = Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(path))!);
         using Builder builder = new(scene);
         JsonObject gltf = builder.Build();
-        if (Path.GetExtension(path).Equals(".glb", StringComparison.OrdinalIgnoreCase))
+        bool glb = Path.GetExtension(path).Equals(".glb", StringComparison.OrdinalIgnoreCase);
+        AtomicSave.WriteToStream(path, stream =>
         {
-            AtomicSave.WriteToStream(path, stream => WriteGlb(stream, gltf, builder.Binary));
-            AtomicSave.Overwrite(path);
-            return;
-        }
-        gltf["buffers"] = new JsonArray
-        {
-            new JsonObject
+            if (glb)
             {
-                ["uri"] = "data:application/octet-stream;base64," + Convert.ToBase64String(builder.Binary),
-                ["byteLength"] = builder.Binary.Length,
-            },
-        };
-        byte[] text = new UTF8Encoding(encoderShouldEmitUTF8Identifier: false)
-            .GetBytes(gltf.ToJsonString(new JsonSerializerOptions { WriteIndented = true }));
-        AtomicSave.Write(path, text);
+                WriteGlb(stream, gltf, builder.Binary);
+            }
+            else
+            {
+                WriteGltf(stream, gltf, builder.Binary);
+            }
+        });
+        AtomicSave.Overwrite(path);
     }
     private sealed class Builder : IDisposable
     {
@@ -53,7 +52,7 @@ internal static class GltfWriter
         {
             _scene = scene;
         }
-        public byte[] Binary => _bin.ToArray();
+        public ReadOnlySpan<byte> Binary => _bin.GetBuffer().AsSpan(0, (int)_bin.Length);
         public void Dispose()
         {
             _bin.Dispose();
@@ -106,10 +105,10 @@ internal static class GltfWriter
             }
             return gltf;
         }
-        private int View(byte[] bytes)
+        private int View(ReadOnlySpan<byte> bytes)
         {
             int offset = (int)_bin.Length;
-            _bin.Write(bytes, 0, bytes.Length);
+            _bin.Write(bytes);
             while (_bin.Length % 4 != 0)
             {
                 _bin.WriteByte(0);
@@ -122,15 +121,13 @@ internal static class GltfWriter
             });
             return _views.Count - 1;
         }
-        private int Accessor(Array data, int components, int componentType, bool minMax = false)
+        private int Accessor<T>(T[] data, int components, int componentType, bool minMax = false)
+            where T : unmanaged
         {
-            int length = Buffer.ByteLength(data);
-            byte[] bytes = new byte[length];
-            Buffer.BlockCopy(data, 0, bytes, 0, length);
             int count = data.Length / components;
             JsonObject accessor = new()
             {
-                ["bufferView"] = View(bytes),
+                ["bufferView"] = View(MemoryMarshal.AsBytes(data.AsSpan())),
                 ["componentType"] = componentType,
                 ["count"] = count,
                 ["type"] = components switch
@@ -457,10 +454,19 @@ internal static class GltfWriter
             return new JsonArray([.. flat.Select(v => JsonValue.Create(v))]);
         }
     }
-    private static void WriteGlb(Stream file, JsonObject gltf, byte[] binary)
+    private static void WriteGltf(Stream file, JsonObject gltf, ReadOnlySpan<byte> binary)
     {
-        gltf["buffers"] = new JsonArray { new JsonObject { ["byteLength"] = binary.Length } };
-        byte[] json = Encoding.UTF8.GetBytes(gltf.ToJsonString());
+        using Utf8JsonWriter writer = new(file, new JsonWriterOptions { Indented = true });
+        WriteJson(writer, gltf, binary, embed: true);
+    }
+    private static void WriteGlb(Stream file, JsonObject gltf, ReadOnlySpan<byte> binary)
+    {
+        ArrayBufferWriter<byte> written = new();
+        using (Utf8JsonWriter writer = new(written))
+        {
+            WriteJson(writer, gltf, binary, embed: false);
+        }
+        ReadOnlySpan<byte> json = written.WrittenSpan;
         int jsonPadded = Align4(json.Length);
         int binPadded = Align4(binary.Length);
         int total = 12 + 8 + jsonPadded + (binary.Length > 0 ? 8 + binPadded : 0);
@@ -475,7 +481,48 @@ internal static class GltfWriter
             WriteChunk(file, 0x004E4942, binary, binPadded, 0x00);
         }
     }
-    private static void WriteChunk(Stream file, uint type, byte[] payload, int padded, byte pad)
+    private static void WriteJson(Utf8JsonWriter writer, JsonObject gltf, ReadOnlySpan<byte> binary, bool embed)
+    {
+        writer.WriteStartObject();
+        foreach ((string name, JsonNode? value) in gltf)
+        {
+            writer.WritePropertyName(name);
+            value!.WriteTo(writer);
+        }
+        writer.WriteStartArray("buffers");
+        writer.WriteStartObject();
+        if (embed)
+        {
+            writer.WritePropertyName("uri");
+            WriteDataUri(writer, binary);
+        }
+        writer.WriteNumber("byteLength", binary.Length);
+        writer.WriteEndObject();
+        writer.WriteEndArray();
+        writer.WriteEndObject();
+    }
+    private static void WriteDataUri(Utf8JsonWriter writer, ReadOnlySpan<byte> binary)
+    {
+        writer.WriteStringValueSegment("data:application/octet-stream;base64,"u8, isFinalSegment: false);
+        byte[] text = ArrayPool<byte>.Shared.Rent(Base64.GetMaxEncodedToUtf8Length(Base64Chunk));
+        try
+        {
+            do
+            {
+                int take = Math.Min(Base64Chunk, binary.Length);
+                _ = Base64.EncodeToUtf8(binary[..take], text, out _, out int encoded);
+                binary = binary[take..];
+                writer.WriteStringValueSegment(text.AsSpan(0, encoded), isFinalSegment: binary.IsEmpty);
+                writer.Flush();
+            }
+            while (!binary.IsEmpty);
+        }
+        finally
+        {
+            ArrayPool<byte>.Shared.Return(text);
+        }
+    }
+    private static void WriteChunk(Stream file, uint type, ReadOnlySpan<byte> payload, int padded, byte pad)
     {
         Span<byte> header = stackalloc byte[8];
         BinaryPrimitives.WriteUInt32LittleEndian(header, (uint)padded);

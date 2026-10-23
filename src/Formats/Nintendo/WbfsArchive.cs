@@ -5,9 +5,11 @@ namespace Nintendo.Formats;
 public sealed class WbfsArchive : IArchive
 {
     private readonly SharedStream _shared;
+    private readonly string _path;
     private WbfsArchive(string path, IHostServices host, SharedStream shared, WbfsContainer container)
     {
         _shared = shared;
+        _path = Path.GetFullPath(path);
         Host = host;
         Container = container;
         DisplayName = Path.GetFileName(path);
@@ -18,16 +20,15 @@ public sealed class WbfsArchive : IArchive
     public string DisplayName { get; }
     public IAssetNode Root { get; }
     public bool IsDirty { get; private set; }
-    public IReadOnlyList<string> BackupPaths =>
-        [_shared.Stream is System.IO.FileStream file ? file.Name : DisplayName];
+    public IReadOnlyList<string> BackupPaths => [_path];
     public void MarkDirty()
     {
         IsDirty = true;
     }
-    public static WbfsArchive OpenReadWrite(string path, IHostServices host)
+    public static WbfsArchive Open(string path, IHostServices host)
     {
         ArgumentNullException.ThrowIfNull(host);
-        SharedStream shared = SharedStream.Open(path, readOnly: false);
+        SharedStream shared = SharedStream.Open(path, readOnly: true);
         try
         {
             WbfsContainer container = WbfsContainer.Open(shared);
@@ -35,7 +36,7 @@ public sealed class WbfsArchive : IArchive
         }
         catch
         {
-            shared.Stream.Dispose();
+            shared.Dispose();
             throw;
         }
     }
@@ -44,14 +45,7 @@ public sealed class WbfsArchive : IArchive
         Container.VerifyTables();
         Container.CommitWrites();
         IsDirty = false;
-        Host.Log($"Saved {DisplayName}.");
     }
-    public void DiscardEdits()
-    {
-        Container.DiscardWrites();
-        IsDirty = false;
-    }
-    public int PendingEdits => Container.DeferredBytes;
     public void Dispose()
     {
         int waiting = Container.DeferredClusters;
@@ -61,6 +55,6 @@ public sealed class WbfsArchive : IArchive
             Host.Log($"Discarded {waiting} pending edit(s) to {DisplayName}.");
         }
         IsDirty = false;
-        _shared.Stream.Dispose();
+        _shared.Dispose();
     }
 }

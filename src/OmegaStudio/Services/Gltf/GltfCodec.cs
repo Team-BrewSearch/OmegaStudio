@@ -3,7 +3,7 @@ using Omega.Plugins.Gltf;
 namespace OmegaStudio.Services.Gltf;
 internal sealed class GltfCodec : IGltfCodec
 {
-    private const long ExportBudget = MemoryBudget.Export;
+    private static long ExportBudget => MemoryBudget.Export;
     public static GltfCodec Instance { get; } = new();
     public GltfDocument Read(string path)
     {
@@ -16,15 +16,11 @@ internal sealed class GltfCodec : IGltfCodec
     public void Write(SceneGeometry scene, string path)
     {
         ArgumentNullException.ThrowIfNull(scene);
-        long held = 0;
+        long held = scene.Textures.Sum(texture => (long)texture.Rgba.Length);
         foreach (SceneMesh mesh in scene.Meshes)
         {
-            held += mesh.Positions.Length + mesh.Normals.Length + mesh.Uvs.Length
-                + (mesh.Indices?.Length ?? 0) + mesh.Colors.Length;
-        }
-        foreach (Omega.Plugins.ImageData texture in scene.Textures)
-        {
-            held += texture.Rgba.Length;
+            held += mesh.Colors.Length + (sizeof(float) * ((long)mesh.Positions.Length + mesh.Normals.Length
+                + mesh.Uvs.Length + (mesh.Indices?.Length ?? 0) + (mesh.Joints?.Length ?? 0) + (mesh.Weights?.Length ?? 0)));
         }
         if (held > ExportBudget)
         {

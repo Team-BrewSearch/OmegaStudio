@@ -174,7 +174,7 @@ internal sealed class RomFsFolderNode : AssetNode
 internal sealed class NcchFileNode : StreamingAssetNode
 {
     public NcchFileNode(Nintendo3DSArchive archive, string name, long offset, long length, string path)
-        : base(name, path, new ImageWindow(archive, offset, length), AssetKinds.Auto, Sizes.Describe(length))
+        : base(name, path, new ImageWindow(archive, name, offset, length), AssetKinds.Auto, Sizes.Describe(length))
     {
     }
     public override string Extension => Path.GetExtension(Name) is { Length: > 1 } found ? found : ".bin";
@@ -186,7 +186,7 @@ internal sealed class NcchFileNode : StreamingAssetNode
             $"'{Name}' is read only: a 3DS image's filesystems are read through their own tables, "
             + "and this build does not rewrite them.");
     }
-    private sealed class ImageWindow(Nintendo3DSArchive archive, long offset, long length) : IPayloadSource
+    private sealed class ImageWindow(Nintendo3DSArchive archive, string name, long offset, long length) : IPayloadSource
     {
         public long Length => length;
         public int Head(Span<byte> destination)
@@ -205,9 +205,7 @@ internal sealed class NcchFileNode : StreamingAssetNode
                 return [];
             }
             using Stream window = archive.Range(offset, length);
-            byte[] payload = new byte[length];
-            window.ReadExactly(payload);
-            return payload;
+            return PayloadReader.ReadAll(window, name);
         }
     }
 }

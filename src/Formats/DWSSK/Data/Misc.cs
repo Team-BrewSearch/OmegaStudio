@@ -743,6 +743,10 @@ internal static class U8
         uint size = Bin.U32(b, 8, true);
         uint data = Bin.U32(b, 12, true);
         int n = (int)Bin.U32(b, root + 8, true);
+        if (n < 0 || root + (n * 12L) > b.Length)
+        {
+            throw new InvalidDataException($"U8 root at 0x{root:X} declares {n} nodes, more than the {b.Length}-byte file holds");
+        }
         int strings = root + (n * 12);
         List<(int Type, string Name, uint A, uint C)> raw = [];
         for (int i = 0; i < n; i++)
@@ -844,6 +848,7 @@ internal static class U8
 internal sealed record SwfTag(int Code, int Offset, int Length, int Start);
 internal static class Swf
 {
+    private const int MaxInflateRatio = 1032;
     private static readonly Dictionary<int, string> s_tags = new()
     {
         [0] = "End", [1] = "ShowFrame", [2] = "DefineShape", [4] = "PlaceObject", [5] = "RemoveObject", [6] = "DefineBits",
@@ -886,8 +891,11 @@ internal static class Swf
         using MemoryStream output = new();
         output.Write("FWS"u8);
         output.Write(b, 3, 5);
-        z.CopyTo(output);
-        return output.ToArray();
+        long limit = Math.Min(Array.MaxLength, 8 + ((b.Length - 8L) * MaxInflateRatio));
+        CopyAtMost(z, output, limit);
+        return output.Length > limit
+            ? throw new InvalidDataException($"a {b.Length}-byte compressed SWF inflates past the {limit} bytes zlib can produce from it")
+            : output.ToArray();
     }
     public static byte[] Compress(byte[] fws)
     {
@@ -919,6 +927,10 @@ internal static class Swf
             {
                 len = (int)Bin.U32(fws, o, false);
                 o += 4;
+            }
+            if (len < 0)
+            {
+                throw new InvalidDataException($"SWF tag at 0x{start:X} declares a length of {(uint)len} bytes");
             }
             tags.Add(new SwfTag(code, o, len, start));
             o += len;
@@ -1085,13 +1097,22 @@ internal static class Swf
         }
         return output.ToArray();
     }
-    public static byte[] ZlibDecompress(ReadOnlySpan<byte> data)
+    public static byte[] ZlibDecompress(ReadOnlySpan<byte> data, long limit)
     {
         using MemoryStream input = new(data.ToArray());
         using ZLibStream z = new(input, CompressionMode.Decompress);
         using MemoryStream output = new();
-        z.CopyTo(output);
+        CopyAtMost(z, output, limit);
         return output.ToArray();
+    }
+    private static void CopyAtMost(Stream from, MemoryStream to, long limit)
+    {
+        byte[] buffer = new byte[81920];
+        int read;
+        while (to.Length <= limit && (read = from.Read(buffer)) > 0)
+        {
+            to.Write(buffer, 0, read);
+        }
     }
     public static (int Id, string Kind, Func<Func<byte[], Omega.Plugins.ImageData>, Omega.Plugins.ImageData> Decode)? Image(SwfTag t, byte[] fws)
     {
@@ -1110,10 +1131,10 @@ internal static class Swf
             {
                 int alen = (int)Bin.U32(body, 2, false);
                 byte[] jpg = Bin.Slice(body, 6, 6 + alen).ToArray();
-                byte[] alpha = body.Length > 6 + alen ? ZlibDecompress(body.AsSpan(6 + alen)) : [];
                 return (cid, "jpg", load =>
                 {
                     Omega.Plugins.ImageData im = load(jpg);
+                    byte[] alpha = body.Length > 6 + alen ? ZlibDecompress(body.AsSpan(6 + alen), (long)im.Width * im.Height) : [];
                     if (alpha.Length != im.Width * im.Height)
                     {
                         return im;
@@ -1137,9 +1158,18 @@ internal static class Swf
                     int ncol = body[7] + 1;
                     return (cid, "png", _ =>
                     {
-                        byte[] raw = ZlibDecompress(body.AsSpan(8));
                         int csz = hasAlpha ? 4 : 3;
                         int pitch = (w + 3) & ~3;
+                        if ((long)w * h * 4 > Array.MaxLength)
+                        {
+                            throw new InvalidDataException($"lossless image {cid} is {w}x{h}, larger than one image can hold");
+                        }
+                        long need = (ncol * (long)csz) + ((long)Math.Max(0, h - 1) * pitch) + w;
+                        byte[] raw = ZlibDecompress(body.AsSpan(8), need);
+                        if (w > 0 && h > 0 && raw.Length < need)
+                        {
+                            throw new InvalidDataException($"lossless image {cid} holds {raw.Length} bytes, a {w}x{h} palette image needs {need}");
+                        }
                         byte[] rgba = new byte[w * h * 4];
                         for (int y = 0; y < h; y++)
                         {
@@ -1160,7 +1190,16 @@ internal static class Swf
                 {
                     return (cid, "png", _ =>
                     {
-                        byte[] raw = ZlibDecompress(body.AsSpan(7));
+                        long need = (long)w * h * 4;
+                        if (need > Array.MaxLength)
+                        {
+                            throw new InvalidDataException($"lossless image {cid} is {w}x{h}, larger than one image can hold");
+                        }
+                        byte[] raw = ZlibDecompress(body.AsSpan(7), need);
+                        if (raw.Length < need)
+                        {
+                            throw new InvalidDataException($"lossless image {cid} holds {raw.Length} bytes, a {w}x{h} ARGB image needs {need}");
+                        }
                         byte[] rgba = new byte[w * h * 4];
                         for (int i = 0; i < w * h; i++)
                         {

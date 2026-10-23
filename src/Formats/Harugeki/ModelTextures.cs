@@ -57,7 +57,7 @@ public static class ModelTextures
     private static int[] ReadTable(ReadOnlySpan<byte> blob)
     {
         int count = (int)BinaryRead.U32(blob, 0x0C);
-        if (TableOffset + (count * 4) > TableEnd)
+        if (count < 0 || TableOffset + (count * 4L) > TableEnd)
         {
             throw new ArgumentException($"texture table of {count} does not fit the header", nameof(blob));
         }

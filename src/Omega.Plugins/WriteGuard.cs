@@ -9,10 +9,6 @@ public static class WriteGuard
         ArgumentException.ThrowIfNullOrWhiteSpace(what);
         ArgumentNullException.ThrowIfNull(files);
         ArgumentNullException.ThrowIfNull(readsBack);
-        if (files.Count == 0)
-        {
-            return;
-        }
         foreach ((string path, byte[] rebuilt) in files)
         {
             if (string.IsNullOrEmpty(path))
@@ -31,58 +27,19 @@ public static class WriteGuard
             {
                 temporaries.Add(AtomicSave.WriteToStream(path, stream => stream.Write(rebuilt)));
             }
-        }
-        catch
-        {
-            foreach (string temporary in temporaries)
+            if (files.Count > 0 && !readsBack(temporaries))
             {
-                AtomicSave.TryDelete(temporary);
+                throw DoesNotReadBack(what);
             }
-            throw;
-        }
-        bool parsed = false;
-        try
-        {
-            parsed = readsBack(temporaries);
+            string[] changed = [.. files.Where(file => !AtomicSave.Same(file.Path, file.Rebuilt)).Select(file => file.Path)];
+            if (changed.Length > 0)
+            {
+                AtomicSave.OverwriteAll(changed);
+            }
         }
         finally
         {
-            if (!parsed)
-            {
-                foreach (string temporary in temporaries)
-                {
-                    AtomicSave.TryDelete(temporary);
-                }
-            }
-        }
-        if (!parsed)
-        {
-            throw new InvalidDataException(
-                $"what was built for {what} does not read back, so nothing was written. This is a bug in the "
-                + "writer, not in the file: report it with the file that was being saved.");
-        }
-        List<int> changed = [];
-        for (int i = 0; i < files.Count; i++)
-        {
-            if (!AtomicSave.Same(files[i].Path, files[i].Rebuilt))
-            {
-                changed.Add(i);
-            }
-        }
-        if (changed.Count == 0)
-        {
-            foreach (string temporary in temporaries)
-            {
-                AtomicSave.TryDelete(temporary);
-            }
-            return;
-        }
-        string[] paths = [.. changed.Select(index => files[index].Path)];
-        byte[][] bytes = [.. changed.Select(index => files[index].Rebuilt)];
-        AtomicSave.WriteAll(paths, bytes);
-        foreach (string temporary in temporaries)
-        {
-            AtomicSave.TryDelete(temporary);
+            temporaries.ForEach(AtomicSave.TryDelete);
         }
     }
     public static void CommitStreaming(
@@ -100,29 +57,25 @@ public static class WriteGuard
         {
             if (!readsBack(temporary))
             {
-                throw new InvalidDataException(
-                    $"what was built for {what} does not read back, so nothing was written. This is a bug in the "
-                    + "writer, not in the file: report it with the file that was being saved.");
+                throw DoesNotReadBack(what);
             }
-            if (AtomicSave.Same(path, ReadEverything(temporary)))
+            if (!AtomicSave.SameFiles(path, temporary))
             {
-                AtomicSave.TryDelete(temporary);
-                return;
+                AtomicSave.Overwrite(path);
             }
-            AtomicSave.Overwrite(path);
         }
         finally
         {
             AtomicSave.TryDelete(temporary);
         }
     }
-    private static byte[] ReadEverything(string path)
+    private static InvalidDataException DoesNotReadBack(string what)
     {
-        using FileStream file = System.IO.File.OpenRead(path);
-        byte[] bytes = new byte[file.Length];
-        file.ReadExactly(bytes);
-        return bytes;
+        return new InvalidDataException(
+            $"what was built for {what} does not read back, so nothing was written. This is a bug in the "
+            + "writer, not in the file: report it with the file that was being saved.");
     }
+    [Obsolete("Unused. This will be removed at the next contract version.")]
     public static string Skipped(string what, IReadOnlyList<(string Path, byte[] Rebuilt)> files)
     {
         return files.Count == 1

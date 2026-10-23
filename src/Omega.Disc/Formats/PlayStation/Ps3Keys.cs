@@ -15,6 +15,7 @@ namespace Omega.Disc.Formats.PlayStation
         public const int WatermarkOffset = 0xF70;
         public const int D1KeyOffset = 0xF80;
         private const string Watermark = "k3k3yEnWatermark";
+        private const int MaxSidecarSize = 4096;
         public static readonly byte[] PublicKey =
         [
             0x6C, 0x88, 0x91, 0x0E, 0x63, 0x39, 0x5A, 0x6D,
@@ -85,6 +86,12 @@ namespace Omega.Disc.Formats.PlayStation
             if (!File.Exists(sidecar))
             {
                 return null;
+            }
+            long size = new FileInfo(sidecar).Length;
+            if (size > MaxSidecarSize)
+            {
+                throw new InvalidDataException(
+                    $"the key file beside the image is {size} bytes, and a PS3 key is 32 hex digits");
             }
             string text = File.ReadAllText(sidecar).Trim();
             if (text.Length != 32)

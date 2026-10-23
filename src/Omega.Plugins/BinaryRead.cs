@@ -49,7 +49,7 @@ public static class BinaryRead
     }
     public static string Name(ReadOnlySpan<byte> blob, int offset, int max)
     {
-        if (offset >= blob.Length)
+        if ((uint)offset >= (uint)blob.Length || max <= 0)
         {
             return string.Empty;
         }
@@ -61,9 +61,11 @@ public static class BinaryRead
     {
         return Encoding.Latin1.GetString(b);
     }
+    [Obsolete("Compare with a UTF-8 literal instead: b.SequenceEqual(\"text\"u8). This will be removed at the next contract version.")]
     public static bool Spells(ReadOnlySpan<byte> b, string text)
     {
-        return b.SequenceEqual(Encoding.ASCII.GetBytes(text));
+        ArgumentNullException.ThrowIfNull(text);
+        return Ascii.Equals(b, text);
     }
     public static string Hex(ReadOnlySpan<byte> b)
     {
@@ -87,7 +89,7 @@ public static class BinaryRead
     }
     public static void Need(ReadOnlySpan<byte> b, int o, int bytes)
     {
-        if (o < 0 || bytes < 0 || o + bytes > b.Length)
+        if (o < 0 || bytes < 0 || o > b.Length - bytes)
         {
             throw new InvalidDataException(
                 $"reading {bytes} byte(s) at 0x{Math.Max(0, o):X} runs past the end of a {b.Length}-byte blob");

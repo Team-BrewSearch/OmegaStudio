@@ -18,6 +18,7 @@
                                 Condition="'%(Extension)' == '.dll'">
         <SourcePath>%(ReferenceCopyLocalPaths.FullPath)</SourcePath>
       </OmegaDependencyCandidate>
+      <OmegaDependencyCandidate Remove="@(OmegaUnusedDependency->'%(Identity).dll')" />
     </ItemGroup>
     <RemoveDuplicates Inputs="@(OmegaDependencyCandidate)">
       <Output TaskParameter="Filtered" ItemName="OmegaDependency" />
@@ -28,7 +29,7 @@
       </EmbeddedResource>
     </ItemGroup>
     <Message Importance="normal"
-             Text="$(AssemblyName): embedding @(OmegaDependency->Count()) librar(ies)" />
+             Text="$(AssemblyName): embedding @(OmegaDependency->Count()) librar(ies), leaving out @(OmegaUnusedDependency->Count()) unused" />
   </Target>
   <Target Name="CopyToFormatsFolder" AfterTargets="Build" Condition="'$(OmegaSkipFormatsCopy)' != 'true'">
     <Copy SourceFiles="$(TargetPath)" DestinationFolder="$(OmegaFormatsPath)" SkipUnchangedFiles="true" />

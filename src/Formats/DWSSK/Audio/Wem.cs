@@ -94,7 +94,12 @@ internal static class Wem
         }
         long yn1 = Bin.I16(header, 0x24, big);
         long yn2 = Bin.I16(header, 0x26, big);
-        short[] output = new short[nsamples];
+        if (nsamples < 0)
+        {
+            throw new InvalidDataException($"DSP ADPCM header declares {nsamples} samples");
+        }
+        int limit = Math.Min(nsamples, data.Length / 8 * 14);
+        short[] output = new short[limit];
         int n = 0;
         for (int f = 0; f < data.Length - 7; f += 8)
         {
@@ -104,7 +109,7 @@ internal static class Wem
             long scale = 1L << (ps & 15);
             for (int k = 0; k < 14; k++)
             {
-                if (n >= nsamples)
+                if (n >= limit)
                 {
                     return output;
                 }

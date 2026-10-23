@@ -13,7 +13,6 @@ public sealed class AudioPlaybackService : IDisposable
     private readonly Lock _sync = new();
     private CancellationTokenSource? _pollCts;
     private Task? _pollLoop;
-    private IAudioDecoder? _decoder;
     private bool _disposed;
     private double _restingSeconds;
     public event Action? StateChanged;
@@ -49,7 +48,7 @@ public sealed class AudioPlaybackService : IDisposable
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
         ArgumentNullException.ThrowIfNull(data);
-        IAudioDecoder decoder = AudioInfoHelper.CreateDecoder(data);
+        using IAudioDecoder decoder = AudioInfoHelper.CreateDecoder(data);
         byte[] pcm = new byte[decoder.TotalBytes];
         decoder.ReadAll(pcm);
         int channels = decoder.Channels;
@@ -61,7 +60,6 @@ public sealed class AudioPlaybackService : IDisposable
             Unload();
             try
             {
-                _decoder = decoder;
                 _engine.Initialize();
                 _engine.UploadPcm(pcm, channels, bitsPerSample, sampleRate);
                 Duration = sampleRate > 0 && channels > 0
@@ -172,11 +170,7 @@ public sealed class AudioPlaybackService : IDisposable
         CancellationTokenSource cts = new();
         PeriodicTimer timer = new(s_pollInterval);
         _pollCts = cts;
-        _pollLoop = Task.Factory.StartNew(
-            () => PollLoop(timer, cts),
-            CancellationToken.None,
-            TaskCreationOptions.LongRunning,
-            TaskScheduler.Default).Unwrap();
+        _pollLoop = Task.Run(() => PollLoop(timer, cts));
     }
     private async Task PollLoop(PeriodicTimer timer, CancellationTokenSource stop)
     {
@@ -222,8 +216,6 @@ public sealed class AudioPlaybackService : IDisposable
     {
         StopPolling();
         _engine.Reset();
-        _decoder?.Dispose();
-        _decoder = null;
         IsLoaded = false;
         State = PlaybackState.Stopped;
         Duration = TimeSpan.Zero;

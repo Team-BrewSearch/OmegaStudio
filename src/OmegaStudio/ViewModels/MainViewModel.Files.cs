@@ -135,25 +135,44 @@ public partial class MainViewModel
         {
             return;
         }
+        IArchive? archive = _session.Archive;
+        PendingFlushes? pending = _session.Pending;
         HostServices services = new(
             _session.Owner ?? throw new InvalidOperationException("no archive is open"),
             Log,
-            _recognition);
+            _recognition,
+            pending);
         AssetCommandContext context = new(node, services, path);
-        AssetSnapshot? before = command.Kind == AssetCommandKind.SaveFile
-            ? null
-            : AssetSnapshot.Capture(node);
+        bool readOnly = command.Kind == AssetCommandKind.SaveFile || command.Role == AssetCommandRole.Export;
+        AssetSnapshot? before = null;
+        bool failed = false;
         try
         {
-            await Task.Run(() => command.Execute(context));
+            await Task.Run(() =>
+            {
+                PendingFlushes.Use(pending);
+                before = readOnly ? null : AssetSnapshot.Capture(node);
+                command.Execute(context);
+            });
         }
         catch (Exception ex)
         {
+            failed = true;
             Log($"{command.Title.TrimEnd('…')} failed: {ex.Message}");
-            return;
         }
-        ApplyChanges(row, node, context.Changed);
-        RecordEdit(command.Title, row, before, context.Changed);
+        if (!ReferenceEquals(_session.Archive, archive))
+        {
+            Log($"{command.Title.TrimEnd('…')} finished after its archive was closed, so its result was not applied.");
+        }
+        else if (!failed)
+        {
+            ApplyChanges(row, node, context.Changed);
+            RecordEdit(command.Title, row, before, context.Changed);
+        }
+        else if (!readOnly)
+        {
+            RollBack(command.Title, row, node, before);
+        }
     }
     private Task<string?> PickForAsync(AssetCommand command)
     {
@@ -195,7 +214,14 @@ public partial class MainViewModel
         }
         if (changed.HasFlag(AssetChange.Scene))
         {
-            Present(node is ISceneAsset ? node : _sceneSource);
+            if (node is ISceneAsset)
+            {
+                Present(node);
+            }
+            else
+            {
+                Presenter.ShowScene(_sceneSource);
+            }
         }
         if (changed.HasFlag(AssetChange.Image))
         {
@@ -204,7 +230,7 @@ public partial class MainViewModel
         }
         if (changed.HasFlag(AssetChange.Properties))
         {
-            RebuildProperties(node);
+            Presenter.RebuildProperties(node);
         }
         if (changed.HasFlag(AssetChange.Dirty))
         {

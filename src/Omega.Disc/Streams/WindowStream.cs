@@ -5,8 +5,10 @@ namespace Omega.Disc.Streams
     public sealed class WindowStream : Stream
     {
         private readonly Stream _parent;
+        private readonly Microsoft.Win32.SafeHandles.SafeFileHandle? _handle;
         private readonly long _offset;
         private readonly long _length;
+        private long _position;
         public WindowStream(Stream parent, long offset, long length)
         {
             ArgumentNullException.ThrowIfNull(parent);
@@ -17,18 +19,23 @@ namespace Omega.Disc.Streams
                     + $"the end of the {(parent.CanSeek ? parent.Length.ToString(CultureInfo.InvariantCulture) : "unknown")}-byte stream");
             }
             _parent = parent;
+            _handle = parent is FileStream { CanWrite: false } file ? file.SafeFileHandle : null;
             _offset = offset;
             _length = length;
-            Position = 0;
-            _parent.Position = _offset;
         }
-        public long WindowOffset => _offset;
-        public long WindowLength => _length;
         public override bool CanRead => true;
         public override bool CanSeek => true;
         public override bool CanWrite => false;
         public override long Length => _length;
-        public override long Position { get; set; }
+        public override long Position
+        {
+            get => _position;
+            set
+            {
+                ArgumentOutOfRangeException.ThrowIfNegative(value);
+                _position = value;
+            }
+        }
         public override void Flush()
         {
         }
@@ -38,15 +45,26 @@ namespace Omega.Disc.Streams
         }
         public override int Read(Span<byte> buffer)
         {
-            long left = _length - Position;
-            if (left <= 0)
+            long left = _length - _position;
+            if (left <= 0 || buffer.IsEmpty)
             {
                 return 0;
             }
-            int count = (int)Math.Min(left, buffer.Length);
-            _parent.Position = _offset + Position;
-            int read = _parent.Read(buffer[..count]);
-            Position += read;
+            Span<byte> into = buffer[..(int)Math.Min(left, buffer.Length)];
+            int read;
+            if (_handle is not null)
+            {
+                read = RandomAccess.Read(_handle, into, _offset + _position);
+            }
+            else
+            {
+                lock (_parent)
+                {
+                    _parent.Position = _offset + _position;
+                    read = _parent.Read(into);
+                }
+            }
+            _position += read;
             return read;
         }
         public override long Seek(long offset, SeekOrigin origin)
@@ -54,11 +72,11 @@ namespace Omega.Disc.Streams
             Position = origin switch
             {
                 SeekOrigin.Begin => offset,
-                SeekOrigin.Current => Position + offset,
+                SeekOrigin.Current => _position + offset,
                 SeekOrigin.End => _length + offset,
                 _ => throw new ArgumentOutOfRangeException(nameof(origin)),
             };
-            return Position;
+            return _position;
         }
         public override void SetLength(long value)
         {
@@ -67,10 +85,6 @@ namespace Omega.Disc.Streams
         public override void Write(byte[] buffer, int offset, int count)
         {
             throw new NotSupportedException("a window stream is read-only");
-        }
-        protected override void Dispose(bool disposing)
-        {
-            base.Dispose(disposing);
         }
     }
 }

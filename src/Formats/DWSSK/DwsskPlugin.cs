@@ -247,7 +247,7 @@ internal static class Extract
     }
     private static WadSession Session(string dir, JObj man, bool writable)
     {
-        WadArchive archive = WadArchive.FromManifest(man, f => File.Exists(Path.Combine(dir, f)) ? File.ReadAllBytes(Path.Combine(dir, f)) : []);
+        WadArchive archive = WadArchive.FromManifest(man, f => NodeFactory.Inside(dir, f) is { } full && File.Exists(full) ? File.ReadAllBytes(full) : []);
         return new WadSession(archive, Path.GetFileName(dir), writable);
     }
     private static string? GlobalFolder(string wadDir)
@@ -314,20 +314,21 @@ public sealed class DwsskContainerRecognizer : IContainerRecognizer
             }
         }
         List<IAssetNode> loose = [.. children.Where(c => s_loose.Contains(Path.GetExtension(c.Name).ToLowerInvariant()) && Row(c) is not null)];
-        if (wads.Count == 0 && loose.Count == 0)
+        GlobalWads? global = GlobalWads.Above(children);
+        if (wads.Count == 0 && loose.Count == 0 && global is null)
         {
             return null;
+        }
+        if (wads.FirstOrDefault(w => WadFiles.IsGlobal(w.Key)) is { Key: { } globalKey, Value: { } globalRows })
+        {
+            List<(string Suffix, IAssetNode Row)> ordered = Ordered(globalRows);
+            global = new GlobalWads(own => OpenWad(globalKey, ordered, host, own), RegionIndex.ForRows(Folder(ordered[0].Row.PathText), () => WadRows(children), host));
         }
         Dictionary<IAssetNode, IAssetNode?> replace = [];
         foreach ((string key, List<(string Suffix, IAssetNode Row)> rows) in wads)
         {
-            List<(string Suffix, IAssetNode Row)> ordered = [.. rows.OrderBy(r => Array.IndexOf(WadFiles.Suffixes, r.Suffix))];
-            Lazy<WadGroup?> group = new(() => OpenWad(key, ordered, host));
-            if (WadFiles.IsGlobal(key))
-            {
-                string root = Folder(ordered[0].Row.PathText);
-                GlobalWads.Offer(() => group.Value, RegionIndex.ForRows(root, () => WadRows(children), host));
-            }
+            List<(string Suffix, IAssetNode Row)> ordered = Ordered(rows);
+            Func<WadGroup?> open = WadFiles.IsGlobal(key) && global is not null ? global.Open : () => OpenWad(key, ordered, host, global);
             foreach ((_, IAssetNode row) in rows)
             {
                 replace[row] = null;
@@ -335,7 +336,7 @@ public sealed class DwsskContainerRecognizer : IContainerRecognizer
             long size = rows.Sum(r => (long)(Row(r.Row)?.Size ?? 0));
             IAssetNode first = ordered[0].Row;
             replace[first] = new LazyNode(key, first.PathText, $"DWSSK WAD, {rows.Count} part{(rows.Count == 1 ? "" : "s")}, {Sizes.Describe(size)}",
-                () => group.Value is { } g ? WadRoots.Build(key, g) : new GroupNode(key, first.PathText, "did not open", () => rows.Select(r => r.Row)));
+                () => open() is { } g ? WadRoots.Build(key, g) : new GroupNode(key, first.PathText, "did not open", () => rows.Select(r => r.Row)));
         }
         List<LooseSlot> slots = [];
         Dictionary<IAssetNode, LooseSlot> bySlot = [];
@@ -364,12 +365,24 @@ public sealed class DwsskContainerRecognizer : IContainerRecognizer
             {
                 output.Add(NodeFactory.Create(slot, child.Name, child.PathText));
             }
+            else if (global is not null && IsFolder(child))
+            {
+                output.Add(new ScopedFolder(child, global));
+            }
             else
             {
                 output.Add(child);
             }
         }
         return output;
+    }
+    private static List<(string Suffix, IAssetNode Row)> Ordered(List<(string Suffix, IAssetNode Row)> rows)
+    {
+        return [.. rows.OrderBy(r => Array.IndexOf(WadFiles.Suffixes, r.Suffix))];
+    }
+    private static bool IsFolder(IAssetNode node)
+    {
+        return node is not (IBinaryAsset or ISceneAsset or IImageAsset or IAudioAsset or IVideoAsset or IAnimatedAsset) && node.HasChildren;
     }
     private static IBinaryAsset? Row(IAssetNode node)
     {
@@ -406,7 +419,7 @@ public sealed class DwsskContainerRecognizer : IContainerRecognizer
             }
         }
     }
-    private static WadGroup? OpenWad(string key, List<(string Suffix, IAssetNode Row)> rows, IHostServices host)
+    private static WadGroup? OpenWad(string key, List<(string Suffix, IAssetNode Row)> rows, IHostServices host, GlobalWads? global)
     {
         try
         {
@@ -418,7 +431,8 @@ public sealed class DwsskContainerRecognizer : IContainerRecognizer
                 bool writable = row.CanReplaceBytes;
                 if (writable)
                 {
-                    archive.Changed += () => row.ReplaceBytes(archive.Build());
+                    Action flush = () => row.ReplaceBytes(archive.Build());
+                    archive.Changed += () => host.Defer(archive, flush);
                 }
                 if (row is StreamingAssetNode streaming)
                 {
@@ -426,9 +440,9 @@ public sealed class DwsskContainerRecognizer : IContainerRecognizer
                 }
                 sessions.Add(new WadSession(archive, key + suffix, writable));
             }
-            WadGroup group = new(host, sessions, WadFiles.IsGlobal(key) ? null : GlobalWads.Latest)
+            WadGroup group = new(host, sessions, global is null || WadFiles.IsGlobal(key) ? null : global.Open)
             {
-                Region = GlobalWads.LatestRegion,
+                Region = global?.Region,
             };
             host.Log($"{key}: {string.Join(", ", sessions.Select(s => $"{s.Name} ({s.Archive.Entries.Count} entries)"))}, {group.Platform.Label()}"
                 + (sessions.All(s => s.Writable) ? "." : ". Read-only: the rows it is made of cannot be written back."));
@@ -439,6 +453,31 @@ public sealed class DwsskContainerRecognizer : IContainerRecognizer
             host.Log($"{key} looks like a DWSSK WAD but did not open: {ex.Message}");
             return null;
         }
+    }
+}
+internal sealed class ScopedFolder(IAssetNode inner, GlobalWads global) : IAssetNode, IDescribable, ICommandSource
+{
+    public string Name => inner.Name;
+    public string Detail => inner.Detail;
+    public string PathText => inner.PathText;
+    public string FileStem => inner.FileStem;
+    public string Kind => inner.Kind;
+    public bool HasChildren => inner.HasChildren;
+    public IEnumerable<IAssetNode> GetChildren()
+    {
+        return global.Adopt(inner.GetChildren());
+    }
+    public IEnumerable<PropertyRow> Describe()
+    {
+        return inner is IDescribable d ? d.Describe() : [];
+    }
+    public IEnumerable<AssetCommand> GetCommands()
+    {
+        return inner is ICommandSource c ? c.GetCommands() : [];
+    }
+    public override string ToString()
+    {
+        return inner.ToString() ?? Name;
     }
 }
 internal sealed class LazyNode(string name, string path, string detail, Func<IAssetNode> open)
