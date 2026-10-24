@@ -179,6 +179,18 @@ public class GlViewport : OpenGlControlBase
     private delegate void BufferSubDataProc(int target, IntPtr offset, IntPtr size, float[] data);
     protected override void OnOpenGlInit(GlInterface gl)
     {
+        try
+        {
+            Initialize(gl);
+        }
+        catch
+        {
+            Release(gl);
+            throw;
+        }
+    }
+    private void Initialize(GlInterface gl)
+    {
         _uniforms = GlUniforms.Create(gl);
         _bufferSubData = Gl.Resolve<BufferSubDataProc>(gl, "glBufferSubData");
         string header = Shaders.Header(GlVersion);
@@ -215,21 +227,30 @@ public class GlViewport : OpenGlControlBase
     }
     protected override void OnOpenGlDeinit(GlInterface gl)
     {
-        if (!_ready)
-        {
-            return;
-        }
+        Release(gl);
+    }
+    private void Release(GlInterface gl)
+    {
+        _ready = false;
         ReleaseTextures(gl);
-        gl.DeleteBuffer(_poseVbo);
-        gl.DeleteBuffer(_surfaceVbo);
-        gl.DeleteBuffer(_triangleIbo);
-        gl.DeleteBuffer(_lineIbo);
-        gl.DeleteBuffer(_gridVbo);
-        gl.DeleteBuffer(_axisVbo);
-        gl.DeleteVertexArray(_vao);
-        gl.DeleteVertexArray(_gridVao);
-        gl.DeleteVertexArray(_axisVao);
-        gl.DeleteTexture(_white);
+        foreach (int buffer in (int[])[_poseVbo, _surfaceVbo, _triangleIbo, _lineIbo, _gridVbo, _axisVbo])
+        {
+            if (buffer != 0)
+            {
+                gl.DeleteBuffer(buffer);
+            }
+        }
+        foreach (int array in (int[])[_vao, _gridVao, _axisVao])
+        {
+            if (array != 0)
+            {
+                gl.DeleteVertexArray(array);
+            }
+        }
+        if (_white != 0)
+        {
+            gl.DeleteTexture(_white);
+        }
         _model?.Delete(gl);
         _flat?.Delete(gl);
         _vertexColor?.Delete(gl);
@@ -392,7 +413,7 @@ public class GlViewport : OpenGlControlBase
             {
                 _textures.Add(MakeTexture(gl, texture, scene.Filtering));
             }
-            catch (Exception)
+            catch (Exception ex) when (ex is not OutOfMemoryException)
             {
                 _textures.Add(0);
             }

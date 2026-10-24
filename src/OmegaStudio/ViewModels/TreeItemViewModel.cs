@@ -23,6 +23,8 @@ public partial class TreeItemViewModel : ObservableObject
         _ = BuildAsync(rows, _generation);
     }
     internal Action<string, int, long>? OnBuilt { get; set; }
+    public delegate Task<List<TreeItemViewModel>> Runner(Func<List<TreeItemViewModel>> work);
+    internal Runner? Run { get; init; }
     public TreeItemViewModel(string header, string detail = "", string kind = "")
     {
         Header = header;
@@ -37,16 +39,19 @@ public partial class TreeItemViewModel : ObservableObject
     public IAssetNode? Node { get; set; }
     public TreeItemViewModel? Source { get; init; }
     public TreeItemViewModel? Parent { get; private set; }
-    public int Depth
+    public int Depth { get; private set; }
+    private void Attach(TreeItemViewModel parent)
     {
-        get
+        Parent = parent;
+        int depth = parent.Depth + 1;
+        if (depth == Depth)
         {
-            int depth = 0;
-            for (TreeItemViewModel? up = Parent; up is not null; up = up.Parent)
-            {
-                depth++;
-            }
-            return depth;
+            return;
+        }
+        Depth = depth;
+        foreach (TreeItemViewModel child in Children)
+        {
+            child.Attach(this);
         }
     }
     public IReadOnlyList<TreeItemViewModel> Children { get; private set; } = [];
@@ -68,17 +73,12 @@ public partial class TreeItemViewModel : ObservableObject
     {
         return _rows?.Value ?? [];
     }
-    public IEnumerable<TreeItemViewModel> PeekChildren()
-    {
-        Lazy<List<TreeItemViewModel>>? rows = _rows;
-        return rows is { IsValueCreated: true } ? rows.Value : Loader?.Invoke() ?? [];
-    }
     public void SetChildren(IReadOnlyList<TreeItemViewModel> rows)
     {
         ArgumentNullException.ThrowIfNull(rows);
         foreach (TreeItemViewModel row in rows)
         {
-            row.Parent = this;
+            row.Attach(this);
         }
         Children = rows;
         OnPropertyChanged(s_hasChildrenChanged);
@@ -117,7 +117,15 @@ public partial class TreeItemViewModel : ObservableObject
     private async Task BuildAsync(Lazy<List<TreeItemViewModel>> rows, int generation)
     {
         System.Diagnostics.Stopwatch watch = System.Diagnostics.Stopwatch.StartNew();
-        List<TreeItemViewModel> items = await Task.Run(() => rows.Value);
+        List<TreeItemViewModel> items;
+        try
+        {
+            items = Run is { } run ? await run(() => rows.Value) : await Task.Run(() => rows.Value);
+        }
+        catch (ArchiveClosedException)
+        {
+            return;
+        }
         await Avalonia.Threading.Dispatcher.UIThread.InvokeAsync(() =>
         {
             if (generation != _generation)
@@ -135,13 +143,13 @@ public partial class TreeItemViewModel : ObservableObject
         {
             rows = [.. loader()];
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is not OutOfMemoryException and not ArchiveClosedException)
         {
             rows = [new TreeItemViewModel("Error", ex.Message)];
         }
         foreach (TreeItemViewModel row in rows)
         {
-            row.Parent = this;
+            row.Attach(this);
         }
         return rows;
     }

@@ -13,34 +13,48 @@ public partial class MainViewModel
     public string UndoLabel => MenuLabel("_Undo", _history.UndoTitle);
     public string RedoLabel => MenuLabel("_Redo", _history.RedoTitle);
     [RelayCommand(CanExecute = nameof(CanUndo))]
-    private void Undo()
+    private async Task UndoAsync()
     {
         if (_history.CanUndo)
         {
             AssetEdit edit = _history.Undo();
-            Reverse(edit, edit.Before, "Undid");
+            await ReverseAsync(edit, edit.Before, "Undid");
         }
     }
     [RelayCommand(CanExecute = nameof(CanRedo))]
-    private void Redo()
+    private async Task RedoAsync()
     {
         if (_history.CanRedo)
         {
             AssetEdit edit = _history.Redo();
-            Reverse(edit, edit.After, "Redid");
+            await ReverseAsync(edit, edit.After, "Redid");
         }
     }
-    private void Reverse(AssetEdit edit, AssetSnapshot state, string verb)
+    private async Task ReverseAsync(AssetEdit edit, AssetSnapshot state, string verb)
     {
         if (edit.Row.Node is not { } node)
         {
             ClearHistory();
             return;
         }
-        bool restored = PluginGuard.Try(
-            $"Reversing {edit.Title}",
-            () => { state.Restore(node); return true; },
-            false);
+        HistoryChanged();
+        bool Restore() => PluginGuard.Try($"Reversing {edit.Title}", () => { state.Restore(node); return true; }, false);
+        bool restored;
+        if (state.RestoresOnUiThread)
+        {
+            restored = !_session.IsBusy && Restore();
+        }
+        else
+        {
+            try
+            {
+                restored = await _session.RunAsync(_session.Generation, _ => Restore());
+            }
+            catch (ArchiveClosedException)
+            {
+                return;
+            }
+        }
         if (!restored)
         {
             ClearHistory();
@@ -52,45 +66,102 @@ public partial class MainViewModel
         HistoryChanged();
         Log($"{verb} {edit.Title}. Use File ▸ Save to write it back.");
     }
-    private void RecordEdit(string title, TreeItemViewModel row, AssetSnapshot? before, AssetChange changed)
+    private void PublishEditOutcome(
+        string title,
+        string fullTitle,
+        TreeItemViewModel row,
+        TreeItemViewModel target,
+        IAssetNode node,
+        AssetChange changed,
+        EditOutcome outcome)
     {
-        if (!changed.HasFlag(AssetChange.Dirty))
+        if (outcome.TooLarge)
+        {
+            Log($"{title} was refused: {NodeAccess.Name(node)} is too large to snapshot, so the edit could not be undone. Nothing was changed.");
+            return;
+        }
+        if (outcome.Error is { } error)
+        {
+            Log($"{title} failed: {error.Message}");
+            if (outcome.ReadOnly || outcome.Unchanged)
+            {
+                return;
+            }
+            ApplyChanges(row, node, Everything);
+            if (outcome.Restored)
+            {
+                Log($"Rolled back {Describe(fullTitle)}, so {NodeAccess.Name(node)} is as it was before.");
+                return;
+            }
+            ClearHistory();
+            Log($"{Describe(fullTitle)} may have changed {NodeAccess.Name(node)} before it failed and cannot be undone; the edit history was cleared.");
+            return;
+        }
+        ApplyChanges(row, node, changed);
+        if (outcome.ReadOnly || !changed.HasFlag(AssetChange.Dirty) || outcome.Unchanged)
         {
             return;
         }
-        row = row.Source ?? row;
-        AssetSnapshot? after = AssetSnapshot.Capture(row.Node);
-        bool comparable = before is not null && after is not null && before.GetType() == after.GetType();
-        if (comparable && before!.SameAs(after!))
-        {
-            return;
-        }
-        if (!comparable || !_history.Push(new AssetEdit(Describe(title), row, before!, after!, changed)))
+        if (outcome.Before is not { } before || outcome.After is not { } after
+            || !_history.Push(new AssetEdit(Describe(fullTitle), target, before, after, changed)))
         {
             ClearHistory();
-            _console.Append($"{Describe(title)} cannot be undone; the edit history was cleared.");
+            _console.Append($"{Describe(fullTitle)} cannot be undone; the edit history was cleared.");
             return;
         }
         HistoryChanged();
     }
-    private void RollBack(string title, TreeItemViewModel row, IAssetNode node, AssetSnapshot? before)
+    private sealed record EditOutcome(
+        Exception? Error,
+        AssetSnapshot? Before,
+        AssetSnapshot? After,
+        bool ReadOnly,
+        bool TooLarge,
+        bool Restored,
+        bool Unchanged)
     {
-        if (before is not null && AssetSnapshot.Capture(node) is { } now && before.SameAs(now))
+        public static EditOutcome Run(AssetCommand command, AssetCommandContext context, PendingFlushes? pending, bool readOnly)
         {
-            return;
+            PendingFlushes.Use(pending);
+            IAssetNode node = context.Node;
+            AssetSnapshot? before = null;
+            if (!readOnly)
+            {
+                before = AssetSnapshot.Capture(node, out bool tooLarge);
+                if (tooLarge)
+                {
+                    return new EditOutcome(null, null, null, readOnly, true, false, true);
+                }
+            }
+            try
+            {
+                command.Execute(context);
+            }
+            catch (Exception ex) when (ex is not OutOfMemoryException)
+            {
+                if (readOnly)
+                {
+                    return new EditOutcome(ex, null, null, readOnly, false, false, true);
+                }
+                if (before is not null && AssetSnapshot.Capture(node) is { } now && before.SameAs(now))
+                {
+                    return new EditOutcome(ex, before, null, readOnly, false, true, true);
+                }
+                bool restored = before is not null && PluginGuard.Try(
+                    $"Rolling back {Describe(command.Title)}",
+                    () => { before.Restore(node); return true; },
+                    false);
+                return new EditOutcome(ex, before, null, readOnly, false, restored, false);
+            }
+            if (readOnly || !context.Changed.HasFlag(AssetChange.Dirty))
+            {
+                return new EditOutcome(null, before, null, readOnly, false, false, false);
+            }
+            AssetSnapshot? after = AssetSnapshot.Capture(node);
+            bool comparable = before is not null && after is not null && before.GetType() == after.GetType();
+            bool unchanged = comparable && before!.SameAs(after!);
+            return new EditOutcome(null, comparable ? before : null, comparable ? after : null, readOnly, false, false, unchanged);
         }
-        bool restored = before is not null && PluginGuard.Try(
-            $"Rolling back {Describe(title)}",
-            () => { before.Restore(node); return true; },
-            false);
-        ApplyChanges(row, node, Everything);
-        if (restored)
-        {
-            Log($"Rolled back {Describe(title)}, so {NodeAccess.Name(node)} is as it was before.");
-            return;
-        }
-        ClearHistory();
-        Log($"{Describe(title)} may have changed {NodeAccess.Name(node)} before it failed and cannot be undone; the edit history was cleared.");
     }
     private void RecordPropertyEdit(PropertyRow row, TreeItemViewModel item, string before, string after)
     {

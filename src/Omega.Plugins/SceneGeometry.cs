@@ -53,6 +53,23 @@ public sealed class SceneGeometry
     public TextureFiltering Filtering { get; init; } = TextureFiltering.Smooth;
     public IReadOnlyList<SceneJoint> Joints { get; init; } = [];
     public IReadOnlyList<AnimationClip> Clips { get; init; } = [];
+    public long ApproximateBytes
+    {
+        get
+        {
+            long total = 0;
+            foreach (SceneMesh mesh in Meshes)
+            {
+                total += ((mesh.Positions.LongLength + mesh.Normals.LongLength + mesh.Uvs.LongLength + (mesh.Weights?.LongLength ?? 0)) * sizeof(float))
+                    + mesh.Colors.LongLength + (((mesh.Indices?.LongLength ?? 0) + (mesh.Joints?.LongLength ?? 0)) * sizeof(int));
+            }
+            foreach (ImageData texture in Textures)
+            {
+                total += texture.Rgba.LongLength;
+            }
+            return total;
+        }
+    }
     public int VertexCount
     {
         get

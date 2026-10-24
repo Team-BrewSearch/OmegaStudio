@@ -5,7 +5,7 @@ public interface IPayloadSource
     int Head(Span<byte> destination);
     byte[] ReadAll();
 }
-public abstract class StreamingAssetNode : BinaryAssetNode, IBinaryAsset
+public abstract class StreamingAssetNode : BinaryAssetNode, IBinaryAsset, ICacheSlot
 {
     public const int HeadWindow = 4096;
     private readonly IPayloadSource _source;
@@ -59,7 +59,8 @@ public abstract class StreamingAssetNode : BinaryAssetNode, IBinaryAsset
     }
     protected IPayloadSource Source => _source;
     internal byte[]? Cached { get; set; }
-    internal LinkedListNode<PayloadCache.Entry>? Kept { get; set; }
+    LinkedListNode<PayloadCache.Entry>? ICacheSlot.Kept { get; set; }
+    void ICacheSlot.Drop() => Cached = null;
     public void ReleasePayload()
     {
         PayloadCache.Release(this);

@@ -13,10 +13,15 @@ public sealed partial class AnimationPlayer : ObservableObject, IDisposable
     private const decimal FastestFps = 240m;
     private readonly DispatcherTimer _timer;
     private readonly Stopwatch _clock = new();
+    private readonly Func<Func<(float[], float[])?>, Task<(float[], float[])?>> _run;
     private IAnimatedAsset? _asset;
     private bool _disposed;
-    public AnimationPlayer()
+    private int _generation;
+    private (AnimationClip Clip, double Seconds, int Generation)? _wanted;
+    private bool _posing;
+    public AnimationPlayer(Func<Func<(float[], float[])?>, Task<(float[], float[])?>>? run = null)
     {
+        _run = run ?? (work => Task.Run(work));
         _timer = new DispatcherTimer(
             TimeSpan.FromMilliseconds(1000.0 / TargetFps), DispatcherPriority.Background, OnTick);
     }
@@ -61,6 +66,7 @@ public sealed partial class AnimationPlayer : ObservableObject, IDisposable
     public void Unbind()
     {
         Halt();
+        _wanted = null;
         Clips.Clear();
         SelectedClip = null;
         _asset = null;
@@ -92,12 +98,13 @@ public sealed partial class AnimationPlayer : ObservableObject, IDisposable
     }
     private void Halt()
     {
+        _generation++;
         IsPlaying = false;
         _clock.Stop();
         _timer.Stop();
         Time = 0;
     }
-    private void ShowRestPose()
+    public void ShowRestPose()
     {
         FrameCleared?.Invoke();
     }
@@ -144,24 +151,56 @@ public sealed partial class AnimationPlayer : ObservableObject, IDisposable
     }
     private void Pose(AnimationClip clip, double seconds)
     {
-        if (_asset is not { } asset)
+        if (_asset is null)
         {
             return;
         }
         double own = clip.Fps > 0f ? seconds * (double)Fps / clip.Fps : seconds;
-        (float[] Positions, float[] Normals)? posed = PluginGuard.Try<(float[], float[])?>(
-            $"Posing '{clip.Name}'",
-            () => asset.TryPose(clip, own, out float[] positions, out float[] normals)
-                ? (positions, normals)
-                : null,
-            null);
-        if (posed is { } frame)
+        _wanted = (clip, own, _generation);
+        if (!_posing)
         {
-            FrameReady?.Invoke(frame.Positions, frame.Normals);
+            _posing = true;
+            _ = PoseLatestAsync();
         }
-        else
+    }
+    private async Task PoseLatestAsync()
+    {
+        try
         {
-            ShowRestPose();
+            while (_wanted is { } wanted && _asset is { } asset)
+            {
+                _wanted = null;
+                (float[] Positions, float[] Normals)? posed;
+                try
+                {
+                    posed = await _run(() => PluginGuard.Try<(float[], float[])?>(
+                        $"Posing '{wanted.Clip.Name}'",
+                        () => asset.TryPose(wanted.Clip, wanted.Seconds, out float[] positions, out float[] normals)
+                            ? (positions, normals)
+                            : null,
+                        null));
+                }
+                catch (ArchiveClosedException)
+                {
+                    return;
+                }
+                if (wanted.Generation != _generation || _disposed)
+                {
+                    continue;
+                }
+                if (posed is { } frame)
+                {
+                    FrameReady?.Invoke(frame.Positions, frame.Normals);
+                }
+                else
+                {
+                    ShowRestPose();
+                }
+            }
+        }
+        finally
+        {
+            _posing = false;
         }
     }
     private void NotifyAvailability()

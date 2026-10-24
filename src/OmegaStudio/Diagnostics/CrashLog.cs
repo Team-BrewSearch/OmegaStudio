@@ -92,22 +92,50 @@ internal static class FileLog
 }
 internal static class CrashLog
 {
-    public static void Install(Action<string> report, Func<string> context)
+    public static IDisposable Install(Action<string> report, Func<string> context)
     {
         ArgumentNullException.ThrowIfNull(report);
         ArgumentNullException.ThrowIfNull(context);
-        Avalonia.Threading.Dispatcher.UIThread.UnhandledException += (_, args) =>
+        Avalonia.Threading.DispatcherUnhandledExceptionEventHandler ui = (_, args) =>
         {
+            if (IsFatal(args.Exception))
+            {
+                FileLog.Write("Out of memory on the UI thread; Omega Studio is closing.");
+                return;
+            }
             report(Describe("UI thread", args.Exception, context));
             args.Handled = true;
         };
-        AppDomain.CurrentDomain.UnhandledException += (_, args) =>
-            FileLog.Write(Describe("app domain", args.ExceptionObject as Exception, context));
-        TaskScheduler.UnobservedTaskException += (_, args) =>
+        UnhandledExceptionEventHandler domain = (_, args) =>
+            FileLog.Write(IsFatal(args.ExceptionObject as Exception)
+                ? "Out of memory; Omega Studio is closing."
+                : Describe("app domain", args.ExceptionObject as Exception, context));
+        EventHandler<UnobservedTaskExceptionEventArgs> task = (_, args) =>
         {
+            if (IsFatal(args.Exception))
+            {
+                FileLog.Write("Out of memory in a background task.");
+                return;
+            }
             report(Describe("task", args.Exception, context));
             args.SetObserved();
         };
+        Avalonia.Threading.Dispatcher.UIThread.UnhandledException += ui;
+        AppDomain.CurrentDomain.UnhandledException += domain;
+        TaskScheduler.UnobservedTaskException += task;
+        return new Registration(() =>
+        {
+            Avalonia.Threading.Dispatcher.UIThread.UnhandledException -= ui;
+            AppDomain.CurrentDomain.UnhandledException -= domain;
+            TaskScheduler.UnobservedTaskException -= task;
+        });
+    }
+    private static bool IsFatal(Exception? ex) =>
+        ex is OutOfMemoryException || (ex is AggregateException all && all.InnerExceptions.Any(inner => inner is OutOfMemoryException));
+    private sealed class Registration(Action remove) : IDisposable
+    {
+        private Action? _remove = remove;
+        public void Dispose() => Interlocked.Exchange(ref _remove, null)?.Invoke();
     }
     private static string Describe(string where, Exception? ex, Func<string> context)
     {

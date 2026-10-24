@@ -7,7 +7,7 @@ public sealed class RingArchive
     public const int Align = 32;
     public static long MaxArchiveSize => Array.MaxLength;
     private const int MinArchiveSize = 8;
-    private const int MaxTableCount = 8192;
+    internal const int MaxTableCount = 8192;
     private readonly Lock _aliasLock = new();
     private readonly Dictionary<int, object> _aliasKeys = [];
     public RingArchive(byte[] data, string? path = null, IHostServices? host = null)

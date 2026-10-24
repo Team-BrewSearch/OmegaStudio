@@ -47,17 +47,11 @@ internal static class NodeFactory
     }
     public static string Inside(string dir, string relative)
     {
-        string root = Path.GetFullPath(dir);
-        string full = Path.GetFullPath(Path.Combine(root, relative));
-        return full.StartsWith(root.EndsWith(Path.DirectorySeparatorChar) ? root : root + Path.DirectorySeparatorChar, StringComparison.Ordinal)
-            ? full
-            : throw new InvalidDataException($"'{relative}' points outside {dir}");
+        return ContainedPath.Resolve(dir, relative);
     }
     public static void Save(string dir, string relative, byte[] data)
     {
-        string full = Inside(dir, relative);
-        Directory.CreateDirectory(Path.GetDirectoryName(full)!);
-        File.WriteAllBytes(full, data);
+        ContainedPath.Write(dir, relative, data);
     }
     public static byte[] Utf8(string text)
     {
@@ -104,7 +98,13 @@ internal sealed class WadNode : AssetNode, IDescribable, ICommandSource
             {
                 string dir = Path.GetDirectoryName(Path.GetFullPath(context.Path!))!;
                 int n = 0;
-                foreach (WadEntry e in Archive.Entries.Where(e => !e.IsAlias))
+                WadEntry[] files = [.. Archive.Entries.Where(e => !e.IsAlias)];
+                ContainedPath.RequireDistinct(files.Select(e => e.File));
+                foreach (WadEntry e in files)
+                {
+                    _ = NodeFactory.Inside(dir, e.File);
+                }
+                foreach (WadEntry e in files)
                 {
                     NodeFactory.Save(dir, e.File, e.Data);
                     n++;
@@ -239,11 +239,19 @@ internal sealed class ArcNode : SlotNode
                 string dir = Path.GetDirectoryName(Path.GetFullPath(context.Path!))!;
                 byte[] b = Slot.Data;
                 (List<U8Node> nodes, _, _) = U8.Read(b);
+                ContainedPath.RequireDistinct(nodes.Where(n => n.Type != 1).Select(n => n.Path));
+                foreach (U8Node n in nodes.Where(n => n.Path.Length != 0))
+                {
+                    _ = NodeFactory.Inside(dir, n.Path);
+                }
                 foreach (U8Node n in nodes)
                 {
                     if (n.Type == 1)
                     {
-                        _ = Directory.CreateDirectory(NodeFactory.Inside(dir, n.Path.Length == 0 ? "." : n.Path));
+                        if (n.Path.Length != 0)
+                        {
+                            _ = ContainedPath.CreateDirectory(dir, n.Path);
+                        }
                     }
                     else
                     {

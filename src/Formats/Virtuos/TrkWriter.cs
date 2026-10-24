@@ -51,6 +51,13 @@ public static class TrkWriter
                 "this game lays its track header out differently, and writing one back is not "
                 + "worked out yet; the track still draws and exports");
         int chunkCount = chunks.Count;
+        int originalCount = SskTrack.ChunkTable(originalTemplate).Count;
+        if (header.TailStart > 0 && header.TailStart < originalTemplate.Length && chunkCount != originalCount)
+        {
+            throw new InvalidDataException(
+                $"the track has {originalCount} chunks and the data after them refers to them by index, so "
+                + $"a rebuild into {chunkCount} chunks was refused");
+        }
         byte[][] chunkBlobs = new byte[chunkCount][];
         for (int i = 0; i < chunkCount; i++)
         {
@@ -213,12 +220,11 @@ public static class TrkWriter
     }
     public static Vector3[] ReadChunkPositions(ReadOnlySpan<byte> template)
     {
-        int table = SskTrack.ChunkTableOffset(template);
+        (int table, int numTotal) = SskTrack.ChunkTable(template);
         if (table < 0)
         {
             return [];
         }
-        int numTotal = template[0x02] | (template[0x03] << 8);
         int posTableStart = table + (numTotal * 4);
         if (numTotal <= 0 || posTableStart + (numTotal * 12) > template.Length)
         {
@@ -326,8 +332,7 @@ public static class TrkWriter
     }
     public static ushort[] ReadChunkTypes(ReadOnlySpan<byte> template)
     {
-        int table = SskTrack.ChunkTableOffset(template);
-        int numTotal = template[0x02] | (template[0x03] << 8);
+        (int table, int numTotal) = SskTrack.ChunkTable(template);
         if (table < 0 || numTotal <= 0 || table + (numTotal * 4) > template.Length)
         {
             return [];
@@ -344,8 +349,7 @@ public static class TrkWriter
     }
     public static (uint CoordScale, uint PackedParams)[] ReadChunkExtraFields(ReadOnlySpan<byte> template)
     {
-        int table = SskTrack.ChunkTableOffset(template);
-        int numTotal = template[0x02] | (template[0x03] << 8);
+        (int table, int numTotal) = SskTrack.ChunkTable(template);
         if (table < 0 || numTotal <= 0 || table + (numTotal * 4) > template.Length)
         {
             return [];
@@ -362,8 +366,7 @@ public static class TrkWriter
     }
     public static float?[] ReadChunkVtxScales(ReadOnlySpan<byte> template)
     {
-        int table = SskTrack.ChunkTableOffset(template);
-        int numTotal = template[0x02] | (template[0x03] << 8);
+        (int table, int numTotal) = SskTrack.ChunkTable(template);
         if (table < 0 || numTotal <= 0 || table + (numTotal * 4) > template.Length)
         {
             return [];
@@ -405,7 +408,7 @@ public static class TrkWriter
         {
             return false;
         }
-        uint numTotal = (uint)(template[0x02] | (template[0x03] << 8));
+        uint numTotal = (uint)SskTrack.ChunkTable(template).Count;
         if (chunkIndex >= numTotal)
         {
             return false;

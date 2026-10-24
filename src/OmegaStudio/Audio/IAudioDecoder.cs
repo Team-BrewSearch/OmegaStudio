@@ -5,6 +5,8 @@ public interface IAudioDecoder : IDisposable
     int Channels { get; }
     int BitsPerSample { get; }
     long TotalSamples { get; }
-    int TotalBytes { get; }
-    void ReadAll(Span<byte> destination);
+    long TotalBytes { get; }
+    int FrameBytes => Channels * (BitsPerSample / 8);
+    int Read(Span<byte> destination);
+    void SeekToFrame(long frame);
 }

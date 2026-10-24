@@ -31,6 +31,24 @@ public sealed class RingArchiveFormat : IArchiveFormat
         {
             return false;
         }
+        if (head.Length >= 4)
+        {
+            long need = 4 + ((long)BinaryRead.U32(head, 0) * 4);
+            if (need > head.Length && need <= 4 + (RingArchive.MaxTableCount * 4L) && need <= length)
+            {
+                byte[] table = new byte[need];
+                try
+                {
+                    using FileStream file = File.OpenRead(path);
+                    file.ReadExactly(table);
+                }
+                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+                {
+                    return false;
+                }
+                return RingArchive.LooksLikeArchive(table, length);
+            }
+        }
         return RingArchive.LooksLikeArchive(head, length);
     }
     public IArchive Open(string path, IHostServices host)

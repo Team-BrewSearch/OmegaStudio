@@ -20,7 +20,7 @@ internal static class GltfWriter
         using Builder builder = new(scene);
         JsonObject gltf = builder.Build();
         bool glb = Path.GetExtension(path).Equals(".glb", StringComparison.OrdinalIgnoreCase);
-        AtomicSave.WriteToStream(path, stream =>
+        string temporary = AtomicSave.WriteToStream(path, stream =>
         {
             if (glb)
             {
@@ -31,7 +31,14 @@ internal static class GltfWriter
                 WriteGltf(stream, gltf, builder.Binary);
             }
         });
-        AtomicSave.Overwrite(path);
+        try
+        {
+            AtomicSave.Overwrite(path, temporary);
+        }
+        finally
+        {
+            AtomicSave.TryDelete(temporary);
+        }
     }
     private sealed class Builder : IDisposable
     {

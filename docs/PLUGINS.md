@@ -15,7 +15,7 @@ Break any of the first five and the plugin is skipped, the reason printed in the
 
 ## Trust
 
-**A plugin is code. Whatever you drop into `formats/` runs with the user's own permissions, reads the files it is given and the folder it is loaded from, and can do anything the user can.** That is the design: a plugin has to be that trusted to parse a format somebody reverse-engineered, and a sandbox would make most of them impossible to write. Trust here is an allowlist: only plugins whose digests appear in `trusted-plugins.txt` run.
+**A plugin is code. Whatever you drop into `formats/` runs with the user's own permissions, reads the files it is given and the folder it is loaded from, and can do anything the user can.** That is the design: a plugin has to be that trusted to parse a format somebody reverse-engineered, and a sandbox would make most of them impossible to write. `PluginLoadContext` keeps each plugin's libraries apart from the host's; it is not an operating-system sandbox. Trust here is an allowlist of digests: it controls which builds run (provenance), not what a running plugin may do.
 
 If you ship the app so that a user might drop a file into `formats/`, name the plugins your build vouched for. Drop a `trusted-plugins.txt` beside the executable:
 
@@ -34,11 +34,11 @@ done > trusted-plugins.txt
 
 With that file present, a plugin whose digest is not on the list, or whose file name does not match the name written beside its digest, is refused and the reason is logged. A list that names no valid digest loads nothing rather than everything. Without the file, everything in `formats/` loads. Either way the digest of each file that does load is printed in the Console pane, so what ran is a matter of record.
 
-Plugins built and shipped together with the app (a developer build, or a release you assemble yourself) are already trustworthy in the sense that matters, so the default of loading everything in the folder is right there. The list is for the case where the folder is reachable by something the publisher does not control.
+Plugins built and shipped together with the app (a developer build, or a release you assemble yourself) are already trustworthy in the sense that matters, so the default of loading everything in the folder is right there for developer builds. The list is for the case where the folder is reachable by something the publisher does not control. The CI release packages always carry one: the workflow writes `trusted-plugins.txt` from the eight plugins it just published, and fails if any of them is missing or if an unexpected plugin is in the folder.
 
-A plugin cannot authenticate against a network, cannot be handed a credential, and is given no more than the path of the file it is currently parsing, the folder it was loaded from, and the codecs described under [Host services](#host-services).
+The host services hand a plugin no network credentials, only the path of the file it is parsing, the folder it was loaded from, and the codecs described under [Host services](#host-services). That is what the host gives, not a limit: the plugin is ordinary .NET code in the host's process and keeps the process's full network and filesystem access.
 
-Names that reach a filename are filtered: a row's name is untrusted text and may contain path separators, traversal and a drive letter, so `ImageIO.SafeName` collapses a name to one component and refuses one that still looks like a path. Where the bytes land is still decided by the file picker the user answered, so a plugin chooses neither the destination nor the name of what is written beyond what the row is called.
+Names that reach a filename are filtered: a row's name is untrusted text and may contain path separators, traversal and a drive letter, so `ImageIO.SafeName` collapses a name to one component and refuses one that still looks like a path. The host's own export commands write where the file picker the user answered says. A plugin's `Execute` can write anywhere the user can, so when one writes several files under a chosen folder (an "Extract all"), route each through `ContainedPath.Write`, which refuses traversal, absolute paths and links that would lead out of the folder, and call `ContainedPath.RequireDistinct` first so two entries cannot land on one file.
 
 ## Project setup
 
@@ -116,8 +116,8 @@ internal sealed class PakHandle : IArchive
 
     public void Save()
     {
-        byte[] bytes = _pak.Serialize();   // fully, before touching the file
-        File.WriteAllBytes(_path, bytes);
+        byte[] bytes = _pak.Serialize();
+        WriteGuard.Commit("the archive", [(_path, bytes)], temporaries => Pak.TryRead(temporaries[0]));
         _pak.MarkSaved();
     }
 
@@ -125,7 +125,7 @@ internal sealed class PakHandle : IArchive
 }
 ```
 
-Serialize completely in memory first. A rebuild that fails halfway through a write leaves a truncated file where the user's archive used to be. List every file `Save` touches in `BackupPaths`. The host copies each to `.bak` before the first save of a session.
+Serialize completely in memory first, then hand the bytes to `WriteGuard.Commit` (or `CommitStreaming` for a rebuild too large to hold). It writes each file to a fresh temporary beside the original, asks your callback whether the temporaries read back, skips files that came out identical, and only then moves them over the originals; a multi-file save that fails part-way puts back the files it already replaced and removes the ones it created. Never write over the original directly: a rebuild that fails halfway through leaves a truncated file where the user's archive used to be. List every file `Save` touches in `BackupPaths`. Before the first save of a session the host copies each to `.bak` through a temporary, and does not save at all if that copy fails.
 
 ## Nodes
 
@@ -159,11 +159,20 @@ internal sealed class EntryNode : BinaryAssetNode
 
 - `MemoryBudget.Total`, `Undo`, `PayloadCache`, `Export`, and `DeferredWrites` are static readonly fields scaled to the machine, not constants. Read them at run time; they cannot appear in `const` fields, attribute arguments, `case` labels, or default parameter values. A plugin built against an older contract keeps the old inlined 2 GB-based figures until it is rebuilt.
 - `StreamingAssetNode.Data` may call `IPayloadSource.ReadAll` again after its cached payload was evicted, possibly from another thread, so `ReadAll` must return the same bytes every call. A span already returned from `Data` stays valid, and `ReleasePayload` still drops the payload at once.
-- Deprecated, and removed at the next contract version: `WriteGuard.Skipped` (unused); `AtomicSave.FlushToDisk` (`WriteToStream` already flushes); `MemoryBudget.Fits` (compare held plus wanted with the budget) and `MemoryBudget.Describe` (use `Sizes.Describe`); `StreamingAssetNode.ReleaseAll` (use `ReleasePayload`); `BinaryRead.Spells` (use `span.SequenceEqual("text"u8)`; it no longer matches non-ASCII text against `?` bytes).
+- `AtomicSave.WriteToStream` now creates a uniquely named temporary each call and returns its path. Pass that path to `AtomicSave.Overwrite(path, temporary)`. The one-argument `Overwrite(path)` still finds the most recent temporary written for that path in this process, so older plugins keep working.
+- Derived data you keep on a node (a decoded image, a built scene, a decompressed payload) should live in a `CachedValue<T>`, which counts it against the same budget as streamed payloads and drops it when that budget is full. Its loader must rebuild the value from the node's current bytes, edited or not, because it runs again after an eviction.
+- Deprecated, and removed when `PluginContract.Version` next changes, never before: `WriteGuard.Skipped` (unused); `AtomicSave.FlushToDisk` (`WriteToStream` already flushes); `MemoryBudget.Fits` (compare held plus wanted with the budget) and `MemoryBudget.Describe` (use `Sizes.Describe`); `StreamingAssetNode.ReleaseAll` (use `ReleasePayload`); `BinaryRead.Spells` (use `span.SequenceEqual("text"u8)`; it no longer matches non-ASCII text against `?` bytes). Until then they keep compiling and behaving as before, so a removal cannot slip in without the version bump. The migration is one line each:
+
+  ```csharp
+  bool fits = held + want <= MemoryBudget.Export;          // was MemoryBudget.Fits(MemoryBudget.Export, held, want)
+  string text = Sizes.Describe(bytes);                      // was MemoryBudget.Describe(bytes)
+  node.ReleasePayload();                                    // was node.ReleaseAll()
+  bool magic = head.StartsWith("PAK0"u8);                   // was BinaryRead.Spells(head, "PAK0")
+  ```
 
 ## Capabilities
 
-These are called on a thread-pool thread when a row is selected: `ISceneAsset.GetScene`, `IImageAsset.Image`, `IAudioAsset.EncodedAudio`, `IVideoAsset.Soundtrack`, `IDescribable.Describe`, and `ICommandSource.GetCommands`. One selection read runs at a time, but it can overlap tree builds, search, and commands on other nodes. `IAnimatedAsset.Clips`, `IVideoAsset.Video` and `OpenVideo`, and `PropertyRow.Apply` are still called on the UI thread.
+These are called on a thread-pool thread when a row is selected: `ISceneAsset.GetScene`, `IImageAsset.Image`, `IAudioAsset.EncodedAudio`, `IVideoAsset.Soundtrack`, `IDescribable.Describe`, and `ICommandSource.GetCommands`. The host runs one archive operation at a time: a selection read, a tree build, a search walk, a command, an undo, a save, or an animation pose waits for the one before it, and the archive is disposed only after the running one returns. `IAnimatedAsset.TryPose` is called on that worker too, never more than one call at a time, and only the newest requested time is posed when frames pile up, so return fresh arrays and do not reuse them on the next call. `IAnimatedAsset.Clips`, `IVideoAsset.Video` and `OpenVideo`, and `PropertyRow.Apply` are still called on the UI thread; a property edit is refused while another operation runs. A video reader returned by `OpenVideo` is read on its own worker while it plays and is disposed only after that worker stops.
 
 Add an interface and the matching pane and commands appear. Implement only what the node can honestly do.
 

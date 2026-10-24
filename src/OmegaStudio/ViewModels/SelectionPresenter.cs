@@ -12,7 +12,6 @@ public interface ISelectionView
     TreeItemViewModel? Owner { get; }
     AnimationPlayer Animation { get; }
     VideoPlayer Video { get; }
-    GlViewport? Viewport { get; }
     SceneGeometry? ViewportScene { get; set; }
     IAssetNode? SceneSource { get; set; }
     Bitmap? TexturePreview { get; set; }
@@ -20,6 +19,7 @@ public interface ISelectionView
     ObservableCollection<PropertyItem> Properties { get; }
     ObservableCollection<AssetCommandViewModel> Commands { get; }
     Action<string> Log { get; }
+    Task<T> ReadArchiveAsync<T>(Func<T> work);
     bool HasScene { get; }
     bool HasImage { get; }
     bool HasAudio { get; }
@@ -28,7 +28,7 @@ public interface ISelectionView
     string AudioStatus { get; }
     AudioInfo? AudioInfo { get; set; }
     void ResetAudioState();
-    Task LoadAudioAsync(IAudioAsset audio, byte[]? data);
+    Task<bool> LoadAudioAsync(IAudioAsset audio, byte[]? data);
     void CommitProperty(PropertyRow row, string value, TreeItemViewModel? owner, IAssetNode? node);
     void NotifyCapabilities();
 }
@@ -45,7 +45,6 @@ internal sealed class SelectionPresenter
     private readonly Func<int> _frame;
     private IAssetNode? _node;
     private (string Clip, string? Soundtrack) _sound = s_nothing.Sound;
-    private Task _reading = Task.CompletedTask;
     private int _generation;
     public SelectionPresenter(ISelectionView view)
     {
@@ -65,39 +64,46 @@ internal sealed class SelectionPresenter
         _view.Commands.Clear();
         if (node is null)
         {
-            Show(null, s_nothing);
+            Show(null, s_nothing, null);
             return;
         }
-        Task<Selection?> reading = _reading.ContinueWith(
-            _ => Volatile.Read(ref _generation) == generation ? Read(node, _frame) : null,
-            CancellationToken.None,
-            TaskContinuationOptions.None,
-            TaskScheduler.Default);
-        _reading = reading;
-        _ = ShowAsync(node, generation, reading);
+        VideoInfo? video = node is IVideoAsset clip
+            ? PluginGuard.Try("Reading the video header", () => clip.Video, null)
+            : null;
+        _ = ShowAsync(node, generation, video);
     }
-    private async Task ShowAsync(IAssetNode node, int generation, Task<Selection?> reading)
+    private async Task ShowAsync(IAssetNode node, int generation, VideoInfo? video)
     {
         Selection? selection;
+        Bitmap? bitmap = null;
         try
         {
-            selection = await reading;
+            selection = await _view.ReadArchiveAsync(
+                () => Volatile.Read(ref _generation) == generation ? Read(node, _frame, video) : null);
+            if (selection?.Image is { } image && generation == _generation)
+            {
+                bitmap = await Task.Run(
+                    () => PluginGuard.Try<Bitmap?>($"Rendering '{image.Name}'", () => ImageIO.ToBitmap(image), null));
+            }
         }
-        catch (Exception ex)
+        catch (ArchiveClosedException)
+        {
+            _presenting = false;
+            return;
+        }
+        catch (Exception ex) when (ex is not OutOfMemoryException)
         {
             PluginGuard.Report($"Showing '{NodeAccess.Name(node)}'", ex);
             selection = s_nothing;
         }
-        if (ReferenceEquals(_reading, reading))
+        if (selection is null || generation != _generation)
         {
-            _reading = Task.CompletedTask;
+            bitmap?.Dispose();
+            return;
         }
-        if (selection is not null && generation == _generation)
-        {
-            Show(node, selection);
-        }
+        Show(node, selection, bitmap);
     }
-    private static Selection Read(IAssetNode node, Func<int> frame)
+    private static Selection Read(IAssetNode node, Func<int> frame, VideoInfo? videoInfo)
     {
         string name = NodeAccess.Name(node);
         SceneGeometry? scene = node is ISceneAsset source ? BuildScene(name, source) : null;
@@ -126,10 +132,10 @@ internal sealed class SelectionPresenter
             audio,
             info,
             sound,
-            PropertyInspector.Describe(node, info),
+            PropertyInspector.Describe(node, info, videoInfo),
             NodeCommands.For(node, null, 0f, frame, sound.Clip, sound.Soundtrack));
     }
-    private void Show(IAssetNode? node, Selection selection)
+    private void Show(IAssetNode? node, Selection selection, Bitmap? bitmap)
     {
         try
         {
@@ -137,9 +143,7 @@ internal sealed class SelectionPresenter
             {
                 ShowScene(node, selection.Scene);
             }
-            _view.TexturePreview = selection.Image is not { } image
-                ? null
-                : PluginGuard.Try($"Rendering '{image.Name}'", () => ImageIO.ToBitmap(image), null);
+            _view.TexturePreview = bitmap;
             _view.TextureStatus = selection.TextureStatus;
             _view.AudioInfo = selection.AudioInfo;
             _view.ResetAudioState();
@@ -188,7 +192,7 @@ internal sealed class SelectionPresenter
             return;
         }
         _view.SceneSource = node;
-        _view.Viewport?.ClearAnimatedFrame();
+        _view.Animation.ShowRestPose();
         _view.ViewportScene = scene;
         if (scene is not null && node is IAnimatedAsset animated)
         {
@@ -241,7 +245,10 @@ internal sealed class SelectionPresenter
     {
         if (!_presenting || !ReferenceEquals(node, _node))
         {
-            ShowProperties(node, PropertyInspector.Describe(node, _view.AudioInfo));
+            VideoInfo? video = node is IVideoAsset clip
+                ? PluginGuard.Try("Reading the video header", () => clip.Video, null)
+                : null;
+            ShowProperties(node, PropertyInspector.Describe(node, _view.AudioInfo, video));
         }
     }
     private void ShowProperties(IAssetNode? node, IReadOnlyList<PropertyRow> rows)

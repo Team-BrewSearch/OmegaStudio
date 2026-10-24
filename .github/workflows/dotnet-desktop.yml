@@ -31,7 +31,7 @@ jobs:
     - name: Setup .NET
       uses: actions/setup-dotnet@v4
       with:
-        dotnet-version: '10'
+        global-json-file: global.json
         cache: true
         cache-dependency-path: '**/packages.lock.json'
     - name: Restore dependencies
@@ -40,15 +40,33 @@ jobs:
       run: dotnet build src/OmegaStudio.slnx --configuration Release --no-restore --nologo --verbosity minimal
     - name: Publish
       run: dotnet publish src/OmegaStudio/OmegaStudio.csproj --configuration Release --runtime ${{ matrix.rid }} --self-contained ${{ matrix.self-contained }} -p:RestoreLockedMode=true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true ${{ matrix.self-contained == 'true' && '-p:EnableCompressionInSingleFile=true' || '' }} --output src/publish/${{ matrix.rid }} --nologo --verbosity minimal
-    - name: Verify the release can open something
+    - name: Verify every plugin ships and pin them
       shell: bash
       run: |
-        count=$(ls src/publish/${{ matrix.rid }}/formats/*.Formats.dll 2>/dev/null | wc -l)
-        if [ "$count" -lt 1 ]; then
-          echo "::error::Published ${{ matrix.rid }} carries no format plugins; it would open nothing."
+        out=src/publish/${{ matrix.rid }}
+        expected="DWSSK Generic Harugeki Nintendo PlayStation Polarbit Virtuos Xbox"
+        list="$out/trusted-plugins.txt"
+        : > "$list"
+        for name in $expected; do
+          dll="$out/formats/$name.Formats.dll"
+          if [ ! -f "$dll" ]; then
+            echo "::error::Published ${{ matrix.rid }} is missing $name.Formats.dll."
+            exit 1
+          fi
+          echo "$name.Formats.dll sha256:$(sha256sum "$dll" | cut -d' ' -f1)" >> "$list"
+        done
+        for dll in "$out"/formats/*.Formats.dll; do
+          base=$(basename "$dll" .Formats.dll)
+          if ! grep -qw "$base" <<< "$expected"; then
+            echo "::error::$base.Formats.dll is shipped but not pinned."
+            exit 1
+          fi
+        done
+        if grep -aq "omega/deps/SixLabors.ImageSharp" "$out/formats/Nintendo.Formats.dll" || ls "$out" | grep -qi imagesharp; then
+          echo "::error::ImageSharp is in the published payload, so its advisory suppressions no longer hold."
           exit 1
         fi
-        echo "Published ${{ matrix.rid }} with $count plugin(s)."
+        echo "Published ${{ matrix.rid }} with $(wc -l < "$list") pinned plugins."
     - name: Upload artifacts
       uses: actions/upload-artifact@v4
       with:

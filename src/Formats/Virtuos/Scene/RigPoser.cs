@@ -3,6 +3,8 @@ using Omega.Plugins;
 namespace Virtuos.Formats.Scene;
 internal static class RigPoser
 {
+    private static readonly float[] s_identity = Identity();
+    private static readonly System.Runtime.CompilerServices.ConditionalWeakTable<SkeModel, float[][]> s_inverseRest = [];
     public static AnimationClip ToClip(string name, SkeModel skeleton, AniModel animation, float fps)
     {
         ArgumentNullException.ThrowIfNull(skeleton);
@@ -69,39 +71,48 @@ internal static class RigPoser
             return false;
         }
         float[][] delta = Delta(skeleton, animation, frame);
-        List<float> posed = new(scene.VertexCount * 3);
-        List<float> facing = new(scene.VertexCount * 3);
+        int positionCount = 0;
+        int normalCount = 0;
         foreach (SceneMesh mesh in scene.Meshes)
         {
+            positionCount += mesh.VertexCount * 3;
+            if (mesh.Normals.Length == mesh.Positions.Length)
+            {
+                normalCount += mesh.VertexCount * 3;
+            }
+        }
+        float[] posed = new float[positionCount];
+        float[] facing = new float[normalCount];
+        int p = 0;
+        int n = 0;
+        foreach (SceneMesh mesh in scene.Meshes)
+        {
+            bool hasNormals = mesh.Normals.Length == mesh.Positions.Length;
             for (int vertex = 0; vertex < mesh.VertexCount; vertex++)
             {
                 int joint = mesh.Joints is { } bound && (vertex * 4) < bound.Length ? bound[vertex * 4] : -1;
-                float[] matrix = joint >= 0 && joint < delta.Length ? delta[joint] : Identity();
-                (float px, float py, float pz) = Apply(
+                float[] matrix = joint >= 0 && joint < delta.Length ? delta[joint] : s_identity;
+                (posed[p], posed[p + 1], posed[p + 2]) = Apply(
                     matrix,
                     mesh.Positions[vertex * 3],
                     mesh.Positions[(vertex * 3) + 1],
                     mesh.Positions[(vertex * 3) + 2],
                     true);
-                posed.Add(px);
-                posed.Add(py);
-                posed.Add(pz);
-                if (mesh.Normals.Length == mesh.Positions.Length)
+                p += 3;
+                if (hasNormals)
                 {
-                    (float nx, float ny, float nz) = Apply(
+                    (facing[n], facing[n + 1], facing[n + 2]) = Apply(
                         matrix,
                         mesh.Normals[vertex * 3],
                         mesh.Normals[(vertex * 3) + 1],
                         mesh.Normals[(vertex * 3) + 2],
                         false);
-                    facing.Add(nx);
-                    facing.Add(ny);
-                    facing.Add(nz);
+                    n += 3;
                 }
             }
         }
-        positions = [.. posed];
-        normals = [.. facing];
+        positions = posed;
+        normals = facing;
         return true;
     }
     private static float[][] Delta(SkeModel skeleton, AniModel animation, double frame)
@@ -138,17 +149,27 @@ internal static class RigPoser
                 world[bone] = Multiply(world[bone], local[parent]);
             }
         }
+        float[][] inverse = s_inverseRest.GetValue(skeleton, InverseRest);
         float[][] delta = new float[bones][];
+        double[] posed = new double[16];
         for (int bone = 0; bone < bones; bone++)
         {
-            double[] posed = new double[16];
             for (int k = 0; k < 16; k++)
             {
                 posed[k] = world[bone][k];
             }
-            delta[bone] = Multiply(Invert(skeleton.RestMatrix(bone)), SkeModel.Pose(posed));
+            delta[bone] = Multiply(inverse[bone], SkeModel.Pose(posed));
         }
         return delta;
+    }
+    private static float[][] InverseRest(SkeModel skeleton)
+    {
+        float[][] inverse = new float[skeleton.Bones.Count][];
+        for (int bone = 0; bone < inverse.Length; bone++)
+        {
+            inverse[bone] = Invert(skeleton.RestMatrix(bone));
+        }
+        return inverse;
     }
     private static float[] Blend(AniTrack track, int before, int after, float mix)
     {

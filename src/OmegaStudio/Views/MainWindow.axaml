@@ -69,13 +69,13 @@
             Padding="{DynamicResource StatusPadding}">
       <TextBlock Text="{Binding Status}" Foreground="{DynamicResource TextSecondary}" TextTrimming="CharacterEllipsis" />
     </Border>
-    <Grid>
+    <Grid Name="Workspace">
       <Grid.ColumnDefinitions>
-        <ColumnDefinition Width="290" MinWidth="200" />
+        <ColumnDefinition Width="290" MinWidth="140" />
         <ColumnDefinition Width="1" />
-        <ColumnDefinition Width="*" MinWidth="260" />
+        <ColumnDefinition Width="*" MinWidth="200" />
         <ColumnDefinition Width="1" />
-        <ColumnDefinition Width="310" MinWidth="220" />
+        <ColumnDefinition Width="310" MinWidth="140" />
       </Grid.ColumnDefinitions>
       <Border Grid.Column="0" Classes="pane" BorderThickness="0">
         <DockPanel>
@@ -135,7 +135,7 @@
           <TabItem Header="Viewport" IsVisible="{Binding HasScene}">
             <DockPanel>
               <Border DockPanel.Dock="Top" Classes="toolbar">
-                <StackPanel Orientation="Horizontal" Spacing="{DynamicResource SpaceM}">
+                <WrapPanel Orientation="Horizontal" ItemSpacing="{DynamicResource SpaceM}" LineSpacing="{DynamicResource SpaceS}">
                   <TextBlock Text="Shading" Classes="label" />
                   <ComboBox ItemsSource="{Binding ShadingModes}"
                             SelectedItem="{Binding Shading, Mode=TwoWay}"
@@ -143,7 +143,7 @@
                   <Button Content="Reset Camera" Command="{Binding ResetViewCommand}" />
                   <TextBlock Classes="meta" Text="Drag to orbit · Shift-drag to pan · Wheel to zoom"
                              Margin="8,0,0,0" />
-                </StackPanel>
+                </WrapPanel>
               </Border>
               <Grid>
                 <r:GlViewport Name="Viewport"
@@ -160,7 +160,7 @@
           <TabItem Header="Texture" IsVisible="{Binding HasImage}">
             <DockPanel Background="{DynamicResource SurfaceWell}">
               <Border DockPanel.Dock="Top" Classes="toolbar">
-                <StackPanel Orientation="Horizontal" Spacing="{DynamicResource SpaceM}">
+                <WrapPanel Orientation="Horizontal" ItemSpacing="{DynamicResource SpaceM}" LineSpacing="{DynamicResource SpaceS}">
                   <Button Content="Fit" Click="TextureFit_OnClick" />
                   <Button Content="1:1" Click="TextureActualSize_OnClick" />
                   <TextBlock Text="{Binding #TexturePreviewView.Zoom, StringFormat={}{0:P0}}"
@@ -169,7 +169,7 @@
                              VerticalAlignment="Center" MinWidth="52" />
                   <TextBlock Text="{Binding TextureStatus}" Classes="label" />
                   <TextBlock Classes="meta" Text="Wheel to zoom · Drag to pan" Margin="8,0,0,0" />
-                </StackPanel>
+                </WrapPanel>
               </Border>
               <views:TextureView Name="TexturePreviewView" Source="{Binding TexturePreview}" />
             </DockPanel>
@@ -189,15 +189,15 @@
                         Value="{Binding AudioPositionSeconds, Mode=TwoWay}"
                         SmallChange="0.1" LargeChange="1"
                         IsEnabled="{Binding AudioIsLoaded}" />
-                <StackPanel Orientation="Horizontal" HorizontalAlignment="Center"
-                            Spacing="{DynamicResource SpaceM}">
+                <WrapPanel Orientation="Horizontal" HorizontalAlignment="Center"
+                            ItemSpacing="{DynamicResource SpaceM}">
                   <Button Content="Play" Command="{Binding PlayAudioCommand}"
                           IsEnabled="{Binding AudioCanPlay}" MinWidth="96" />
                   <Button Content="Pause / Resume" Command="{Binding PauseResumeAudioCommand}"
                           IsEnabled="{Binding AudioCanPauseOrResume}" MinWidth="120" />
                   <Button Content="Stop" Command="{Binding StopAudioCommand}"
                           IsEnabled="{Binding AudioCanStop}" MinWidth="96" />
-                </StackPanel>
+                </WrapPanel>
               </StackPanel>
             </DockPanel>
           </TabItem>
@@ -243,7 +243,7 @@
           <TabItem Header="Animation" IsVisible="{Binding HasAnimation}">
             <DockPanel Background="{DynamicResource SurfaceWell}">
               <Border DockPanel.Dock="Top" Classes="toolbar">
-                <StackPanel Orientation="Horizontal" Spacing="{DynamicResource SpaceM}">
+                <WrapPanel Orientation="Horizontal" ItemSpacing="{DynamicResource SpaceM}" LineSpacing="{DynamicResource SpaceS}">
                   <TextBlock Text="Clip" Classes="label" />
                   <ComboBox ItemsSource="{Binding Animation.Clips}"
                             SelectedItem="{Binding Animation.SelectedClip}"
@@ -269,7 +269,7 @@
                              FontFamily="{DynamicResource MonoFont}"
                              Foreground="{DynamicResource TextPrimary}"
                              VerticalAlignment="Center" Margin="8,0,0,0" />
-                </StackPanel>
+                </WrapPanel>
               </Border>
               <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
                 <views:DopeSheetView SelectedAnimation="{Binding Animation.SelectedClip}"
@@ -286,9 +286,9 @@
           <Border DockPanel.Dock="Top" Classes="toolbar" Padding="{DynamicResource PanePadding}">
             <TextBlock Text="Properties" Classes="paneHeader" />
           </Border>
-          <ScrollViewer>
-            <ItemsControl ItemsSource="{Binding Properties}" Margin="10,8">
-              <ItemsControl.DataTemplates>
+          <ListBox ItemsSource="{Binding Properties}" Padding="10,8" Background="Transparent" BorderThickness="0"
+                   ItemContainerTheme="{StaticResource PropertyRow}">
+              <ListBox.DataTemplates>
                 <DataTemplate x:DataType="vm:ReadOnlyPropertyItem">
                   <Grid ColumnDefinitions="120,*" Margin="0,3">
                     <TextBlock Grid.Column="0" Text="{Binding Name}" Classes="label" TextWrapping="Wrap"
@@ -321,9 +321,8 @@
                               SelectedItem="{Binding Selected, Mode=TwoWay}" />
                   </Grid>
                 </DataTemplate>
-              </ItemsControl.DataTemplates>
-            </ItemsControl>
-          </ScrollViewer>
+              </ListBox.DataTemplates>
+          </ListBox>
         </DockPanel>
       </Border>
     </Grid>

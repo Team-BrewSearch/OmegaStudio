@@ -4,7 +4,7 @@ Building, running, and releasing Omega Studio from source.
 
 ## Prerequisites
 
-The [.NET 10 SDK](https://dotnet.microsoft.com/download). Nothing else: the app is Avalonia, the plugins depend on no system libraries, and the Linux builds are self-contained.
+The [.NET SDK](https://dotnet.microsoft.com/download), at whatever the latest installed version is — `global.json` rolls forward to the newest major and allows prerelease SDKs, so CI and local builds both move with the SDK. The language version is set to `latest` in `src/Directory.Build.props`, so it tracks whatever C# the SDK carries. Nothing else: the app is Avalonia, the plugins depend on no system libraries, and the Linux builds are self-contained.
 
 ## Build and run
 
@@ -15,7 +15,7 @@ dotnet build src/OmegaStudio.slnx
 dotnet run --project src/OmegaStudio/OmegaStudio.csproj
 ```
 
-Build the solution, not just the host project. Building `OmegaStudio.csproj` alone produces an app with an empty `formats` folder, and an app with no plugins opens nothing. Each plugin project copies its assembly into the host's `formats` folder after every build, so a plain solution build produces a working app.
+Build the solution, not just the host project.
 
 Pass an archive on the command line to open it straight away:
 

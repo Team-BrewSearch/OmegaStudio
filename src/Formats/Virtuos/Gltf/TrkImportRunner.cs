@@ -33,9 +33,9 @@ public static class TrkImportRunner
         }
         else
         {
-            warn("Could not read the original track's own chunk layout; falling back to a single chunk.");
-            chunks = TrkChunker.Chunk(primitives, targetChunkCount: 1);
-            matchedLayout = false;
+            throw new InvalidDataException(
+                "the original track's chunk layout could not be read, and the data after its chunks refers to "
+                + "them by index, so the import was refused rather than rebuilt with a different layout");
         }
         int triangles = 0;
         foreach (TrkChunk chunk in chunks)

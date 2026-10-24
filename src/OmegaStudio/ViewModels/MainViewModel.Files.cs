@@ -57,7 +57,7 @@ public partial class MainViewModel
         {
             return;
         }
-        ResetWorkspace();
+        await ResetWorkspaceAsync();
         Status = $"Opening {Path.GetFileName(path)}…";
         System.Diagnostics.Stopwatch watch = System.Diagnostics.Stopwatch.StartNew();
         IArchive? archive = await _session.OpenAsync(path, _catalog, _recognition);
@@ -67,7 +67,8 @@ public partial class MainViewModel
         }
         watch.Stop();
         Log($"Opened {Path.GetFileName(path)} as {archive.DisplayName} in {watch.ElapsedMilliseconds} ms.");
-        TreeItemViewModel root = _tree.ForArchive(archive);
+        int generation = _session.Generation;
+        TreeItemViewModel root = _tree.ForArchive(archive, work => _session.RunAsync(generation, _ => work()));
         Roots.Add(root);
         root.IsExpanded = true;
     }
@@ -98,15 +99,19 @@ public partial class MainViewModel
         {
             return;
         }
-        ResetWorkspace();
+        await ResetWorkspaceAsync();
         Log("Closed archive.");
     }
-    private void ResetWorkspace()
+    private async Task ResetWorkspaceAsync()
     {
+        CancelSearch();
         ResetAudioState();
         Animation.Unbind();
-        Video.Unbind();
-        _session.Close();
+        Task video = Video.UnbindAsync();
+        Roots.Clear();
+        SelectedItem = null;
+        await video;
+        await _session.CloseAsync();
         ClearHistory();
         Roots.Clear();
         Properties.Clear();
@@ -119,60 +124,46 @@ public partial class MainViewModel
         _audioInfo = null;
     }
     [RelayCommand]
-    public Task SaveAsync()
+    public async Task SaveAsync()
     {
         Status = "Saving…";
-        return _session.SaveAsync();
+        await _session.SaveAsync();
+        OnPropertyChanged(nameof(HasUnsavedChanges));
     }
     public async Task RunCommandAsync(AssetCommand command)
     {
-        if (SelectedItem is not { Node: { } node } row)
+        if (SelectedItem is not { Node: { } node } row || _session.Owner is not { } owner)
         {
             return;
         }
+        int generation = _session.Generation;
+        string title = command.Title.TrimEnd('…');
         string? path = await PickForAsync(command);
         if (path is null && command.Kind != AssetCommandKind.Immediate)
         {
             return;
         }
-        IArchive? archive = _session.Archive;
+        if (generation != _session.Generation)
+        {
+            Log($"{title} was not run because its archive was closed while the file picker was open.");
+            return;
+        }
         PendingFlushes? pending = _session.Pending;
-        HostServices services = new(
-            _session.Owner ?? throw new InvalidOperationException("no archive is open"),
-            Log,
-            _recognition,
-            pending);
+        HostServices services = new(owner, Log, _recognition, pending);
         AssetCommandContext context = new(node, services, path);
         bool readOnly = command.Kind == AssetCommandKind.SaveFile || command.Role == AssetCommandRole.Export;
-        AssetSnapshot? before = null;
-        bool failed = false;
+        TreeItemViewModel target = row.Source ?? row;
+        EditOutcome outcome;
         try
         {
-            await Task.Run(() =>
-            {
-                PendingFlushes.Use(pending);
-                before = readOnly ? null : AssetSnapshot.Capture(node);
-                command.Execute(context);
-            });
+            outcome = await _session.RunAsync(generation, _ => EditOutcome.Run(command, context, pending, readOnly));
         }
-        catch (Exception ex)
+        catch (ArchiveClosedException)
         {
-            failed = true;
-            Log($"{command.Title.TrimEnd('…')} failed: {ex.Message}");
+            Log($"{title} finished after its archive was closed, so its result was not applied.");
+            return;
         }
-        if (!ReferenceEquals(_session.Archive, archive))
-        {
-            Log($"{command.Title.TrimEnd('…')} finished after its archive was closed, so its result was not applied.");
-        }
-        else if (!failed)
-        {
-            ApplyChanges(row, node, context.Changed);
-            RecordEdit(command.Title, row, before, context.Changed);
-        }
-        else if (!readOnly)
-        {
-            RollBack(command.Title, row, node, before);
-        }
+        PublishEditOutcome(title, command.Title, row, target, node, context.Changed, outcome);
     }
     private Task<string?> PickForAsync(AssetCommand command)
     {
@@ -210,7 +201,7 @@ public partial class MainViewModel
         }
         if (changed.HasFlag(AssetChange.Children) && NodeAccess.HasChildren(node))
         {
-            target.Reload(() => _tree.Children(node));
+            target.Reload(() => _tree.Children(node, target.Run));
         }
         if (changed.HasFlag(AssetChange.Scene))
         {

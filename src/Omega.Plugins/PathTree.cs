@@ -12,9 +12,16 @@ public static class PathTree
         ArgumentNullException.ThrowIfNull(pathOf);
         ArgumentNullException.ThrowIfNull(leaf);
         Folder<T> root = new();
+        long nodes = 0;
         foreach (T item in items)
         {
-            root.Insert(Split(pathOf(item)), 0, item);
+            string[] segments = Split(pathOf(item));
+            nodes += segments.Length;
+            if (nodes > MaxNodes)
+            {
+                throw new InvalidDataException($"the archive's paths make more than {MaxNodes:N0} tree entries");
+            }
+            root.Insert(segments, item);
         }
         return new GroupNode(
             rootName,
@@ -23,15 +30,26 @@ public static class PathTree
             () => root.Children(string.Empty, leaf));
     }
     public const string Unnamed = "(unnamed)";
+    public const int MaxDepth = 256;
+    public const int MaxPathLength = 4096;
+    public const long MaxNodes = 16_000_000;
     private static string Tag(string stem, int suffix) =>
         string.Concat(stem, suffix.ToString(System.Globalization.CultureInfo.InvariantCulture));
     private static string[] Split(string? path)
     {
+        if (path is { Length: > MaxPathLength })
+        {
+            throw new InvalidDataException($"an archive path is {path.Length:N0} characters long, past the {MaxPathLength:N0} supported");
+        }
         string[] segments = path is null
             ? []
             : [.. path.Replace('\\', '/')
                 .Split('/', StringSplitOptions.RemoveEmptyEntries)
                 .Where(segment => segment != ".")];
+        if (segments.Length > MaxDepth)
+        {
+            throw new InvalidDataException($"an archive path is {segments.Length:N0} folders deep, past the {MaxDepth} supported");
+        }
         return segments.Length == 0 ? [Unnamed] : segments;
     }
     private sealed class Folder<T>
@@ -41,40 +59,39 @@ public static class PathTree
         private T? _entry;
         private bool _hasEntry;
         public int Count { get; private set; }
-        public void Insert(string[] segments, int depth, T item)
+        public void Insert(string[] segments, T item)
         {
-            if (depth >= segments.Length)
+            Folder<T> folder = this;
+            for (int depth = 0; depth < segments.Length; depth++)
             {
-                return;
-            }
-            Count++;
-            string key = segments[depth];
-            if (!_children.TryGetValue(key, out Folder<T>? child))
-            {
-                _children[key] = child = new Folder<T>();
-            }
-            if (depth != segments.Length - 1)
-            {
-                child.Insert(segments, depth + 1, item);
-            }
-            else if (!child._hasEntry)
-            {
-                child._entry = item;
-                child._hasEntry = true;
-                child.Count++;
-            }
-            else
-            {
+                folder.Count++;
+                string key = segments[depth];
+                if (!folder._children.TryGetValue(key, out Folder<T>? child))
+                {
+                    folder._children[key] = child = new Folder<T>();
+                }
+                if (depth != segments.Length - 1)
+                {
+                    folder = child;
+                    continue;
+                }
+                if (!child._hasEntry)
+                {
+                    child._entry = item;
+                    child._hasEntry = true;
+                    child.Count++;
+                    return;
+                }
                 string stem = $"{key}_";
                 int suffix = 1;
-                while (_children.TryGetValue(Tag(stem, suffix), out Folder<T>? taken) && taken._hasEntry)
+                while (folder._children.TryGetValue(Tag(stem, suffix), out Folder<T>? taken) && taken._hasEntry)
                 {
                     suffix++;
                 }
-                if (!_children.TryGetValue(Tag(stem, suffix), out Folder<T>? spare))
+                if (!folder._children.TryGetValue(Tag(stem, suffix), out Folder<T>? spare))
                 {
                     spare = new Folder<T>();
-                    _children[Tag(stem, suffix)] = spare;
+                    folder._children[Tag(stem, suffix)] = spare;
                 }
                 spare._entry = item;
                 spare._hasEntry = true;

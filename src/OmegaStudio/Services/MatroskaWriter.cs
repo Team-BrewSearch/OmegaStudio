@@ -15,16 +15,15 @@ internal static class MatroskaWriter
     public static void Write(string path, IVideoReader reader, byte[] soundtrack, Func<ImageData, byte[]> jpeg, Action<string> log)
     {
         VideoInfo info = reader.Info;
-        IAudioDecoder? audio = soundtrack.Length > 0 ? AudioInfoHelper.CreateDecoder(soundtrack) : null;
-        byte[] pcm = [];
-        if (audio is not null)
-        {
-            pcm = new byte[audio.TotalBytes];
-            audio.ReadAll(pcm);
-        }
-        int frameBytes = audio is null ? 0 : audio.Channels * (audio.BitsPerSample / 8);
+        using IAudioDecoder? audio = soundtrack.Length > 0 ? AudioInfoHelper.CreateDecoder(soundtrack) : null;
+        int frameBytes = audio is null ? 0 : audio.FrameBytes;
+        long audioFrames = audio is null ? 0 : audio.TotalSamples / audio.Channels;
+        byte[] chunk = audio is null
+            ? []
+            : new byte[(int)Math.Min(Array.MaxLength, ((audio.SampleRate * (long)info.RateDenominator / info.RateNumerator) + 2) * frameBytes)];
+        int batch = BatchSize(info.FrameBytes, chunk.Length);
         long totalMs = (long)Math.Round(info.Duration.TotalMilliseconds);
-        _ = AtomicSave.WriteToStream(path, file =>
+        string temporary = AtomicSave.WriteToStream(path, file =>
         {
             file.Write(Master(0x1A45DFA3,
                 UInt(0x4286, 1), UInt(0x42F7, 1), UInt(0x42F2, 4), UInt(0x42F3, 8),
@@ -62,7 +61,6 @@ internal static class MatroskaWriter
             List<(long Time, long Position)> cues = [];
             MemoryStream cluster = new();
             long clusterTime = -1;
-            int batch = Math.Max(1, Environment.ProcessorCount);
             int written = 0;
             int lastPercent = -1;
             reader.Seek(0);
@@ -103,13 +101,21 @@ internal static class MatroskaWriter
                     if (audio is not null)
                     {
                         long from = written * (long)audio.SampleRate * info.RateDenominator / info.RateNumerator;
-                        long to = written == info.FrameCount - 1 ? pcm.Length / frameBytes : (written + 1) * (long)audio.SampleRate * info.RateDenominator / info.RateNumerator;
-                        from = Math.Min(from, pcm.Length / frameBytes);
-                        to = Math.Min(to, pcm.Length / frameBytes);
-                        if (to > from)
+                        long to = (written + 1) * (long)audio.SampleRate * info.RateDenominator / info.RateNumerator;
+                        from = Math.Min(from, audioFrames);
+                        to = written == info.FrameCount - 1 ? long.MaxValue : Math.Min(to, audioFrames);
+                        long audioTime = (long)Math.Round(from * 1000.0 / audio.SampleRate);
+                        while (to > from)
                         {
-                            long audioTime = (long)Math.Round(from * 1000.0 / audio.SampleRate);
-                            cluster.Write(Block(2, (short)(audioTime - clusterTime), pcm.AsSpan((int)(from * frameBytes), (int)((to - from) * frameBytes))));
+                            int want = (int)Math.Min(chunk.Length, (to - from) * frameBytes);
+                            int read = audio.Read(chunk.AsSpan(0, want));
+                            if (read <= 0)
+                            {
+                                break;
+                            }
+                            cluster.Write(Block(2, (short)(audioTime - clusterTime), chunk.AsSpan(0, read)));
+                            from += read / frameBytes;
+                            audioTime = (long)Math.Round(from * 1000.0 / audio.SampleRate);
                         }
                     }
                 }
@@ -119,6 +125,11 @@ internal static class MatroskaWriter
                     lastPercent = percent;
                     log($"Exporting video: {written:N0} of {info.FrameCount:N0} frames ({percent}%).");
                 }
+            }
+            if (written != info.FrameCount)
+            {
+                throw new InvalidDataException(
+                    $"the video ended after {written:N0} frames, and it declares {info.FrameCount:N0}, so nothing was exported");
             }
             if (clusterTime >= 0)
             {
@@ -136,7 +147,26 @@ internal static class MatroskaWriter
             BinaryPrimitives.WriteUInt64BigEndian(size, (ulong)(end - segmentStart) | (1UL << 56));
             file.Write(size);
         });
-        AtomicSave.Overwrite(path);
+        try
+        {
+            AtomicSave.Overwrite(path, temporary);
+        }
+        finally
+        {
+            AtomicSave.TryDelete(temporary);
+        }
+    }
+    public static int BatchSize(long frameBytes, long reserved)
+    {
+        long perFrame = checked(frameBytes * 3);
+        long room = MemoryBudget.Export - reserved;
+        if (perFrame <= 0 || room < perFrame)
+        {
+            throw new InvalidDataException(
+                $"one {Sizes.Describe(frameBytes)} frame plus {Sizes.Describe(reserved)} of sound does not fit in the "
+                + $"{Sizes.Describe(MemoryBudget.Export)} an export may use");
+        }
+        return (int)Math.Clamp(room / perFrame, 1, Environment.ProcessorCount);
     }
     private static byte[] SeekHead(uint[] targets, long[] positions)
     {

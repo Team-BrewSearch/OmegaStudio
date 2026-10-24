@@ -109,7 +109,7 @@ namespace Omega.Disc.Formats.PlayStation
                     out byte part))
                 {
                     throw new InvalidDataException(
-                        $"the key file beside the image is not 32 hexadecimal digits: {text}");
+                        $"the key file beside the image must contain exactly 32 hexadecimal digits; character {(i * 2) + 1} or {(i * 2) + 2} is not one");
                 }
                 key[i] = part;
             }

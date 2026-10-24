@@ -264,7 +264,7 @@ internal static class NodeCommands
                 string folder = Path.GetDirectoryName(Path.GetFullPath(context.Path!))!;
                 string stem = Path.GetFileNameWithoutExtension(context.Path!);
                 int digits = Math.Max(5, info.FrameCount.ToString(System.Globalization.CultureInfo.InvariantCulture).Length);
-                int batch = Math.Max(1, Environment.ProcessorCount);
+                int batch = MatroskaWriter.BatchSize(info.FrameBytes, 0);
                 int written = 0;
                 reader.Seek(0);
                 while (written < info.FrameCount)
@@ -290,6 +290,11 @@ internal static class NodeCommands
                         AtomicSave.Write(Path.Combine(folder, name), context.Host.Images.EncodePng(ImageData.Create(name, info.Width, info.Height, pixels[k])));
                     });
                     written += pixels.Count;
+                }
+                if (written != info.FrameCount)
+                {
+                    throw new InvalidDataException(
+                        $"the video ended after {written:N0} of its {info.FrameCount:N0} frames; those were exported to {folder}");
                 }
                 context.Log($"Exported {written:N0} frames of {NodeAccess.Name(node)} to {folder} as {stem}_{new string('0', digits - 1)}1.png and on.");
             },

@@ -13,6 +13,8 @@ public partial class MainWindow : Window
     private MainViewModel? _currentVm;
     private PropertyChangedEventHandler? _consolePropertyChangedHandler;
     private Action? _resetViewHandler;
+    private Action<float[], float[]>? _frameReadyHandler;
+    private Action? _frameClearedHandler;
     private readonly GlViewport? _vp;
     private readonly ScrollViewer? _consoleScroll;
     private readonly TextureView? _texture;
@@ -38,11 +40,30 @@ public partial class MainWindow : Window
             videoSeek.AddHandler(Thumb.DragStartedEvent, VideoSeek_OnThumbHeld, handledEventsToo: true);
             videoSeek.AddHandler(Thumb.DragCompletedEvent, VideoSeek_OnThumbReleased, handledEventsToo: true);
         }
-        if (_vp is not null && DataContext is MainViewModel vm)
-        {
-            vm.Viewport = _vp;
-        }
         DataContextChanged += OnDataContextChanged;
+        _workspace = this.FindControl<Grid>("Workspace");
+    }
+    private readonly Grid? _workspace;
+    private bool _compact;
+    private const double OutlinerWidth = 290;
+    private const double PropertiesWidth = 310;
+    private const double CenterMinimum = 260;
+    protected override void OnPropertyChanged(AvaloniaPropertyChangedEventArgs change)
+    {
+        base.OnPropertyChanged(change);
+        if (change.Property == ClientSizeProperty && _workspace is { ColumnDefinitions.Count: 5 } grid)
+        {
+            double full = OutlinerWidth + PropertiesWidth + CenterMinimum;
+            bool compact = ClientSize.Width < full;
+            if (!compact && !_compact)
+            {
+                return;
+            }
+            _compact = compact;
+            double share = compact ? Math.Max(0.45, ClientSize.Width / full) : 1;
+            grid.ColumnDefinitions[0].Width = new GridLength(Math.Round(OutlinerWidth * share));
+            grid.ColumnDefinitions[4].Width = new GridLength(Math.Round(PropertiesWidth * share));
+        }
     }
     private bool _closeConfirmed;
     protected override void OnClosing(WindowClosingEventArgs e)
@@ -105,6 +126,16 @@ public partial class MainWindow : Window
         {
             _currentVm.PropertyChanged -= _consolePropertyChangedHandler;
         }
+        if (_frameReadyHandler is not null)
+        {
+            _currentVm.Animation.FrameReady -= _frameReadyHandler;
+        }
+        if (_frameClearedHandler is not null)
+        {
+            _currentVm.Animation.FrameCleared -= _frameClearedHandler;
+        }
+        _frameReadyHandler = null;
+        _frameClearedHandler = null;
         _resetViewHandler = null;
         _consolePropertyChangedHandler = null;
         _currentVm = null;
@@ -117,10 +148,10 @@ public partial class MainWindow : Window
             return;
         }
         _currentVm = vm;
-        if (_vp is not null)
-        {
-            vm.Viewport = _vp;
-        }
+        _frameReadyHandler = (positions, normals) => _vp?.SetAnimatedFrame(positions, normals);
+        _frameClearedHandler = () => _vp?.ClearAnimatedFrame();
+        vm.Animation.FrameReady += _frameReadyHandler;
+        vm.Animation.FrameCleared += _frameClearedHandler;
         _resetViewHandler = () => _vp?.ResetCamera();
         vm.ResetViewRequested += _resetViewHandler;
         _consolePropertyChangedHandler = (_, args) =>

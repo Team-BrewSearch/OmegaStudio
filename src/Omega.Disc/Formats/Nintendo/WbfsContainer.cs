@@ -83,6 +83,8 @@ namespace Omega.Disc.Formats.Nintendo
         private readonly WbfsSlot?[] _slots;
         private readonly bool[] _free;
         private readonly Dictionary<(int Slot, int Cluster), byte[]> _deferred = [];
+        private readonly Lock _sync = new();
+        private long _deferredBytes;
         private WbfsContainer(SharedStream shared, WbfsGeometry geometry, WbfsSlot?[] slots, bool[] free)
         {
             _shared = shared;
@@ -95,8 +97,27 @@ namespace Omega.Disc.Formats.Nintendo
         public IEnumerable<WbfsSlot> Slots => _slots.Where(slot => slot is not null).Select(slot => slot!);
         public int DiscCount => _slots.Count(slot => slot is not null);
         public int FreeSectors => _free.Count(value => value);
-        public int DeferredBytes => _deferred.Sum(entry => entry.Value.Length);
-        public int DeferredClusters => _deferred.Count;
+        public long DeferredBytes
+        {
+            get
+            {
+                lock (_sync)
+                {
+                    return _deferredBytes;
+                }
+            }
+        }
+        public int DeferredClusters
+        {
+            get
+            {
+                lock (_sync)
+                {
+                    return _deferred.Count;
+                }
+            }
+        }
+        public static string JournalPath(string container) => container + ".omega-journal";
         public bool IsFree(int sector)
         {
             int index = sector - 1;
@@ -179,6 +200,7 @@ namespace Omega.Disc.Formats.Nintendo
                     $"a WBFS header declares {geometry.TotalWbfsSectors} clusters of {geometry.WbfsSectorSize} bytes, "
                     + "whose free-block map leaves no room for a disc table");
             }
+            RecoverJournal(shared);
             return new WbfsContainer(shared, geometry, ReadSlots(shared.Stream, geometry), ReadFreeBlocks(shared.Stream, geometry));
         }
         public Stream OpenDisc(WbfsSlot slot)
@@ -245,23 +267,43 @@ namespace Omega.Disc.Formats.Nintendo
                     $"a deferred write to cluster {index} of slot {slot.Slot} is {bytes.Length} byte(s), and a "
                     + $"cluster is {Geometry.WbfsSectorSize}");
             }
-            if (DeferredBytes + Geometry.WbfsSectorSize > DeferredBudget)
+            lock (_sync)
             {
-                throw new InvalidDataException(
-                    $"{DeferredBytes + Geometry.WbfsSectorSize} bytes of writes are waiting for the container, past "
-                    + $"the {DeferredBudget} a single save may hold. Save, or make the edit in smaller pieces.");
+                long previous = _deferred.TryGetValue((slot.Slot, index), out byte[]? old) ? old.Length : 0;
+                long total = _deferredBytes - previous + bytes.Length;
+                if (total > DeferredBudget)
+                {
+                    throw new InvalidDataException(
+                        $"{total} bytes of writes are waiting for the container, past "
+                        + $"the {DeferredBudget} a single save may hold. Save, or make the edit in smaller pieces.");
+                }
+                _deferred[(slot.Slot, index)] = bytes.ToArray();
+                _deferredBytes = total;
             }
-            _deferred[(slot.Slot, index)] = bytes.ToArray();
         }
         public byte[]? Deferred(WbfsSlot slot, int index)
         {
-            return _deferred.TryGetValue((slot.Slot, index), out byte[]? bytes) ? bytes : null;
+            lock (_sync)
+            {
+                return _deferred.TryGetValue((slot.Slot, index), out byte[]? bytes) ? bytes : null;
+            }
         }
         public void DiscardWrites()
         {
-            _deferred.Clear();
+            lock (_sync)
+            {
+                _deferred.Clear();
+                _deferredBytes = 0;
+            }
         }
         public void CommitWrites()
+        {
+            lock (_sync)
+            {
+                CommitLocked();
+            }
+        }
+        private void CommitLocked()
         {
             if (_deferred.Count == 0)
             {
@@ -278,24 +320,44 @@ namespace Omega.Disc.Formats.Nintendo
                 }
                 writes.Add((WriteOffset(slot, clusterIndex), bytes));
             }
+            writes.Sort((a, b) => a.At.CompareTo(b.At));
+            string? journal = _shared.Path is { } path ? JournalPath(path) : null;
             bool reopened = !_shared.CanWrite;
             _shared.Reopen(readOnly: false);
             try
             {
-                foreach ((long destination, byte[] cluster) in writes)
+                List<(long At, byte[] Bytes)> before = WriteJournal(journal, writes);
+                int applied = 0;
+                try
                 {
-                    _shared.WriteAt(destination, cluster);
+                    foreach ((long destination, byte[] cluster) in writes)
+                    {
+                        applied++;
+                        _shared.WriteAt(destination, cluster);
+                    }
+                    _shared.Flush();
+                    byte[] verify = new byte[Geometry.WbfsSectorSize];
+                    foreach ((long check, byte[] expected) in writes)
+                    {
+                        _shared.ReadExactlyAt(check, verify.AsSpan(0, expected.Length));
+                        if (!verify.AsSpan(0, expected.Length).SequenceEqual(expected))
+                        {
+                            throw new IOException(
+                                $"a cluster written to the container at 0x{check:X} did not read back as it was written");
+                        }
+                    }
                 }
-                _shared.Flush();
-                (long check, byte[] expected) = writes[0];
-                byte[] verify = new byte[expected.Length];
-                _shared.ReadExactlyAt(check, verify);
-                if (!verify.AsSpan().SequenceEqual(expected))
+                catch (Exception failure)
                 {
-                    throw new IOException(
-                        $"a cluster written to the container at 0x{check:X} did not read back as it was written");
+                    Restore(before, applied, journal, failure);
+                    throw;
+                }
+                if (journal is not null)
+                {
+                    File.Delete(journal);
                 }
                 _deferred.Clear();
+                _deferredBytes = 0;
             }
             finally
             {
@@ -303,6 +365,129 @@ namespace Omega.Disc.Formats.Nintendo
                 {
                     _shared.Reopen(readOnly: true);
                 }
+            }
+        }
+        private static ReadOnlySpan<byte> JournalMagic => "OMJ1"u8;
+        private static ReadOnlySpan<byte> JournalDone => "DONE"u8;
+        private List<(long At, byte[] Bytes)> WriteJournal(string? journal, List<(long At, byte[] Bytes)> writes)
+        {
+            List<(long At, byte[] Bytes)> before = new(writes.Count);
+            foreach ((long at, byte[] bytes) in writes)
+            {
+                byte[] original = new byte[bytes.Length];
+                _shared.ReadExactlyAt(at, original);
+                before.Add((at, original));
+            }
+            if (journal is null)
+            {
+                return before;
+            }
+            using (FileStream file = new(journal, FileMode.Create, FileAccess.Write, FileShare.None))
+            using (BinaryWriter writer = new(file))
+            {
+                writer.Write(JournalMagic);
+                foreach ((long at, byte[] original) in before)
+                {
+                    writer.Write(at);
+                    writer.Write(original.Length);
+                    writer.Write(original);
+                }
+                writer.Write(JournalDone);
+                writer.Write(before.Count);
+                writer.Flush();
+                file.Flush(flushToDisk: true);
+            }
+            return before;
+        }
+        private void Restore(List<(long At, byte[] Bytes)> before, int applied, string? journal, Exception failure)
+        {
+            try
+            {
+                for (int i = applied - 1; i >= 0; i--)
+                {
+                    _shared.WriteAt(before[i].At, before[i].Bytes);
+                }
+                _shared.Flush();
+                if (journal is not null)
+                {
+                    File.Delete(journal);
+                }
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                throw new IOException(
+                    $"saving the container failed ({failure.Message}) and putting the original clusters back also "
+                    + $"failed ({ex.Message}). The container may be partly written; "
+                    + (journal is null
+                        ? "restore it from its backup."
+                        : $"the original clusters are kept in {Path.GetFileName(journal)} and are put back the next "
+                            + "time the container is opened, or restore it from its backup."),
+                    failure);
+            }
+        }
+        private static void RecoverJournal(SharedStream shared)
+        {
+            if (shared.Path is not { } path || JournalPath(path) is not { } journal || !File.Exists(journal))
+            {
+                return;
+            }
+            List<(long At, byte[] Bytes)>? entries = ReadJournal(journal, shared.Length);
+            if (entries is null)
+            {
+                File.Delete(journal);
+                return;
+            }
+            bool reopened = !shared.CanWrite;
+            shared.Reopen(readOnly: false);
+            try
+            {
+                for (int i = entries.Count - 1; i >= 0; i--)
+                {
+                    shared.WriteAt(entries[i].At, entries[i].Bytes);
+                }
+                shared.Flush();
+                File.Delete(journal);
+            }
+            finally
+            {
+                if (reopened)
+                {
+                    shared.Reopen(readOnly: true);
+                }
+            }
+        }
+        internal static List<(long At, byte[] Bytes)>? ReadJournal(string journal, long containerLength)
+        {
+            using FileStream file = new(journal, FileMode.Open, FileAccess.Read, FileShare.Read);
+            using BinaryReader reader = new(file);
+            try
+            {
+                if (!reader.ReadBytes(4).AsSpan().SequenceEqual(JournalMagic))
+                {
+                    return null;
+                }
+                List<(long At, byte[] Bytes)> entries = [];
+                while (file.Length - file.Position >= 8)
+                {
+                    long mark = file.Position;
+                    if (reader.ReadBytes(4).AsSpan().SequenceEqual(JournalDone))
+                    {
+                        return reader.ReadInt32() == entries.Count && file.Position == file.Length ? entries : null;
+                    }
+                    file.Position = mark;
+                    long at = reader.ReadInt64();
+                    int length = reader.ReadInt32();
+                    if (at < 0 || length <= 0 || length > containerLength - at || length > file.Length - file.Position)
+                    {
+                        return null;
+                    }
+                    entries.Add((at, reader.ReadBytes(length)));
+                }
+                return null;
+            }
+            catch (EndOfStreamException)
+            {
+                return null;
             }
         }
         public void VerifyTables()
@@ -397,7 +582,6 @@ namespace Omega.Disc.Formats.Nintendo
         private const int MaxRead = 16 * 1024 * 1024;
         private readonly WbfsContainer _wbfs;
         private readonly WbfsSlot _slot;
-        private readonly byte[] _scratch;
         private readonly long _sectorSize;
         private readonly long _length;
         private long _position;
@@ -405,7 +589,6 @@ namespace Omega.Disc.Formats.Nintendo
         {
             _wbfs = wbfs;
             _slot = slot;
-            _scratch = new byte[wbfs.Geometry.WbfsSectorSize];
             _sectorSize = wbfs.Geometry.WbfsSectorSize;
             _length = slot.StoredSectors * _sectorSize;
         }
@@ -521,7 +704,7 @@ namespace Omega.Disc.Formats.Nintendo
                 }
                 int within = (int)((at + done) % _sectorSize);
                 int take = (int)Math.Min(buffer.Length - done, _sectorSize - within);
-                byte[] cluster = _wbfs.Deferred(_slot, index) ?? ReadClusterAt(stored, (int)_sectorSize);
+                byte[] cluster = _wbfs.Deferred(_slot, index)?.ToArray() ?? ReadClusterAt(stored, (int)_sectorSize);
                 buffer.Slice(done, take).CopyTo(cluster.AsSpan(within, take));
                 _wbfs.DeferWrite(_slot, index, cluster);
                 done += take;
@@ -536,18 +719,15 @@ namespace Omega.Disc.Formats.Nintendo
         }
         private void ReadCluster(long from, Span<byte> target)
         {
-            int take = target.Length;
             int into = 0;
-            while (into < take)
+            while (into < target.Length)
             {
-                int want = Math.Min(take - into, (int)_sectorSize);
-                int read = _wbfs.Shared.ReadAt(from + into, _scratch.AsSpan(0, want));
+                int read = _wbfs.Shared.ReadAt(from + into, target[into..]);
                 if (read <= 0)
                 {
-                    _scratch.AsSpan(0, want).Clear();
-                    read = want;
+                    target[into..].Clear();
+                    return;
                 }
-                _scratch.AsSpan(0, read).CopyTo(target.Slice(into, read));
                 into += read;
             }
         }

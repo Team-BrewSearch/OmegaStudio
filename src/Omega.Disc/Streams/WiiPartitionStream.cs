@@ -17,12 +17,14 @@ namespace Omega.Disc.Formats.Nintendo
         private const int H2Offset = 0x340;
         private const int TableLength = SubgroupSize * HashLength;
         private const int IvOffset = 0x3D0;
+        public const int H3TableSize = 0x18000;
         private static readonly byte[] s_zeroIv = new byte[16];
         private readonly Stream _image;
         private readonly SharedStream? _gate;
         private readonly long _offset;
-        private long _length;
-        private readonly long _imageLength;
+        private readonly long _length;
+        private readonly long _physicalLength;
+        private readonly Lock _sync = new();
         private readonly byte[] _titleKey;
         private readonly long _h3Table;
         private readonly byte[] _block = new byte[WiiDisc.BlockDataSize];
@@ -38,17 +40,25 @@ namespace Omega.Disc.Formats.Nintendo
             {
                 throw new ArgumentException("a title key is exactly 16 bytes", nameof(titleKey));
             }
-            if (offset < 0 || (image.CanSeek && offset + length > image.Length))
+            ArgumentOutOfRangeException.ThrowIfNegative(length);
+            long blocks = (length + WiiDisc.BlockDataSize - 1) / WiiDisc.BlockDataSize;
+            long physical = checked(blocks * WiiDisc.BlockTotalSize);
+            if (offset < 0 || (image.CanSeek && physical > image.Length - offset))
             {
                 throw new InvalidDataException(
-                    $"a data area at 0x{offset:X} of {length.ToString(CultureInfo.InvariantCulture)} byte(s) runs "
+                    $"a data area at 0x{offset:X} of {physical.ToString(CultureInfo.InvariantCulture)} stored byte(s) runs "
                     + $"past the end of the {(image.CanSeek ? image.Length.ToString(CultureInfo.InvariantCulture) : "unknown")}-byte image");
+            }
+            if (h3TableOffset >= 0 && image.CanSeek && h3TableOffset > image.Length - H3TableSize)
+            {
+                throw new InvalidDataException(
+                    $"the H3 table at 0x{h3TableOffset:X} runs past the end of the {image.Length.ToString(CultureInfo.InvariantCulture)}-byte image");
             }
             _image = image;
             _gate = gate;
             _offset = offset;
             _length = length;
-            _imageLength = image.CanSeek ? image.Length : -1;
+            _physicalLength = physical;
             _titleKey = titleKey;
             _h3Table = h3TableOffset;
         }
@@ -57,17 +67,27 @@ namespace Omega.Disc.Formats.Nintendo
         public override bool CanWrite => false;
         public override long Length => _length;
         public bool ImageCanWrite => _image.CanWrite;
-        public void EnsureDataLength(long end)
+        public int ReadAt(long position, Span<byte> buffer)
         {
-            if (end <= _length)
+            ArgumentOutOfRangeException.ThrowIfNegative(position);
+            lock (_sync)
             {
-                return;
+                int total = 0;
+                while (total < buffer.Length && position + total < _length)
+                {
+                    int count = (int)Math.Min(_length - (position + total), buffer.Length - total);
+                    total += CopyFrom(position + total, buffer.Slice(total, count));
+                }
+                return total;
             }
-            long reach = _imageLength < 0 ? long.MaxValue : _imageLength - _offset;
-            long wanted = Math.Min(end, reach);
-            if (wanted > _length)
+        }
+        public void ReadExactlyAt(long position, Span<byte> buffer)
+        {
+            if (ReadAt(position, buffer) != buffer.Length)
             {
-                _length = wanted;
+                throw new EndOfStreamException(
+                    $"{buffer.Length.ToString(CultureInfo.InvariantCulture)} byte(s) at 0x{position:X} run past the "
+                    + $"{_length.ToString(CultureInfo.InvariantCulture)}-byte partition data");
             }
         }
         public override long Position
@@ -84,32 +104,25 @@ namespace Omega.Disc.Formats.Nintendo
         }
         public override int Read(Span<byte> buffer)
         {
-            if (_position >= _length)
+            lock (_sync)
             {
-                int zeroes = (int)Math.Min(buffer.Length, _image.Length - (_offset + _position));
-                if (zeroes <= 0)
+                if (_position >= _length || buffer.IsEmpty)
                 {
                     return 0;
                 }
-                buffer[..zeroes].Clear();
-                _position += zeroes;
-                return zeroes;
+                int count = (int)Math.Min(_length - _position, buffer.Length);
+                int take = CopyFrom(_position, buffer[..count]);
+                _position += take;
+                return take;
             }
-            int count = (int)Math.Min(_length - _position, buffer.Length);
-            return ReadInRange(buffer, count);
         }
-        private int ReadInRange(Span<byte> buffer, int count)
+        private int CopyFrom(long position, Span<byte> buffer)
         {
-            if (count <= 0)
-            {
-                return 0;
-            }
-            long block = _position / WiiDisc.BlockDataSize;
-            int within = (int)(_position % WiiDisc.BlockDataSize);
-            int take = Math.Min(count, WiiDisc.BlockDataSize - within);
+            long block = position / WiiDisc.BlockDataSize;
+            int within = (int)(position % WiiDisc.BlockDataSize);
+            int take = Math.Min(buffer.Length, WiiDisc.BlockDataSize - within);
             EnsureBlock(block);
             _block.AsSpan(within, take).CopyTo(buffer[..take]);
-            _position += take;
             return take;
         }
         public override long Seek(long offset, SeekOrigin origin)
@@ -143,7 +156,7 @@ namespace Omega.Disc.Formats.Nintendo
                 throw new InvalidOperationException(
                     "the image behind this partition is open for reading only, so nothing can be written back");
             }
-            if (decryptedOffset < 0 || decryptedOffset + payload.Length > _length)
+            if (decryptedOffset < 0 || decryptedOffset > _length - payload.Length)
             {
                 throw new InvalidDataException(
                     $"a patch at 0x{decryptedOffset:X} of {payload.Length.ToString(CultureInfo.InvariantCulture)} "
@@ -153,10 +166,18 @@ namespace Omega.Disc.Formats.Nintendo
             {
                 return;
             }
+            lock (_sync)
+            {
+                PatchLocked(decryptedOffset, payload);
+            }
+        }
+        private void PatchLocked(long decryptedOffset, ReadOnlySpan<byte> payload)
+        {
             using Aes aes = DiscCrypto.ForKey(_titleKey);
             bool encrypted = !_titleKey.AsSpan().SequenceEqual(new byte[16]);
             long first = decryptedOffset / WiiDisc.BlockDataSize;
             long last = (decryptedOffset + payload.Length - 1) / WiiDisc.BlockDataSize;
+            H3Entry(last - (last % GroupSize));
             for (long group = first - (first % GroupSize); group <= last; group += GroupSize)
             {
                 long groupStart = group * WiiDisc.BlockDataSize;
@@ -183,7 +204,7 @@ namespace Omega.Disc.Formats.Nintendo
             for (int i = 0; i < GroupSize; i++)
             {
                 long at = _offset + ((group + i) * WiiDisc.BlockTotalSize);
-                if (((group + i) * WiiDisc.BlockDataSize) >= _length || at + WiiDisc.BlockTotalSize > _image.Length)
+                if (((group + i) * WiiDisc.BlockDataSize) >= _length)
                 {
                     continue;
                 }
@@ -280,19 +301,26 @@ namespace Omega.Disc.Formats.Nintendo
             }
             return table;
         }
-        private void RefreshH3(long group, ReadOnlySpan<byte> h2Table)
+        private long H3Entry(long firstBlock)
         {
             if (_h3Table < 0)
             {
-                return;
+                throw new InvalidDataException(
+                    "this partition names no H3 table, so its hash chain cannot be rebuilt after a write");
             }
-            long at = _h3Table + (group * HashLength);
-            if (at + HashLength > _image.Length)
+            long ordinal = firstBlock / GroupSize;
+            long at = checked(_h3Table + (ordinal * HashLength));
+            if (at + HashLength > _h3Table + H3TableSize)
             {
-                return;
+                throw new InvalidDataException(
+                    $"group {ordinal.ToString(CultureInfo.InvariantCulture)} falls past the end of the "
+                    + $"{H3TableSize.ToString(CultureInfo.InvariantCulture)}-byte H3 table");
             }
-            byte[] digest = Hash(h2Table);
-            WriteAt(at, digest);
+            return at;
+        }
+        private void RefreshH3(long group, ReadOnlySpan<byte> h2Table)
+        {
+            WriteAt(H3Entry(group), Hash(h2Table));
         }
         private static byte[] DecryptHeader(Aes aes, bool encrypted, ReadOnlySpan<byte> raw)
         {
@@ -367,31 +395,15 @@ namespace Omega.Disc.Formats.Nintendo
             {
                 return;
             }
-            long at = _offset + (block * WiiDisc.BlockTotalSize);
-            long reach = _length - (block * WiiDisc.BlockDataSize);
-            if (reach <= 0)
+            long relative = block * WiiDisc.BlockTotalSize;
+            if (relative > _physicalLength - WiiDisc.BlockTotalSize)
             {
-                _block.AsSpan().Clear();
-                _blockAt = block;
-                return;
+                throw new InvalidDataException(
+                    $"block {block.ToString(CultureInfo.InvariantCulture)} lies past the partition's stored data");
             }
-            int aligned = (int)Math.Min(WiiDisc.BlockTotalSize, reach);
-            if (_gate is { } gated)
-            {
-                gated.ReadExactlyAt(at, _raw.AsSpan(0, aligned));
-            }
-            else
-            {
-                _image.Position = at;
-                _image.ReadExactly(_raw.AsSpan(0, aligned));
-            }
-            int data = Math.Min(WiiDisc.BlockDataSize, aligned - WiiDisc.BlockHeaderSize);
-            if (data <= 0)
-            {
-                _block.AsSpan().Clear();
-                _blockAt = block;
-                return;
-            }
+            _blockAt = -1;
+            ReadExactly(_offset + relative, _raw);
+            const int data = WiiDisc.BlockDataSize;
             if (_titleKey.AsSpan().SequenceEqual(new byte[16]))
             {
                 _raw.AsSpan(WiiDisc.BlockHeaderSize, data).CopyTo(_block);
@@ -403,7 +415,7 @@ namespace Omega.Disc.Formats.Nintendo
                     aes,
                     _raw.AsSpan(WiiDisc.BlockHeaderSize, data),
                     _raw.AsSpan(IvOffset, 16),
-                    _block.AsSpan(0, data),
+                    _block,
                     "a data block");
             }
             _blockAt = block;

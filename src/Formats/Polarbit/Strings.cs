@@ -6,6 +6,8 @@ internal sealed class LangTable
     public bool Utf16 { get; private init; }
     public int StringsPerLanguage { get; private init; }
     public List<(string Name, string[] Strings)> Languages { get; } = [];
+    private readonly List<(string Name, byte[] Raw)> _originalNames = [];
+    private static readonly UTF8Encoding s_strictUtf8 = new(encoderShouldEmitUTF8Identifier: false, throwOnInvalidBytes: true);
     private Encoding TextEncoding => Utf16 ? Encoding.Unicode : Encoding.UTF8;
     public static LangTable Parse(ReadOnlySpan<byte> b)
     {
@@ -24,33 +26,39 @@ internal sealed class LangTable
             end += packed;
             string[] parts = table.TextEncoding.GetString(Zlib.Inflate(b.Slice(offset, packed), size)).Split('\0');
             Le.Need(parts.Length == strings + 1 && parts[^1].Length == 0, $"LANG language {i} holds {parts.Length - 1} strings, not {strings}.");
-            table.Languages.Add((ReadName(names[nameOffset..], table.Utf16), parts[..^1]));
+            (string name, byte[] raw) = ReadName(names[nameOffset..], table.Utf16);
+            table.Languages.Add((name, parts[..^1]));
+            table._originalNames.Add((name, raw));
         }
         Le.Need(end == b.Length, "LANG has trailing bytes.");
         return table;
     }
-    private static string ReadName(ReadOnlySpan<byte> b, bool utf16)
+    private static (string Name, byte[] Raw) ReadName(ReadOnlySpan<byte> b, bool utf16)
     {
         if (!utf16)
         {
             int nul = b.IndexOf((byte)0);
             ReadOnlySpan<byte> name = nul < 0 ? b : b[..nul];
-            return Decodes(name) ? Encoding.UTF8.GetString(name) : Encoding.Latin1.GetString(name);
+            return (Decodes(name) ? Encoding.UTF8.GetString(name) : Encoding.Latin1.GetString(name), name.ToArray());
         }
         int k = 0;
         while (k + 1 < b.Length && (b[k] | b[k + 1]) != 0)
         {
             k += 2;
         }
-        return Encoding.Unicode.GetString(b[..k]);
+        return (Encoding.Unicode.GetString(b[..k]), b[..k].ToArray());
     }
-    private static bool Decodes(ReadOnlySpan<byte> b)
+    internal static bool Decodes(ReadOnlySpan<byte> b)
     {
-        System.Text.Decoder decoder = System.Text.Encoding.UTF8.GetDecoder();
-        byte[] probe = b.ToArray();
-        char[] one = new char[1 + (b.Length * 2)];
-        decoder.Convert(probe, 0, probe.Length, one, 0, one.Length, flush: true, out _, out _, out bool usedAll);
-        return usedAll;
+        try
+        {
+            _ = s_strictUtf8.GetCharCount(b);
+            return true;
+        }
+        catch (DecoderFallbackException)
+        {
+            return false;
+        }
     }
     public byte[] Build()
     {
@@ -58,11 +66,14 @@ internal sealed class LangTable
         using MemoryStream names = new();
         List<int> nameOffsets = [];
         List<(byte[] Text, byte[] Packed)> blobs = [];
-        foreach ((string name, string[] strings) in Languages)
+        for (int i = 0; i < Languages.Count; i++)
         {
+            (string name, string[] strings) = Languages[i];
             Le.Need(strings.Length == StringsPerLanguage, $"{name} has {strings.Length} strings, not {StringsPerLanguage}.");
             nameOffsets.Add((int)names.Length);
-            names.Write(TextEncoding.GetBytes(name));
+            names.Write(i < _originalNames.Count && _originalNames[i].Name == name
+                ? _originalNames[i].Raw
+                : TextEncoding.GetBytes(name));
             names.Write(new byte[width]);
             byte[] text = TextEncoding.GetBytes(string.Concat(strings.Select(s => s + "\0")));
             blobs.Add((text, Zlib.Deflate(text, 9)));

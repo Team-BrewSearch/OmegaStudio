@@ -5,29 +5,54 @@ internal abstract class AssetSnapshot
 {
     public static AssetSnapshot? Capture(IAssetNode? node)
     {
-        return node is null
-            ? null
-            : PluginGuard.Try($"Reading '{NodeAccess.Name(node)}' for the edit history", () => Read(node), null);
+        return Capture(node, out _);
     }
-    private static AssetSnapshot? Read(IAssetNode node)
+    public static AssetSnapshot? Capture(IAssetNode? node, out bool tooLarge)
     {
-        return node switch
+        tooLarge = false;
+        if (node is null)
         {
-            IBinaryAsset { CanReplaceBytes: true } binary => Fits(binary) ? new BytesSnapshot(binary.Data.ToArray()) : null,
-            IImageAsset { CanReplaceImage: true } image => new ImageSnapshot(image.Image),
-            _ => null,
-        };
+            return null;
+        }
+        bool large = false;
+        AssetSnapshot? snapshot = PluginGuard.Try(
+            $"Reading '{NodeAccess.Name(node)}' for the edit history", () => Read(node, out large), null);
+        tooLarge = large;
+        return snapshot;
     }
-    private static bool Fits(IBinaryAsset binary)
+    private static AssetSnapshot? Read(IAssetNode node, out bool tooLarge)
     {
-        long length = binary.TryGetLength();
-        return (length >= 0 ? length : binary.Size) <= EditHistory.Budget / 2;
+        tooLarge = false;
+        switch (node)
+        {
+            case IBinaryAsset { CanReplaceBytes: true } binary:
+                long length = binary.TryGetLength();
+                if ((length >= 0 ? length : binary.Size) > Limit)
+                {
+                    tooLarge = true;
+                    return null;
+                }
+                return new BytesSnapshot(binary.Data.ToArray());
+            case IImageAsset { CanReplaceImage: true } texture:
+                ImageData image = texture.Image;
+                if (image.Rgba.LongLength > Limit)
+                {
+                    tooLarge = true;
+                    return null;
+                }
+                return new ImageSnapshot(ImageData.Create(
+                    image.Name, image.Width, image.Height, (byte[])image.Rgba.Clone(), image.FormatLabel));
+            default:
+                return null;
+        }
     }
+    private static long Limit => EditHistory.Budget / 2;
     public static AssetSnapshot ForProperty(Action<string> apply, string value)
     {
         return new PropertySnapshot(apply, value);
     }
-    public abstract int Bytes { get; }
+    public abstract long Bytes { get; }
+    public virtual bool RestoresOnUiThread => false;
     public abstract bool SameAs(AssetSnapshot other);
     public abstract void Restore(IAssetNode node);
     private sealed class BytesSnapshot : AssetSnapshot
@@ -37,7 +62,7 @@ internal abstract class AssetSnapshot
         {
             _bytes = bytes;
         }
-        public override int Bytes => _bytes.Length;
+        public override long Bytes => _bytes.LongLength;
         public override bool SameAs(AssetSnapshot other)
         {
             return other is BytesSnapshot snapshot && _bytes.AsSpan().SequenceEqual(snapshot._bytes);
@@ -56,7 +81,8 @@ internal abstract class AssetSnapshot
             _apply = apply;
             _value = value;
         }
-        public override int Bytes => _value.Length;
+        public override long Bytes => 2L * _value.Length;
+        public override bool RestoresOnUiThread => true;
         public override bool SameAs(AssetSnapshot other)
         {
             return other is PropertySnapshot snapshot && _value == snapshot._value;
@@ -73,7 +99,7 @@ internal abstract class AssetSnapshot
         {
             _image = image;
         }
-        public override int Bytes => _image.Rgba.Length;
+        public override long Bytes => _image.Rgba.LongLength;
         public override bool SameAs(AssetSnapshot other)
         {
             return other is ImageSnapshot snapshot
@@ -106,24 +132,30 @@ internal sealed class EditHistory
     public string? RedoTitle => CanRedo ? _edits[_applied].Title : null;
     public bool Push(AssetEdit edit)
     {
-        long needed = edit.Before.Bytes + edit.After.Bytes;
-        if (needed > Budget)
+        long needed = Cost(edit);
+        if (needed > Capacity)
         {
             return false;
+        }
+        for (int i = _applied; i < _edits.Count; i++)
+        {
+            _bytes -= Cost(_edits[i]);
         }
         _edits.RemoveRange(_applied, _edits.Count - _applied);
         _edits.Add(edit);
         _bytes += needed;
-        while (_bytes > Budget && _edits.Count > 1)
+        while (_bytes > Capacity && _edits.Count > 1)
         {
-            AssetEdit oldest = _edits[0];
+            _bytes -= Cost(_edits[0]);
             _edits.RemoveAt(0);
-            _bytes -= oldest.Before.Bytes + oldest.After.Bytes;
-            _applied--;
         }
         _applied = _edits.Count;
         return true;
     }
+    public long Bytes => _bytes;
+    public int Count => _edits.Count;
+    public long Capacity { get; init; } = Budget;
+    private static long Cost(AssetEdit edit) => edit.Before.Bytes + edit.After.Bytes;
     public AssetEdit Undo()
     {
         return CanUndo

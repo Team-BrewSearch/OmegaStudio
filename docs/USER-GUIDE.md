@@ -86,7 +86,7 @@ Right-click a row, or press the Menu key (or `Shift+F10`) for the selected one; 
 
 ## Editing and history
 
-Every edit is undoable. `Ctrl+Z` steps back, `Ctrl+Y` steps forward.
+Every edit that changes a row's bytes or image is undoable. `Ctrl+Z` steps back, `Ctrl+Y` steps forward.
 
 The history works from snapshots rather than from reversing operations, because the host does not know what any given edit did. Before an edit that can change something, it keeps the row's bytes as they were. The history holds snapshots up to an eighth of the app's memory figure (256 MB on an 8 GB machine); the oldest ones are dropped as new edits push past that, and an edit too large to snapshot is refused with a message instead of being stored where it cannot be undone.
 
@@ -98,11 +98,11 @@ Editable Properties rows use the same history. The row's old text is handed back
 
 Nothing is written until you save. **File ▸ Save** (`Ctrl+S`) rewrites the archive in place. Edits inside a WAD on a disc image are folded into the image when you save, and count as unsaved changes for the close prompt.
 
-The first save of a session copies every file the save will touch to `<name>.bak` first. A backup that already exists is never overwritten, so the pristine copy exists before anything has changed rather than after the damage.
+The first save of a session copies every file the save will touch to `<name>.bak` first. The copy is written to a temporary file, checked for length and flushed, and only then renamed to `.bak`, so a half-written backup never passes for a complete one. If the copy fails, nothing is saved, and the next save tries the backup again. A backup that already exists is never overwritten, so the pristine copy exists before anything has changed rather than after the damage.
 
-The save itself is guarded. The rebuilt bytes go to a temporary file beside the original, are re-parsed from there, and a format that cannot read its own output is refused before anything moves. A replacement identical to what is already on disk is skipped. The final write flushes to disk and then renames, so a failed save leaves the original byte for byte intact. A multi-file archive takes a rollback copy of each original and restores the ones it already replaced if a later one fails.
+The save itself is guarded. The rebuilt bytes go to a temporary file with a unique name beside the original, are re-parsed from there, and a format that cannot read its own output is refused before anything moves. A replacement identical to what is already on disk is skipped. The final write flushes to disk and then renames, so a single-file save that fails leaves the original byte for byte intact. A multi-file archive takes a rollback copy of each original; if a later rename fails, it puts back the files it already replaced and deletes any it had newly created. If putting one back also fails, the message names the file and where its original copy was kept. A crash or power loss in the middle of a multi-file save can still leave the files mixed, so the `.bak` copies are what to restore from in that case.
 
-Formats that only make same-length writes, such as a WBFS container, hold their edits in a deferred overlay until you save, then validate the whole set against the container's own tables, write, flush, and read one cluster back to prove it. A Wii image also has its hash chain rebuilt so that Dolphin and real hardware accept the patched file. While a WBFS is open, Omega Studio holds it for reading only, so other tools can still read it. On read-only media, or with the read-only attribute set, it still opens and can be browsed and edited; Save then reports that the file could not be opened for writing and leaves it unchanged. Make the file writable and save again.
+Formats that only make same-length writes, such as a WBFS container, hold their edits in a deferred overlay until you save. The save validates the whole set against the container's own tables, copies the clusters it is about to change into `<name>.omega-journal` and flushes that, then writes, flushes, and reads every changed cluster back. If any step fails, the original clusters are written back from the journal. If Omega Studio is closed or the machine stops part-way, the journal is still there, and the next time the container is opened its original clusters are put back before anything is read. A Wii image also has its hash chain rebuilt so that Dolphin and real hardware accept the patched file. While a WBFS is open, Omega Studio holds it for reading only, so other tools can still read it. On read-only media, or with the read-only attribute set, it still opens and can be browsed and edited; Save then reports that the file could not be opened for writing and leaves it unchanged. Make the file writable and save again.
 
 PlayStation 3, Xbox 360, and 3DS images are read-only. Saving one raises an error rather than writing something wrong.
 
@@ -124,6 +124,6 @@ Closing the archive or exiting the app with unsaved changes asks whether to save
 
 **A plugin failed to load.** The reason is listed under **Formats ▸ Failed to load**, and the other plugins still load.
 
-**A save failed.** The original file is untouched; the message in the Console pane says what refused it. If a nested container could not be written back, its edits are kept: change them and save again, or close without saving. The full log, with any crash report, is in `omega-studio.log` (see Console).
+**A save failed.** Your edits are kept and the message in the Console pane says what refused it. A single-file save that fails leaves the original untouched, and a WBFS save puts its original clusters back. If the message says putting things back also failed, restore from the `.bak` beside the file. If a nested container could not be written back, change its edits and save again, or close without saving. The full log, with any crash report, is in `omega-studio.log` (see Console).
 
 **A row shows an error.** A plugin threw while reading that row. The rest of the application keeps working, and the failure costs you only that row.

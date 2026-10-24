@@ -13,7 +13,7 @@ Eight plugins are built from this repository. The host knows nothing about any o
 | Xbox 360 | game discs | game partition directory tree | nothing (read-only) |
 | Standard Formats | no archives of its own | OGG, WAV, PNG, JPEG, GIF, BMP payloads | PNG replacement where the container allows |
 
-The source code carries no comments. Where a line exists because of how the game behaves, the reason is recorded in that format's **Specification notes** below: a function the code copies, a rounding it reproduces, an order the game's lookups depend on, a layout fact measured over the shipped files. This is the specification of record. Most of these lines make an unedited file rebuild byte for byte, and no test catches a change to them yet. Read before simplifying. The notes were recovered from deleted code comments (`e8a7d81` for Harugeki and Virtuos, `f088509` for Polarbit, `b8b4583` for DWSSK) and from the Harugeki format write-up deleted in `ca066cc`. Each has been checked against the current code.
+The source code carries no comments. Where a line exists because of how the game behaves, the reason is recorded in that format's **Specification notes** below: a function the code copies, a rounding it reproduces, an order the game's lookups depend on, a layout fact measured over the shipped files. This is the specification of record. Most of these lines make an unedited file rebuild byte for byte, and no test catches a change to them. Read before simplifying. The notes were recovered from deleted code comments (`e8a7d81` for Harugeki and Virtuos, `f088509` for Polarbit, `b8b4583` for DWSSK) and from the Harugeki format write-up deleted in `ca066cc`. Each has been checked against the current code.
 
 ## Geometry space
 

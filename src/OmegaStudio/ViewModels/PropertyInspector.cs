@@ -4,7 +4,7 @@ using OmegaStudio.Plugins;
 namespace OmegaStudio.ViewModels;
 internal static class PropertyInspector
 {
-    public static IReadOnlyList<PropertyRow> Describe(IAssetNode? node, AudioInfo? audio = null)
+    public static IReadOnlyList<PropertyRow> Describe(IAssetNode? node, AudioInfo? audio = null, VideoInfo? video = null)
     {
         if (node is null)
         {
@@ -18,7 +18,7 @@ internal static class PropertyInspector
                 () => (IReadOnlyList<PropertyRow>)[.. describable.Describe()],
                 []));
         }
-        if (node is IVideoAsset video && PluginGuard.Try("Reading the video header", () => video.Video, null) is { } info)
+        if (video is { } info)
         {
             rows.Add(new PropertyRow("Video", $"{info.Width} x {info.Height}, {info.FramesPerSecond:0.###} fps"));
             rows.Add(new PropertyRow("Frames", $"{info.FrameCount:N0}"));

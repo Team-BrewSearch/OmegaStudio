@@ -1,9 +1,24 @@
 namespace Omega.Plugins;
+internal interface ICacheSlot
+{
+    LinkedListNode<PayloadCache.Entry>? Kept { get; set; }
+    void Drop();
+}
 internal static class PayloadCache
 {
     private static readonly Lock s_gate = new();
     private static readonly LinkedList<Entry> s_kept = new();
     private static long s_bytes;
+    public static long Bytes
+    {
+        get
+        {
+            lock (s_gate)
+            {
+                return s_bytes;
+            }
+        }
+    }
     public static void Keep(StreamingAssetNode owner, byte[] payload)
     {
         lock (s_gate)
@@ -13,16 +28,31 @@ internal static class PayloadCache
             {
                 return;
             }
-            owner.Cached = payload;
-            owner.Kept = s_kept.AddLast(new Entry(new WeakReference<StreamingAssetNode>(owner), payload.LongLength));
-            s_bytes += payload.LongLength;
-            while (s_bytes > MemoryBudget.PayloadCache)
+            if (Track(owner, payload.LongLength))
             {
-                Evict(s_kept.First!);
+                owner.Cached = payload;
             }
         }
     }
-    public static void Touch(StreamingAssetNode owner)
+    public static bool Track(ICacheSlot owner, long bytes)
+    {
+        lock (s_gate)
+        {
+            Forget(owner);
+            if (bytes > MemoryBudget.PayloadCache)
+            {
+                return false;
+            }
+            owner.Kept = s_kept.AddLast(new Entry(new WeakReference<ICacheSlot>(owner), bytes));
+            s_bytes += bytes;
+            while (s_bytes > MemoryBudget.PayloadCache && s_kept.First is { } oldest && !ReferenceEquals(oldest, owner.Kept))
+            {
+                Evict(oldest);
+            }
+            return true;
+        }
+    }
+    public static void Touch(ICacheSlot owner)
     {
         lock (s_gate)
         {
@@ -33,14 +63,14 @@ internal static class PayloadCache
             }
         }
     }
-    public static void Release(StreamingAssetNode owner)
+    public static void Release(ICacheSlot owner)
     {
         lock (s_gate)
         {
             Forget(owner);
         }
     }
-    private static void Forget(StreamingAssetNode owner)
+    private static void Forget(ICacheSlot owner)
     {
         if (owner.Kept is { } kept)
         {
@@ -51,11 +81,11 @@ internal static class PayloadCache
     {
         s_kept.Remove(kept);
         s_bytes -= kept.Value.Bytes;
-        if (kept.Value.Owner.TryGetTarget(out StreamingAssetNode? owner))
+        if (kept.Value.Owner.TryGetTarget(out ICacheSlot? owner))
         {
-            owner.Cached = null;
             owner.Kept = null;
+            owner.Drop();
         }
     }
-    internal readonly record struct Entry(WeakReference<StreamingAssetNode> Owner, long Bytes);
+    internal readonly record struct Entry(WeakReference<ICacheSlot> Owner, long Bytes);
 }

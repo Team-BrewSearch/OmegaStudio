@@ -90,7 +90,7 @@ internal sealed class PsndSound
         int frames = Bits switch
         {
             16 => (b.Length - DataOffset) / (2 * Channels),
-            8 => b.Length - DataOffset,
+            8 => (b.Length - DataOffset) / Channels,
             _ => (b.Length - DataOffset) * 2,
         };
         return Rate > 0 ? frames / (double)Rate : 0;

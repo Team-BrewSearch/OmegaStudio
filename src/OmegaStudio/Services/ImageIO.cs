@@ -13,6 +13,7 @@ public sealed class ImageIO : IImageCodec
     private const int PixelsPerMetre = 2835;
     private const uint LcsSrgb = 0x73524742;
     private const int JpegQuality = 92;
+    public const long MaxPixels = 1L << 26;
     private static readonly string[] s_writable = [".png", ".jpg", ".jpeg", ".bmp"];
     public static ImageIO Instance { get; } = new();
     public static WriteableBitmap ToBitmap(ImageData image)
@@ -108,11 +109,19 @@ public sealed class ImageIO : IImageCodec
     public ImageData Load(string path)
     {
         ArgumentException.ThrowIfNullOrEmpty(path);
+        byte[] head = new byte[64 * 1024];
+        int read;
+        using (FileStream file = File.OpenRead(path))
+        {
+            read = file.ReadAtLeast(head, head.Length, throwOnEndOfStream: false);
+        }
+        RequireSize(Dimensions(head.AsSpan(0, read)), Path.GetFileName(path));
         using Bitmap bitmap = new(path);
         return FromBitmap(bitmap, Path.GetFileNameWithoutExtension(path));
     }
     public ImageData Load(ReadOnlySpan<byte> bytes, string name = "")
     {
+        RequireSize(Dimensions(bytes), name);
         using MemoryStream stream = new(bytes.ToArray());
         using Bitmap bitmap = new(stream);
         return FromBitmap(bitmap, name);
@@ -125,7 +134,8 @@ public sealed class ImageIO : IImageCodec
         {
             throw new InvalidDataException($"image has no pixels ({width}x{height})");
         }
-        byte[] pixels = new byte[width * height * 4];
+        RequireSize((width, height), name);
+        byte[] pixels = new byte[checked(width * height * 4)];
         GCHandle handle = GCHandle.Alloc(pixels, GCHandleType.Pinned);
         try
         {
@@ -138,6 +148,49 @@ public sealed class ImageIO : IImageCodec
         }
         ImageData.SwapRedBlueInPlace(pixels);
         return ImageData.Create(name, width, height, pixels);
+    }
+    private static void RequireSize((long Width, long Height)? size, string name)
+    {
+        if (size is not { } found)
+        {
+            return;
+        }
+        if (found.Width > ImageData.MaxDimension || found.Height > ImageData.MaxDimension
+            || found.Width * found.Height > MaxPixels)
+        {
+            throw new InvalidDataException(
+                $"{(string.IsNullOrEmpty(name) ? "the image" : name)} is {found.Width}x{found.Height}, past the "
+                + $"{ImageData.MaxDimension} pixels a side and {MaxPixels:N0} pixels in all this build decodes");
+        }
+    }
+    public static (long Width, long Height)? Dimensions(ReadOnlySpan<byte> head)
+    {
+        if (head.Length >= 24 && head[..8].SequenceEqual((ReadOnlySpan<byte>)[0x89, (byte)'P', (byte)'N', (byte)'G', 0x0D, 0x0A, 0x1A, 0x0A]))
+        {
+            return (BinaryPrimitives.ReadUInt32BigEndian(head[16..]), BinaryPrimitives.ReadUInt32BigEndian(head[20..]));
+        }
+        if (head.Length >= 26 && head[0] == 'B' && head[1] == 'M')
+        {
+            return (Math.Abs((long)BinaryPrimitives.ReadInt32LittleEndian(head[18..])), Math.Abs((long)BinaryPrimitives.ReadInt32LittleEndian(head[22..])));
+        }
+        if (head.Length >= 10 && head[..3].SequenceEqual("GIF"u8))
+        {
+            return (BinaryPrimitives.ReadUInt16LittleEndian(head[6..]), BinaryPrimitives.ReadUInt16LittleEndian(head[8..]));
+        }
+        if (head.Length >= 4 && head[0] == 0xFF && head[1] == 0xD8)
+        {
+            for (int at = 2; at + 9 <= head.Length && head[at] == 0xFF;)
+            {
+                byte marker = head[at + 1];
+                int length = BinaryPrimitives.ReadUInt16BigEndian(head[(at + 2)..]);
+                if (marker is >= 0xC0 and <= 0xCF and not 0xC4 and not 0xC8 and not 0xCC)
+                {
+                    return (BinaryPrimitives.ReadUInt16BigEndian(head[(at + 7)..]), BinaryPrimitives.ReadUInt16BigEndian(head[(at + 5)..]));
+                }
+                at += 2 + length;
+            }
+        }
+        return null;
     }
     byte[] IImageCodec.EncodePng(ImageData image)
     {

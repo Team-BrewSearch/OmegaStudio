@@ -15,7 +15,10 @@ public sealed class AudioPlaybackService : IDisposable
     private Task? _pollLoop;
     private bool _disposed;
     private double _restingSeconds;
+    private const int TicksPerProgress = 4;
+    private int _ticks;
     public event Action? StateChanged;
+    public event Action? ProgressChanged;
     public bool IsLoaded { get; private set; }
     public PlaybackState State { get; private set; }
     public TimeSpan Duration { get; private set; }
@@ -44,27 +47,24 @@ public sealed class AudioPlaybackService : IDisposable
     public bool CanPause => State == PlaybackState.Playing;
     public bool CanResume => State == PlaybackState.Paused;
     public bool CanStop => IsLoaded && State != PlaybackState.Stopped;
-    public void Load(byte[] data)
+    public static PreparedAudio Prepare(byte[] data)
+    {
+        ArgumentNullException.ThrowIfNull(data);
+        return new PreparedAudio(AudioInfoHelper.CreateDecoder(data));
+    }
+    public void Commit(PreparedAudio prepared)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
-        ArgumentNullException.ThrowIfNull(data);
-        using IAudioDecoder decoder = AudioInfoHelper.CreateDecoder(data);
-        byte[] pcm = new byte[decoder.TotalBytes];
-        decoder.ReadAll(pcm);
-        int channels = decoder.Channels;
-        int bitsPerSample = decoder.BitsPerSample;
-        int sampleRate = decoder.SampleRate;
-        long totalSamples = decoder.TotalSamples;
+        ArgumentNullException.ThrowIfNull(prepared);
         lock (_sync)
         {
             Unload();
             try
             {
                 _engine.Initialize();
-                _engine.UploadPcm(pcm, channels, bitsPerSample, sampleRate);
-                Duration = sampleRate > 0 && channels > 0
-                    ? TimeSpan.FromSeconds((double)totalSamples / (sampleRate * channels))
-                    : TimeSpan.Zero;
+                IAudioDecoder decoder = prepared.Take();
+                Duration = AudioInfo.PcmDuration(decoder.TotalSamples, decoder.SampleRate, decoder.Channels);
+                _engine.Start(decoder);
                 IsLoaded = true;
                 State = PlaybackState.Stopped;
                 _restingSeconds = 0;
@@ -74,6 +74,18 @@ public sealed class AudioPlaybackService : IDisposable
                 Unload();
                 throw;
             }
+        }
+        StateChanged?.Invoke();
+    }
+    public void Clear()
+    {
+        if (_disposed)
+        {
+            return;
+        }
+        lock (_sync)
+        {
+            Unload();
         }
         StateChanged?.Invoke();
     }
@@ -195,22 +207,28 @@ public sealed class AudioPlaybackService : IDisposable
     }
     private void Tick()
     {
+        bool finished;
         lock (_sync)
         {
             if (_disposed || State != PlaybackState.Playing)
             {
                 return;
             }
-            if (_engine.IsPlaying)
+            _engine.Pump();
+            finished = _engine.IsFinished;
+            if (finished)
+            {
+                _engine.Stop();
+                State = PlaybackState.Stopped;
+                _restingSeconds = Duration.TotalSeconds;
+                StopPolling();
+            }
+            else if (++_ticks % TicksPerProgress != 0)
             {
                 return;
             }
-            _engine.Stop();
-            State = PlaybackState.Stopped;
-            _restingSeconds = Duration.TotalSeconds;
-            StopPolling();
         }
-        StateChanged?.Invoke();
+        (finished ? StateChanged : ProgressChanged)?.Invoke();
     }
     private void Unload()
     {
@@ -243,4 +261,11 @@ public sealed class AudioPlaybackService : IDisposable
         {
         }
     }
+}
+public sealed class PreparedAudio(IAudioDecoder decoder) : IDisposable
+{
+    private IAudioDecoder? _decoder = decoder;
+    internal IAudioDecoder Take() =>
+        Interlocked.Exchange(ref _decoder, null) ?? throw new ObjectDisposedException(nameof(PreparedAudio));
+    public void Dispose() => Interlocked.Exchange(ref _decoder, null)?.Dispose();
 }

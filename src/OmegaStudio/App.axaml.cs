@@ -28,8 +28,12 @@ public partial class App : Application
             vm.DiscardConfirmation = () => window.AskAboutUnsavedChangesAsync(vm);
             window.DataContext = vm;
             desktop.MainWindow = window;
-            desktop.Exit += (_, _) => vm.Dispose();
-            CrashLog.Install(vm.Log, () => Context(vm));
+            IDisposable crashes = CrashLog.Install(vm.Log, () => Context(vm));
+            desktop.Exit += (_, _) =>
+            {
+                crashes.Dispose();
+                vm.Dispose();
+            };
             if (desktop.Args is { Length: > 0 } args)
             {
                 string? named = Array.Find(args, File.Exists);

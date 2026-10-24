@@ -2,22 +2,52 @@ using System.Buffers.Binary;
 using System.Numerics;
 using System.Text;
 using System.Text.Json;
+using Omega.Plugins;
 using Omega.Plugins.Gltf;
 namespace OmegaStudio.Services.Gltf;
 internal static class GltfContainer
 {
     public const int Byte = 5120, UByte = 5121, Short = 5122, UShort = 5123, UInt = 5125, Float = 5126;
     private const int MaxAccessorElements = 1 << 24;
+    public const long MaxBufferBytes = 1L << 31;
+    public const long MaxDecodedBytes = 1L << 30;
     private const uint GlbMagic = 0x46546C67;
     private const uint ChunkJson = 0x4E4F534A;
     private const uint ChunkBin = 0x004E4942;
-    public static (JsonElement Root, byte[][] Buffers) Load(string path)
+    public static (JsonElement Root, byte[][] Buffers, string BaseDir) Load(string path)
     {
         ArgumentException.ThrowIfNullOrEmpty(path);
+        if (new FileInfo(path).Length > MaxBufferBytes)
+        {
+            throw new InvalidDataException($"{Path.GetFileName(path)} is larger than the {Sizes.Describe(MaxBufferBytes)} a glTF import may read.");
+        }
         byte[] raw = File.ReadAllBytes(path);
         (JsonElement root, byte[]? glbBuffer) = Parse(raw);
         string baseDir = Path.GetDirectoryName(Path.GetFullPath(path)) ?? ".";
-        return (root, LoadBuffers(root, baseDir, glbBuffer));
+        byte[][] buffers = LoadBuffers(root, baseDir, glbBuffer);
+        RequireDecodeBudget(root);
+        return (root, buffers, baseDir);
+    }
+    private static void RequireDecodeBudget(JsonElement root)
+    {
+        long total = 0;
+        foreach (JsonElement accessor in GltfJson.Array(root, "accessors"))
+        {
+            long count = accessor.TryGetProperty("count", out JsonElement c) && c.TryGetInt64(out long n) ? n : 0;
+            int components = (accessor.TryGetProperty("type", out JsonElement t) ? t.GetString() : "SCALAR") switch
+            {
+                "VEC2" => 2,
+                "VEC3" or "VEC4" => 4,
+                "MAT4" => 16,
+                _ => 1,
+            };
+            total = checked(total + (Math.Max(0, count) * components * sizeof(float)));
+            if (total > MaxDecodedBytes)
+            {
+                throw new InvalidDataException(
+                    $"the glTF accessors decode to more than the {Sizes.Describe(MaxDecodedBytes)} an import may hold");
+            }
+        }
     }
     private static (JsonElement Root, byte[]? Bin) Parse(byte[] raw)
     {
@@ -69,6 +99,7 @@ internal static class GltfContainer
         }
         byte[][] result = new byte[buffers.GetArrayLength()][];
         int i = 0;
+        long total = 0;
         foreach (JsonElement buffer in buffers.EnumerateArray())
         {
             if (!buffer.TryGetProperty("uri", out JsonElement uri))
@@ -81,13 +112,19 @@ internal static class GltfContainer
                 string text = uri.GetString() ?? string.Empty;
                 result[i] = text.StartsWith("data:", StringComparison.Ordinal)
                     ? DecodeDataUri(text)
-                    : ReadSiblingBuffer(baseDir, text);
+                    : ReadSibling(baseDir, text, "buffer");
+            }
+            total += result[i].LongLength;
+            if (total > MaxBufferBytes)
+            {
+                throw new InvalidDataException(
+                    $"the glTF buffers add up to more than the {Sizes.Describe(MaxBufferBytes)} an import may read");
             }
             i++;
         }
         return result;
     }
-    private static byte[] ReadSiblingBuffer(string baseDir, string uri)
+    public static byte[] ReadSibling(string baseDir, string uri, string what)
     {
         string relative = Uri.UnescapeDataString(uri);
         if (relative.Length == 0
@@ -95,15 +132,27 @@ internal static class GltfContainer
             || Path.IsPathRooted(relative))
         {
             throw new InvalidDataException(
-                $"glTF buffer URI '{uri}' must be a relative path beside the file.");
+                $"glTF {what} URI '{uri}' must be a relative path beside the file.");
         }
-        string root = Path.TrimEndingDirectorySeparator(Path.GetFullPath(baseDir))
-            + Path.DirectorySeparatorChar;
-        string full = Path.GetFullPath(Path.Combine(root, relative));
-        return full.StartsWith(root, StringComparison.Ordinal)
-            ? File.ReadAllBytes(full)
-            : throw new InvalidDataException(
-                $"glTF buffer URI '{uri}' points outside the folder the file was loaded from.");
+        string full;
+        try
+        {
+            full = ContainedPath.Resolve(baseDir, relative);
+        }
+        catch (InvalidDataException ex)
+        {
+            throw new InvalidDataException(
+                $"glTF {what} URI '{uri}' points outside the folder the file was loaded from: {ex.Message}", ex);
+        }
+        if (!File.Exists(full))
+        {
+            throw new InvalidDataException($"glTF {what} '{relative}' is missing from the folder the file was loaded from.");
+        }
+        if (new FileInfo(full).Length > MaxBufferBytes)
+        {
+            throw new InvalidDataException($"glTF {what} '{relative}' is larger than an import may read.");
+        }
+        return File.ReadAllBytes(full);
     }
     private static byte[] DecodeDataUri(string uri)
     {
@@ -120,19 +169,55 @@ internal static class GltfContainer
     }
     public static List<(int Node, Matrix4x4 World)> WalkScene(JsonElement root, JsonElement[] nodes)
     {
+        int[] parent = new int[nodes.Length];
+        Array.Fill(parent, -1);
+        for (int node = 0; node < nodes.Length; node++)
+        {
+            if (!nodes[node].TryGetProperty("children", out JsonElement kids))
+            {
+                continue;
+            }
+            foreach (JsonElement kid in kids.EnumerateArray())
+            {
+                int child = kid.GetInt32();
+                if (child < 0 || child >= nodes.Length)
+                {
+                    throw new InvalidDataException($"glTF node {node} names child {child}, which does not exist.");
+                }
+                if (parent[child] >= 0 || child == node)
+                {
+                    throw new InvalidDataException($"glTF node {child} has more than one parent.");
+                }
+                parent[child] = node;
+            }
+        }
+        for (int node = 0; node < nodes.Length; node++)
+        {
+            int steps = 0;
+            for (int up = parent[node]; up >= 0; up = parent[up])
+            {
+                if (++steps > nodes.Length)
+                {
+                    throw new InvalidDataException($"glTF node {node} is part of a parent cycle.");
+                }
+            }
+        }
         List<int> roots = [];
         if (root.TryGetProperty("scenes", out JsonElement scenes) && scenes.GetArrayLength() > 0)
         {
             int index = root.TryGetProperty("scene", out JsonElement s) ? s.GetInt32() : 0;
-            JsonElement scene = scenes[Math.Clamp(index, 0, scenes.GetArrayLength() - 1)];
-            if (scene.TryGetProperty("nodes", out JsonElement list))
+            if (index < 0 || index >= scenes.GetArrayLength())
+            {
+                throw new InvalidDataException($"glTF names scene {index}, and the file has {scenes.GetArrayLength()}.");
+            }
+            if (scenes[index].TryGetProperty("nodes", out JsonElement list))
             {
                 roots.AddRange(list.EnumerateArray().Select(n => n.GetInt32()));
             }
         }
-        if (roots.Count == 0)
+        else
         {
-            roots.AddRange(Enumerable.Range(0, nodes.Length));
+            roots.AddRange(Enumerable.Range(0, nodes.Length).Where(node => parent[node] < 0));
         }
         List<(int, Matrix4x4)> flat = [];
         HashSet<int> seen = [];
@@ -193,22 +278,68 @@ internal static class GltfContainer
             * Matrix4x4.CreateFromQuaternion(rotation)
             * Matrix4x4.CreateTranslation(translation);
     }
+    private readonly record struct Layout(byte[] Buffer, long Start, int Stride, int Count, int Components, int ComponentType, int ComponentSize, bool Normalized);
     public static int[] ReadIntegers(JsonElement root, byte[][] buffers, int index, int expectedComponents)
     {
-        float[] read = ReadAccessor(root, buffers, index, expectedComponents);
-        int[] into = new int[read.Length];
-        for (int i = 0; i < read.Length; i++)
+        if (!IsInteger(root, index))
         {
-            if (read[i] is >= 16777216 or < 0)
+            throw new InvalidDataException($"glTF accessor {index} holds indices that are not unsigned integers.");
+        }
+        if (Locate(root, buffers, index) is not { } layout)
+        {
+            return [];
+        }
+        int[] into = new int[checked((long)layout.Count * expectedComponents)];
+        int copy = Math.Min(layout.Components, expectedComponents);
+        for (int i = 0; i < layout.Count; i++)
+        {
+            int at = (int)(layout.Start + ((long)i * layout.Stride));
+            for (int c = 0; c < copy; c++)
             {
-                throw new InvalidDataException(
-                    $"glTF accessor {index} holds {read[i]}, past the 2^24 a float represents exactly.");
+                ReadOnlySpan<byte> raw = layout.Buffer.AsSpan(at + (c * layout.ComponentSize));
+                uint value = layout.ComponentType switch
+                {
+                    UByte => raw[0],
+                    UShort => BinaryPrimitives.ReadUInt16LittleEndian(raw),
+                    _ => BinaryPrimitives.ReadUInt32LittleEndian(raw),
+                };
+                if (value > int.MaxValue)
+                {
+                    throw new InvalidDataException($"glTF accessor {index} holds {value}, past what an index can be.");
+                }
+                into[(i * expectedComponents) + c] = (int)value;
             }
-            into[i] = (int)read[i];
         }
         return into;
     }
     public static float[] ReadAccessor(JsonElement root, byte[][] buffers, int index, int expectedComponents)
+    {
+        if (expectedComponents < 1 || expectedComponents > 16)
+        {
+            throw new InvalidDataException($"glTF accessor {index} was asked for {expectedComponents} components.");
+        }
+        if (Locate(root, buffers, index) is not { } layout)
+        {
+            return [];
+        }
+        float[] result = new float[checked((long)layout.Count * expectedComponents)];
+        int copy = Math.Min(layout.Components, expectedComponents);
+        for (int i = 0; i < layout.Count; i++)
+        {
+            int at = (int)(layout.Start + ((long)i * layout.Stride));
+            for (int c = 0; c < copy; c++)
+            {
+                float value = Component(layout.Buffer, at + (c * layout.ComponentSize), layout.ComponentType, layout.Normalized);
+                if (!float.IsFinite(value))
+                {
+                    throw new InvalidDataException($"glTF accessor {index} holds a value that is not a finite number.");
+                }
+                result[(i * expectedComponents) + c] = value;
+            }
+        }
+        return result;
+    }
+    private static Layout? Locate(JsonElement root, byte[][] buffers, int index)
     {
         JsonElement[] accessors = GltfJson.Array(root, "accessors");
         if (index < 0 || index >= accessors.Length)
@@ -247,7 +378,7 @@ internal static class GltfContainer
         };
         if (!accessor.TryGetProperty("bufferView", out JsonElement viewRef))
         {
-            return [];
+            return null;
         }
         JsonElement[] views = GltfJson.Array(root, "bufferViews");
         int viewIndex = viewRef.GetInt32();
@@ -264,33 +395,43 @@ internal static class GltfContainer
                 $"glTF buffer view {viewIndex} names buffer {bufferIndex}, which does not exist.");
         }
         byte[] buffer = buffers[bufferIndex];
-        int viewOffset = view.TryGetProperty("byteOffset", out JsonElement vo) ? vo.GetInt32() : 0;
-        int accessorOffset = accessor.TryGetProperty("byteOffset", out JsonElement ao) ? ao.GetInt32() : 0;
+        long viewOffset = view.TryGetProperty("byteOffset", out JsonElement vo) ? vo.GetInt64() : 0;
+        long viewLength = view.GetProperty("byteLength").GetInt64();
+        long accessorOffset = accessor.TryGetProperty("byteOffset", out JsonElement ao) ? ao.GetInt64() : 0;
         int packed = components * componentSize;
         int stride = view.TryGetProperty("byteStride", out JsonElement bs) ? bs.GetInt32() : packed;
-        if (stride <= 0)
+        if (!Fits(viewOffset, viewLength, buffer.LongLength))
         {
-            stride = packed;
+            throw new InvalidDataException($"glTF buffer view {viewIndex} is out of range of its buffer.");
         }
-        long start = (long)viewOffset + accessorOffset;
-        long reach = count == 0 ? 0L : ((long)(count - 1) * stride) + packed;
-        if (viewOffset < 0 || accessorOffset < 0 || start < 0 || start + reach > buffer.Length)
+        if (accessorOffset < 0 || stride < packed || stride % componentSize != 0 || accessorOffset % componentSize != 0)
         {
-            throw new InvalidDataException($"glTF accessor {index} reads past the end of its buffer.");
+            throw new InvalidDataException($"glTF accessor {index} has an invalid offset or stride.");
         }
-        float[] result = new float[checked((long)count * expectedComponents)];
-        int copy = Math.Min(components, expectedComponents);
-        for (int i = 0; i < count; i++)
+        long reach = count == 0 ? 0L : checked(((long)(count - 1) * stride) + packed);
+        if (!Fits(accessorOffset, reach, viewLength))
         {
-            int at = (int)(start + ((long)i * stride));
-            for (int c = 0; c < copy; c++)
-            {
-                result[(i * expectedComponents) + c] =
-                    Component(buffer, at + (c * componentSize), componentType, normalized);
-            }
+            throw new InvalidDataException($"glTF accessor {index} reads past the end of its buffer view.");
         }
-        return result;
+        long start = viewOffset + accessorOffset;
+        return new Layout(buffer, start, stride, count, components, componentType, componentSize, normalized);
     }
+    public static bool IsInteger(JsonElement root, int index)
+    {
+        JsonElement[] accessors = GltfJson.Array(root, "accessors");
+        return index >= 0 && index < accessors.Length
+            && accessors[index].GetProperty("componentType").GetInt32() is UByte or UShort or UInt
+            && !(accessors[index].TryGetProperty("normalized", out JsonElement nz) && nz.GetBoolean());
+    }
+    public static string TypeOf(JsonElement root, int index)
+    {
+        JsonElement[] accessors = GltfJson.Array(root, "accessors");
+        return index >= 0 && index < accessors.Length
+            ? accessors[index].GetProperty("type").GetString() ?? "SCALAR"
+            : "SCALAR";
+    }
+    private static bool Fits(long offset, long length, long limit) =>
+        offset >= 0 && length >= 0 && offset <= limit && length <= limit - offset;
     private static float Component(byte[] buffer, int at, int componentType, bool normalized)
     {
         return componentType switch
@@ -318,11 +459,11 @@ internal static class GltfContainer
         {
             return null;
         }
-        int offset = view.TryGetProperty("byteOffset", out JsonElement o) ? o.GetInt32() : 0;
-        int length = view.TryGetProperty("byteLength", out JsonElement l) ? l.GetInt32() : 0;
-        return offset < 0 || length <= 0 || offset + length > buffers[buffer].Length
+        long offset = view.TryGetProperty("byteOffset", out JsonElement o) ? o.GetInt64() : 0;
+        long length = view.TryGetProperty("byteLength", out JsonElement l) ? l.GetInt64() : 0;
+        return length <= 0 || !Fits(offset, length, buffers[buffer].LongLength)
             ? null
-            : buffers[buffer].AsSpan(offset, length).ToArray();
+            : buffers[buffer].AsSpan((int)offset, (int)length).ToArray();
     }
     public static byte[]? DecodeDataUriOrNull(string uri)
     {

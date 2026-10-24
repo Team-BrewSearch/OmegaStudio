@@ -266,11 +266,16 @@ namespace Omega.Disc.Streams
                     _parent.ReadExactly(rented.AsSpan(0, aligned));
                     if (IsEncrypted && !IsPlain(sector))
                     {
+                        if (aligned % 16 != 0)
+                        {
+                            throw new InvalidDataException(
+                                $"the encrypted region ends {aligned} byte(s) into a sector, which is not a whole number of AES blocks");
+                        }
                         byte[] plain = ArrayPool<byte>.Shared.Rent(Sector);
                         try
                         {
                             DiscCrypto.DecryptCbc(
-                                _aes, rented.AsSpan(0, aligned), SectorIv(sector), plain, $"a {Sector}-byte sector");
+                                _aes, rented.AsSpan(0, aligned), SectorIv(sector), plain.AsSpan(0, aligned), $"a {Sector}-byte sector");
                             plain.AsSpan(skip, take).CopyTo(buffer.Slice(done, take));
                         }
                         finally

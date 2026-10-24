@@ -101,19 +101,20 @@ internal sealed class TextureNode : EntryNode, IImageAsset, IDescribable
 }
 internal sealed class TrackNode : EntryNode, ISceneAsset, IDescribable, ICommandSource
 {
-    private SceneGeometry? _scene;
+    private readonly CachedValue<SceneGeometry> _scene;
     private int _revision = -1;
     public TrackNode(TrackContext context, string name, string path, DwkEntry entry)
         : base(context, name, path, entry)
     {
+        _scene = new CachedValue<SceneGeometry>(() => TrackScene.Build(Track), scene => scene.ApproximateBytes);
     }
     [AllowNull]
     private SskTrack Track { get => field ??= Context.ParseTrack(Entry); set; }
     public SceneGeometry? GetScene()
     {
         DropStaleCache();
-        _scene ??= TrackScene.Build(Track);
-        return _scene.TriangleCount > 0 ? _scene : null;
+        SceneGeometry scene = _scene.Value;
+        return scene.TriangleCount > 0 ? scene : null;
     }
     protected override void Write(byte[] payload)
     {
@@ -123,7 +124,7 @@ internal sealed class TrackNode : EntryNode, ISceneAsset, IDescribable, ICommand
     private void Invalidate()
     {
         Track = null;
-        _scene = null;
+        _scene.Clear();
         _revision = Context.Archive.Revision;
     }
     private void DropStaleCache()

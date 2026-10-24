@@ -43,18 +43,6 @@ internal static class WiiTree
                     + $"the {entries.Count.ToString(CultureInfo.InvariantCulture)} entries the table holds");
             }
         }
-        long wanted = 0;
-        foreach (WiiFstEntry entry in entries)
-        {
-            if (!entry.IsDirectory)
-            {
-                wanted = Math.Max(wanted, entry.Offset + entry.Length);
-            }
-        }
-        if (data is WiiPartitionStream partition && wanted > data.Length)
-        {
-            partition.EnsureDataLength(wanted);
-        }
         return Walk(entries, 0, data, onEdit);
     }
     private static IEnumerable<IAssetNode> Walk(
@@ -161,9 +149,15 @@ internal sealed class WiiFileNode : StreamingAssetNode
             {
                 return 0;
             }
-            data.Position = offset;
-            int read = data.Read(destination[..count]);
-            return read < 0 ? 0 : read;
+            if (data is WiiPartitionStream partition)
+            {
+                return partition.ReadAt(offset, destination[..count]);
+            }
+            lock (data)
+            {
+                data.Position = offset;
+                return data.ReadAtLeast(destination[..count], count, throwOnEndOfStream: false);
+            }
         }
         public byte[] ReadAll()
         {
@@ -179,8 +173,16 @@ internal sealed class WiiFileNode : StreamingAssetNode
                     + "node can hold");
             }
             byte[] payload = new byte[length];
-            data.Position = offset;
-            data.ReadExactly(payload);
+            if (data is WiiPartitionStream partition)
+            {
+                partition.ReadExactlyAt(offset, payload);
+                return payload;
+            }
+            lock (data)
+            {
+                data.Position = offset;
+                data.ReadExactly(payload);
+            }
             return payload;
         }
     }

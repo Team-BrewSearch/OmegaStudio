@@ -118,35 +118,39 @@ internal static class NcchReader
             return null;
         }
         long ncch = partitionOffset + MagicOffset;
+        long UnitsAt(int fullHeaderOffset) =>
+            BinaryPrimitives.ReadUInt32LittleEndian(head.AsSpan(fullHeaderOffset - MagicOffset, 4)) * (long)Ncch.MediaUnit;
+        long end = Math.Min(checked(partitionOffset + partitionLength), archive.ImageLength);
         NcchHeader header = new()
         {
             ProductCode = ReadText(head, ProductCodeOffset, 9),
             MakerCode = ReadText(head, MakerCodeOffset, 2),
-            ExeFsOffset = ncch + (BinaryPrimitives.ReadUInt32LittleEndian(head.AsSpan(ExeFsOffsetField, 4))
-                * Ncch.MediaUnit),
-            ExeFsLength = BinaryPrimitives.ReadUInt32LittleEndian(head.AsSpan(ExeFsOffsetField + 4, 4))
-                * Ncch.MediaUnit,
-            RomFsOffset = ncch + (BinaryPrimitives.ReadUInt32LittleEndian(head.AsSpan(RomFsOffsetField, 4))
-                * Ncch.MediaUnit),
-            RomFsLength = BinaryPrimitives.ReadUInt32LittleEndian(head.AsSpan(RomFsOffsetField + 4, 4))
-                * Ncch.MediaUnit,
+            ExeFsOffset = checked(partitionOffset + UnitsAt(ExeFsOffsetField)),
+            ExeFsLength = UnitsAt(ExeFsOffsetField + 4),
+            RomFsOffset = checked(partitionOffset + UnitsAt(RomFsOffsetField)),
+            RomFsLength = UnitsAt(RomFsOffsetField + 4),
         };
-        ExeFs? exeFs = TryReadExeFs(archive, header.ExeFsOffset, archive.ImageLength);
-        RomFs? romFs = TryReadRomFs(archive, header.RomFsOffset, archive.ImageLength);
+        bool exeDeclared = header.ExeFsLength > 0 && header.ExeFsOffset <= end - header.ExeFsLength;
+        bool romDeclared = header.RomFsLength > 0 && header.RomFsOffset <= end - header.RomFsLength;
+        ExeFs? exeFs = exeDeclared ? TryReadExeFs(archive, header.ExeFsOffset, end) : null;
+        RomFs? romFs = romDeclared ? TryReadRomFs(archive, header.RomFsOffset, end) : null;
         string? note = null;
-        if (exeFs is null || romFs is null)
+        if ((exeDeclared && exeFs is null) || (romDeclared && romFs is null))
         {
-            (exeFs, romFs) = Find(
-                archive, partitionOffset, Math.Min(partitionLength, archive.ImageLength - partitionOffset));
-            if (exeFs is null && romFs is null)
+            (ExeFs? foundExe, RomFs? foundRom) = Find(archive, partitionOffset, end - partitionOffset);
+            exeFs ??= exeDeclared ? foundExe : null;
+            romFs ??= romDeclared ? foundRom : null;
+            bool exeMissing = exeDeclared && exeFs is null;
+            bool romMissing = romDeclared && romFs is null;
+            if (exeMissing && romMissing)
             {
                 note = "the ExeFS and the RomFS are not readable here, which usually means they are keyed";
             }
-            else if (exeFs is null)
+            else if (exeMissing)
             {
                 note = "the ExeFS is not readable here, which usually means it is keyed";
             }
-            else if (romFs is null)
+            else if (romMissing)
             {
                 note = "the RomFS is not readable here, which usually means it is keyed";
             }
@@ -249,8 +253,17 @@ internal static class NcchReader
         {
             return null;
         }
+        uint masterHash = BinaryPrimitives.ReadUInt32LittleEndian(super.AsSpan(0x08, 4));
+        int blockLog = BinaryPrimitives.ReadInt32LittleEndian(super.AsSpan(0x4C, 4));
+        RomFs? romFs = null;
+        if (blockLog is >= 9 and <= 24)
+        {
+            long block = 1L << blockLog;
+            long declared = offset + ((0x60 + (long)masterHash + block - 1) / block * block);
+            _ = ReadLevel3(archive, declared, limit, out romFs);
+        }
         long level3 = offset + 0x1000;
-        if (!ReadLevel3(archive, level3, limit, out RomFs? romFs))
+        if (romFs is null && !ReadLevel3(archive, level3, limit, out romFs))
         {
             foreach (long candidate in Grow(offset))
             {
@@ -366,23 +379,27 @@ internal static class NcchReader
         window.ReadExactly(buffer);
         return buffer;
     }
-    private static string ReadName(byte[] buffer, int at, int length)
+    private static readonly System.Text.UnicodeEncoding s_strictUtf16 = new(bigEndian: false, byteOrderMark: false, throwOnInvalidBytes: true);
+    internal static string ReadName(byte[] buffer, int at, int length)
     {
-        ReadOnlySpan<byte> name = buffer.AsSpan(at, length);
-        bool littleEndian = true;
-        for (int i = 0; i < name.Length; i += 2)
+        if (at < 0 || length < 0 || (length & 1) != 0 || at > buffer.Length - length)
         {
-            littleEndian &= name[i + 1] == 0;
+            throw new InvalidDataException("a RomFS name is not a whole UTF-16LE span inside its table");
         }
-        return littleEndian || name.Length < 2
-            ? System.Text.Encoding.Unicode.GetString(name)
-            : System.Text.Encoding.BigEndianUnicode.GetString(name);
-    }
-    private static IEnumerable<long> Grow(long offset)
-    {
-        for (long at = offset + 0x1000; at <= offset + 0x400000; at *= 2)
+        try
         {
-            yield return at;
+            return s_strictUtf16.GetString(buffer, at, length);
+        }
+        catch (System.Text.DecoderFallbackException ex)
+        {
+            throw new InvalidDataException("a RomFS name is not valid UTF-16LE", ex);
+        }
+    }
+    internal static IEnumerable<long> Grow(long offset)
+    {
+        for (long delta = 0x1000; delta <= 0x400000; delta <<= 1)
+        {
+            yield return checked(offset + delta);
         }
     }
     private static string ReadText(byte[] source, int offset, int length)

@@ -172,7 +172,7 @@ internal static class Tjzip
     public static byte[] Compress(ReadOnlySpan<byte> data)
     {
         int n = data.Length;
-        int[] table = new int[1 << 24];
+        int[] table = n > 4 ? new int[1 << 24] : [];
         Array.Fill(table, -0x10000);
         ByteWriter output = new(Math.Max(256, n / 2));
         int litStart = 0;

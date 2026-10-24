@@ -7,10 +7,10 @@ internal static class GltfReader
 {
     public static GltfDocument Read(string path)
     {
-        (JsonElement root, byte[][] buffers) = GltfContainer.Load(path);
-        return Build(root, buffers);
+        (JsonElement root, byte[][] buffers, string baseDir) = GltfContainer.Load(path);
+        return Build(root, buffers, baseDir);
     }
-    private static GltfDocument Build(JsonElement root, byte[][] buffers)
+    private static GltfDocument Build(JsonElement root, byte[][] buffers, string baseDir)
     {
         JsonElement[] nodes = GltfJson.Array(root, "nodes");
         JsonElement[] meshes = GltfJson.Array(root, "meshes");
@@ -39,7 +39,13 @@ internal static class GltfReader
             {
                 continue;
             }
-            Matrix4x4 bake = nodes[node].TryGetProperty("skin", out _) ? Matrix4x4.Identity : world;
+            bool skinned = nodes[node].TryGetProperty("skin", out JsonElement skinRef);
+            if (skinned && skinRef.GetInt32() != 0)
+            {
+                throw new InvalidDataException(
+                    $"glTF node {node} is bound to skin {skinRef.GetInt32()}; only files whose meshes all use the first skin can be imported.");
+            }
+            Matrix4x4 bake = skinned ? Matrix4x4.Identity : world;
             result.Add(ReadMesh(
                 meshes[meshIndex],
                 GltfJson.Name(nodes[node], GltfJson.Name(meshes[meshIndex], $"mesh{meshIndex}")),
@@ -50,7 +56,7 @@ internal static class GltfReader
             : new GltfDocument
             {
                 Meshes = result,
-                Materials = GltfMaterials.Read(root, buffers),
+                Materials = GltfMaterials.Read(root, buffers, baseDir),
                 JointNames = jointNames,
             };
     }
@@ -79,8 +85,9 @@ internal static class GltfReader
             {
                 throw new InvalidDataException($"Mesh '{name}' has a primitive with no POSITION attribute.");
             }
+            bool hasNormals = attributes.TryGetProperty("NORMAL", out _);
             string signature = Signature(attributes);
-            if (sharedVertices.TryGetValue(signature, out (int First, int Count) shared))
+            if (hasNormals && sharedVertices.TryGetValue(signature, out (int First, int Count) shared))
             {
                 primitives.Add(Primitive(primitive, materials, primitives.Count,
                     ReadIndices(root, buffers, primitive, shared.Count, shared.First)));
@@ -89,13 +96,15 @@ internal static class GltfReader
             int first = positions.Count / 3;
             float[] p = GltfContainer.ReadAccessor(root, buffers, positionRef.GetInt32(), 3);
             int count = p.Length / 3;
-            sharedVertices[signature] = (first, count);
+            if (hasNormals)
+            {
+                sharedVertices[signature] = (first, count);
+            }
             float[] n = Read(root, buffers, attributes, "NORMAL", 3, count);
             float[] uv = Read(root, buffers, attributes, "TEXCOORD_0", 2, count);
             float[] colour = Read(root, buffers, attributes, "COLOR_0", 4, count, fallback: 1f);
-            float[] jointIds = Read(root, buffers, attributes, "JOINTS_0", 4, count);
+            int[] jointIds = ReadJoints(root, buffers, attributes, count);
             float[] w = Read(root, buffers, attributes, "WEIGHTS_0", 4, count);
-            bool hasNormals = attributes.TryGetProperty("NORMAL", out _);
             for (int i = 0; i < count; i++)
             {
                 Vector3 position = Vector3.Transform(
@@ -116,7 +125,7 @@ internal static class GltfReader
                 for (int c = 0; c < 4; c++)
                 {
                     colors.Add((byte)Math.Clamp((int)MathF.Round(colour[(i * 4) + c] * 255f), 0, 255));
-                    joints.Add((int)jointIds[(i * 4) + c]);
+                    joints.Add(jointIds[(i * 4) + c]);
                     weights.Add(w[(i * 4) + c]);
                 }
             }
@@ -232,13 +241,36 @@ internal static class GltfReader
             }
             return filled;
         }
-        float[] values = GltfContainer.ReadAccessor(root, buffers, reference.GetInt32(), components);
-        if (values.Length == count * components)
+        int accessor = reference.GetInt32();
+        float[] values = GltfContainer.ReadAccessor(root, buffers, accessor, components);
+        if (values.Length != count * components)
         {
-            return values;
+            throw new InvalidDataException(
+                $"glTF attribute {name} has {values.Length / components} elements for {count} vertices.");
         }
-        float[] padded = new float[count * components];
-        values.AsSpan(0, Math.Min(values.Length, padded.Length)).CopyTo(padded);
-        return padded;
+        string type = GltfContainer.TypeOf(root, accessor);
+        if (name == "COLOR_0" && type == "VEC3")
+        {
+            for (int i = 0; i < count; i++)
+            {
+                values[(i * 4) + 3] = 1f;
+            }
+        }
+        else if (type != (components == 1 ? "SCALAR" : $"VEC{components}"))
+        {
+            throw new InvalidDataException($"glTF attribute {name} is {type}, and {components} components were expected.");
+        }
+        return values;
+    }
+    private static int[] ReadJoints(JsonElement root, byte[][] buffers, JsonElement attributes, int count)
+    {
+        if (!attributes.TryGetProperty("JOINTS_0", out JsonElement reference))
+        {
+            return new int[count * 4];
+        }
+        int[] values = GltfContainer.ReadIntegers(root, buffers, reference.GetInt32(), 4);
+        return values.Length == count * 4
+            ? values
+            : throw new InvalidDataException($"glTF attribute JOINTS_0 has {values.Length / 4} elements for {count} vertices.");
     }
 }

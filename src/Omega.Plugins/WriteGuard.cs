@@ -31,7 +31,12 @@ public static class WriteGuard
             {
                 throw DoesNotReadBack(what);
             }
-            string[] changed = [.. files.Where(file => !AtomicSave.Same(file.Path, file.Rebuilt)).Select(file => file.Path)];
+            (string Path, string Temporary)[] changed =
+            [
+                .. files.Select((file, i) => (file.Path, temporaries[i], file.Rebuilt))
+                    .Where(file => !AtomicSave.Same(file.Path, file.Rebuilt))
+                    .Select(file => (file.Path, file.Item2)),
+            ];
             if (changed.Length > 0)
             {
                 AtomicSave.OverwriteAll(changed);
@@ -61,7 +66,7 @@ public static class WriteGuard
             }
             if (!AtomicSave.SameFiles(path, temporary))
             {
-                AtomicSave.Overwrite(path);
+                AtomicSave.Overwrite(path, temporary);
             }
         }
         finally

@@ -1,3 +1,4 @@
+using Omega.Plugins;
 using System.Buffers.Binary;
 using System.IO.Compression;
 using System.Text;
@@ -174,7 +175,7 @@ internal sealed class VfsEntry
 {
     private readonly ReadOnlyMemory<byte> _source;
     private byte[]? _raw;
-    private byte[]? _payload;
+    private readonly CachedValue<byte[]> _payload;
     private Layer[]? _layers;
     private PayloadKind? _kind;
     private int _sourcePayloadLength = -1;
@@ -182,6 +183,7 @@ internal sealed class VfsEntry
     {
         Hash = hash;
         _source = source;
+        _payload = new CachedValue<byte[]>(() => Unwrap(Raw).Payload, payload => payload.LongLength);
     }
     internal VfsArchive? Owner { get; set; }
     public uint Hash { get; }
@@ -202,7 +204,7 @@ internal sealed class VfsEntry
         get
         {
             EnsureLoaded();
-            return _payload!;
+            return _payload.Value;
         }
     }
     public PayloadKind Kind => _kind ??= Kinds.Sniff(Payload);
@@ -213,17 +215,17 @@ internal sealed class VfsEntry
         _raw = payload.Length == _sourcePayloadLength && Unwrap(_source.Span).Payload.AsSpan().SequenceEqual(payload)
             ? null
             : Wrap(payload, _layers!);
-        _payload = payload;
+        _payload.Set(payload);
         _kind = null;
         Owner?.MarkChanged();
     }
     private void EnsureLoaded()
     {
-        if (_payload is null)
+        if (_layers is null)
         {
             (Layer[] layers, byte[] payload) = Unwrap(_source.Span);
             _layers = layers;
-            _payload = payload;
+            _payload.Set(payload);
             _sourcePayloadLength = payload.Length;
         }
     }

@@ -28,6 +28,7 @@ public sealed class SharedStream : IDisposable
     public System.IO.Stream Stream => _source;
     public bool CanWrite => _source.CanWrite;
     public bool CanReopen => _path is not null;
+    public string? Path => _path;
     public int ReadAt(long at, Span<byte> destination)
     {
         ArgumentOutOfRangeException.ThrowIfNegative(at);

@@ -78,7 +78,7 @@ internal static class PluginLoader
                 loaded.Add(plugin);
                 log($"Loaded {plugin.Info.DisplayName} {plugin.Info.Version} from {name} (sha256:{digest[..16]}…).");
             }
-            catch (Exception ex)
+            catch (Exception ex) when (ex is not OutOfMemoryException)
             {
                 failures.Add(new PluginFailure(name, Describe(ex)));
                 log($"Could not load {name}: {Describe(ex)}");

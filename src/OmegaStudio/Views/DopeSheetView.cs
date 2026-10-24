@@ -21,10 +21,35 @@ public class DopeSheetView : Control
         AvaloniaProperty.Register<DopeSheetView, double>(nameof(CurrentTime));
     public static readonly StyledProperty<double> DurationProperty =
         AvaloniaProperty.Register<DopeSheetView, double>(nameof(Duration));
+    private readonly Playhead _playhead;
+    private FormattedText[] _labels = [];
+    private Rect _visible = new(0, 0, double.PositiveInfinity, double.PositiveInfinity);
     static DopeSheetView()
     {
-        AffectsRender<DopeSheetView>(SelectedAnimationProperty, CurrentTimeProperty, DurationProperty);
+        AffectsRender<DopeSheetView>(SelectedAnimationProperty, DurationProperty);
         AffectsMeasure<DopeSheetView>(SelectedAnimationProperty);
+    }
+    protected override void OnPropertyChanged(AvaloniaPropertyChangedEventArgs change)
+    {
+        base.OnPropertyChanged(change);
+        if (change.Property == SelectedAnimationProperty)
+        {
+            RebuildLabels();
+        }
+        if (change.Property == CurrentTimeProperty || change.Property == DurationProperty
+            || change.Property == SelectedAnimationProperty || change.Property == BoundsProperty)
+        {
+            _playhead?.InvalidateVisual();
+        }
+    }
+    protected override Size ArrangeOverride(Size finalSize)
+    {
+        _playhead.Arrange(new Rect(finalSize));
+        return finalSize;
+    }
+    private void RebuildLabels()
+    {
+        _labels = SelectedAnimation is { } clip ? [.. clip.Tracks.Select(track => Text(track.Name))] : [];
     }
     public AnimationClip? SelectedAnimation
     {
@@ -48,9 +73,18 @@ public class DopeSheetView : Control
     }
     public DopeSheetView()
     {
+        _playhead = new Playhead(this);
+        VisualChildren.Add(_playhead);
         ActualThemeVariantChanged += (_, _) =>
         {
             RebuildBrushes();
+            RebuildLabels();
+            InvalidateVisual();
+            _playhead.InvalidateVisual();
+        };
+        EffectiveViewportChanged += (_, e) =>
+        {
+            _visible = e.EffectiveViewport;
             InvalidateVisual();
         };
     }
@@ -82,14 +116,21 @@ public class DopeSheetView : Control
             DrawPlaceholder(context);
             return;
         }
-        double timelineWidth = Math.Max(1, Bounds.Width - HeaderWidth);
-        double scale = timelineWidth / (Duration > 0 ? Duration : 1);
+        double scale = Scale();
         float fps = Fps(clip);
-        for (int i = 0; i < clip.Tracks.Count; i++)
+        if (_labels.Length != clip.Tracks.Count)
+        {
+            RebuildLabels();
+        }
+        int first = Math.Max(0, (int)Math.Floor(_visible.Top / TrackHeight));
+        int last = double.IsInfinity(_visible.Bottom)
+            ? clip.Tracks.Count - 1
+            : Math.Min(clip.Tracks.Count - 1, (int)Math.Ceiling(_visible.Bottom / TrackHeight));
+        for (int i = first; i <= last; i++)
         {
             AnimationTrack track = clip.Tracks[i];
             double y = i * TrackHeight;
-            FormattedText label = Text(track.Name);
+            FormattedText label = _labels[i];
             context.DrawText(label, new Point(LabelPadding, y + ((TrackHeight - label.Height) / 2)));
             context.DrawLine(
                 _gridPen,
@@ -101,10 +142,20 @@ public class DopeSheetView : Control
                 context.DrawLine(_keyframePen, new Point(x, y + 3), new Point(x, y + TrackHeight - 3));
             }
         }
-        if (Duration > 0)
+    }
+    private double Scale()
+    {
+        return Math.Max(1, Bounds.Width - HeaderWidth) / (Duration > 0 ? Duration : 1);
+    }
+    private sealed class Playhead(DopeSheetView owner) : Control
+    {
+        public override void Render(DrawingContext context)
         {
-            double x = HeaderWidth + (CurrentTime * scale);
-            context.DrawLine(_playheadPen, new Point(x, 0), new Point(x, Bounds.Height));
+            if (owner.Duration > 0 && owner.SelectedAnimation is { Tracks.Count: > 0 })
+            {
+                double x = HeaderWidth + (owner.CurrentTime * owner.Scale());
+                context.DrawLine(owner._playheadPen, new Point(x, 0), new Point(x, Bounds.Height));
+            }
         }
     }
     private static float Fps(AnimationClip clip)

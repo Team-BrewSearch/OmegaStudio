@@ -8,6 +8,7 @@ public sealed class WavDecoder : IAudioDecoder
     private const int PcmFormat = 1;
     private readonly byte[] _data;
     private readonly int _dataOffset;
+    private int _position;
     public WavDecoder(byte[] data, in AudioMetadata metadata)
     {
         ArgumentNullException.ThrowIfNull(data);
@@ -23,7 +24,7 @@ public sealed class WavDecoder : IAudioDecoder
     public int Channels { get; }
     public int BitsPerSample { get; }
     public long TotalSamples { get; }
-    public int TotalBytes { get; }
+    public long TotalBytes { get; }
     public static bool TryParse(ReadOnlySpan<byte> data, out AudioMetadata metadata)
     {
         metadata = default;
@@ -64,7 +65,8 @@ public sealed class WavDecoder : IAudioDecoder
             }
             offset = (int)next;
         }
-        if (sampleRate <= 0 || channels <= 0 || bitsPerSample is not (8 or 16))
+        if (sampleRate is <= 0 or > AudioInfo.MaxSampleRate || channels is <= 0 or > AudioInfo.MaxChannels
+            || bitsPerSample is not (8 or 16))
         {
             return false;
         }
@@ -78,9 +80,22 @@ public sealed class WavDecoder : IAudioDecoder
             dataLength / (bitsPerSample / 8), dataOffset, dataLength);
         return true;
     }
-    public void ReadAll(Span<byte> destination)
+    public int Read(Span<byte> destination)
     {
-        _data.AsSpan(_dataOffset, TotalBytes).CopyTo(destination);
+        int frame = Channels * (BitsPerSample / 8);
+        int take = (int)Math.Min(destination.Length - (destination.Length % frame), TotalBytes - _position);
+        if (take <= 0)
+        {
+            return 0;
+        }
+        _data.AsSpan(_dataOffset + _position, take).CopyTo(destination);
+        _position += take;
+        return take;
+    }
+    public void SeekToFrame(long frame)
+    {
+        long at = Math.Clamp(frame, 0, TotalBytes / (Channels * (BitsPerSample / 8))) * Channels * (BitsPerSample / 8);
+        _position = (int)at;
     }
     public void Dispose()
     {

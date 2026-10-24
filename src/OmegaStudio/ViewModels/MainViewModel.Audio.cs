@@ -1,6 +1,7 @@
 using Avalonia.Threading;
 using CommunityToolkit.Mvvm.Input;
 using Omega.Plugins;
+using OmegaStudio.Audio;
 using OmegaStudio.Plugins;
 namespace OmegaStudio.ViewModels;
 public partial class MainViewModel
@@ -43,8 +44,11 @@ public partial class MainViewModel
         {
             return;
         }
-        await LoadAudioAsync(audio, null);
-        _audioPlayer.Play();
+        bool installed = await LoadAudioAsync(audio, null);
+        if (installed && ReferenceEquals(SelectedItem?.Node, audio) && ReferenceEquals(_currentAudio, audio))
+        {
+            _audioPlayer.Play();
+        }
     }
     [RelayCommand]
     private void PauseResumeAudio()
@@ -58,54 +62,48 @@ public partial class MainViewModel
     }
     private int _audioGeneration;
     private readonly SemaphoreSlim _audioGate = new(1, 1);
-    public Task LoadAudioAsync(IAudioAsset audio, byte[]? data)
+    private Task<bool>? _audioLoad;
+    public Task<bool> LoadAudioAsync(IAudioAsset audio, byte[]? data)
     {
         if (_audioLoad is not null && ReferenceEquals(audio, _currentAudio))
         {
             return _audioLoad;
         }
         _currentAudio = audio;
-        _audioLoad = RunAudioLoadAsync(audio, data);
+        _audioLoad = InstallAudioAsync(++_audioGeneration, data is null ? () => NodeAccess.EncodedAudio(audio).ToArray() : () => data);
         return _audioLoad;
     }
-    private async Task RunAudioLoadAsync(IAudioAsset audio, byte[]? data)
+    private Task<bool> LoadSoundtrackAsync(byte[] data)
     {
-        int generation = Interlocked.Increment(ref _audioGeneration);
-        await _audioGate.WaitAsync();
-        try
-        {
-            await Task.Run(() => _audioPlayer.Load(data ?? NodeAccess.EncodedAudio(audio).ToArray()));
-            if (Interlocked.CompareExchange(ref _audioGeneration, generation, generation) != generation)
-            {
-                return;
-            }
-        }
-        catch (Exception ex)
-        {
-            _currentAudio = null;
-            _audioLoad = null;
-            Log($"Failed to load audio: {ex.GetType().Name}: {ex.Message}");
-        }
-        finally
-        {
-            _audioGate.Release();
-        }
-        NotifyAudioState();
-    }
-    private async Task<bool> LoadSoundtrackAsync(byte[] data)
-    {
-        int generation = Interlocked.Increment(ref _audioGeneration);
         _currentAudio = null;
         _audioLoad = null;
+        return InstallAudioAsync(++_audioGeneration, () => data);
+    }
+    private async Task<bool> InstallAudioAsync(int generation, Func<byte[]> data)
+    {
         await _audioGate.WaitAsync();
         try
         {
-            await Task.Run(() => _audioPlayer.Load(data));
-            return Volatile.Read(ref _audioGeneration) == generation;
+            if (generation != _audioGeneration || _disposed)
+            {
+                return false;
+            }
+            using PreparedAudio prepared = await Task.Run(() => AudioPlaybackService.Prepare(data()));
+            if (generation != _audioGeneration || _disposed)
+            {
+                return false;
+            }
+            _audioPlayer.Commit(prepared);
+            return true;
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is not OutOfMemoryException)
         {
-            Log($"Failed to load the soundtrack: {ex.GetType().Name}: {ex.Message}");
+            if (generation == _audioGeneration)
+            {
+                _currentAudio = null;
+                _audioLoad = null;
+                Log($"Failed to load audio: {ex.GetType().Name}: {ex.Message}");
+            }
             return false;
         }
         finally
@@ -116,12 +114,10 @@ public partial class MainViewModel
     }
     public void ResetAudioState()
     {
-        if (_audioPlayer.IsLoaded)
-        {
-            _audioPlayer.Stop();
-        }
+        _audioGeneration++;
         _currentAudio = null;
         _audioLoad = null;
+        _audioPlayer.Clear();
         NotifyAudioState();
     }
     private void NotifyAudioState()
@@ -135,6 +131,27 @@ public partial class MainViewModel
         try
         {
             OnPropertyChanged(nameof(AudioTotalSeconds));
+            if (!_isDraggingThumb)
+            {
+                AudioPositionSeconds = _audioPlayer.Position.TotalSeconds;
+            }
+        }
+        finally
+        {
+            _pushingAudioPosition = false;
+        }
+        OnPropertyChanged(nameof(AudioTimeDisplay));
+    }
+    private void OnAudioProgress()
+    {
+        if (!Dispatcher.UIThread.CheckAccess())
+        {
+            Dispatcher.UIThread.Post(OnAudioProgress);
+            return;
+        }
+        _pushingAudioPosition = true;
+        try
+        {
             if (!_isDraggingThumb)
             {
                 AudioPositionSeconds = _audioPlayer.Position.TotalSeconds;

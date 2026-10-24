@@ -34,7 +34,8 @@ namespace Omega.Disc.Formats.Nintendo
         public byte CommonKeyIndex { get; init; }
         public byte[]? TmdTitleId { get; init; }
         public ushort TmdTitleVersion { get; init; }
-        public long BlockCount => DataSize / WiiDisc.BlockTotalSize;
+        public long DataSizeBytes => (long)DataSize << WiiDisc.OffsetShift;
+        public long BlockCount => DataSizeBytes / WiiDisc.BlockTotalSize;
         public long DecryptedSize => BlockCount * WiiDisc.BlockDataSize;
     }
     public sealed record WiiFstEntry(string Name, long Offset, uint Length, uint NextIndex, int Index, bool IsDirectory);
@@ -143,10 +144,10 @@ namespace Omega.Disc.Formats.Nintendo
         public Stream OpenPartition(WiiPartitionHeader partition)
         {
             ArgumentNullException.ThrowIfNull(partition);
-            if (partition.DataSize < BlockTotalSize)
+            if (partition.DataSizeBytes < BlockTotalSize)
             {
                 throw new InvalidDataException(
-                    $"the partition at 0x{partition.Offset:X} declares a {partition.DataSize}-byte data area, "
+                    $"the partition at 0x{partition.Offset:X} declares a {partition.DataSizeBytes}-byte data area, "
                     + $"and one block alone is {BlockTotalSize}");
             }
             byte[] titleKey = Header.DisableEncryption != 0 ? new byte[16] : TitleKey(partition);
@@ -155,7 +156,7 @@ namespace Omega.Disc.Formats.Nintendo
                 partition.Offset + partition.DataOffset,
                 partition.DecryptedSize,
                 titleKey,
-                partition.H3TableOffset == 0 ? -1 : partition.Offset + (partition.H3TableOffset << 2),
+                partition.H3TableOffset == 0 ? -1 : checked(partition.Offset + partition.H3TableOffset),
                 _gate);
         }
         public IReadOnlyList<WiiFstEntry> ReadFileSystem(WiiPartitionHeader partition)
@@ -247,13 +248,12 @@ namespace Omega.Disc.Formats.Nintendo
             SpanReader reader = SpanReader.Over(head);
             string gameId = reader.Ascii(4);
             string maker = reader.Ascii(2);
-            reader.Skip(2);
             byte disc = reader.Byte();
             byte version = reader.Byte();
             reader.Seek(0x18);
             uint magic = reader.UInt32Big();
             reader.Seek(0x20);
-            string title = reader.RawText(64, Encoding.BigEndianUnicode).TrimEnd('\0');
+            string title = reader.Text(0x40, Encoding.UTF8);
             byte disableHashes = reader.Peek(0x60);
             byte disableEncryption = reader.Peek(0x61);
             return new WiiDiscHeader(gameId, maker, disc, version, title, magic, disableHashes, disableEncryption);

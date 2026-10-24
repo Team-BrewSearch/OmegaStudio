@@ -2,9 +2,20 @@ namespace OmegaStudio.Audio;
 public readonly record struct AudioInfo(
     string Format, int SampleRate, int Channels, int BitsPerSample, long TotalSamples)
 {
-    public TimeSpan Duration => SampleRate > 0 && Channels > 0
-        ? TimeSpan.FromSeconds((double)TotalSamples / (SampleRate * Channels))
-        : TimeSpan.Zero;
+    public const int MaxSampleRate = 768_000;
+    public const int MaxChannels = 255;
+    public TimeSpan Duration => PcmDuration(TotalSamples, SampleRate, Channels);
+    public static TimeSpan PcmDuration(long samples, int sampleRate, int channels)
+    {
+        if (samples <= 0 || sampleRate <= 0 || channels <= 0)
+        {
+            return TimeSpan.Zero;
+        }
+        double seconds = samples / ((double)sampleRate * channels);
+        return double.IsFinite(seconds) && seconds < TimeSpan.MaxValue.TotalSeconds
+            ? TimeSpan.FromSeconds(seconds)
+            : TimeSpan.Zero;
+    }
     public override string ToString()
     {
         string channels = Channels switch { 1 => "Mono", 2 => "Stereo", _ => $"{Channels} ch" };
@@ -18,7 +29,7 @@ public static class AudioInfoHelper
         if (AudioFormats.IsOgg(data) && OggVorbisDecoder.TryParse(data, out AudioMetadata ogg))
         {
             info = new AudioInfo("OGG Vorbis", ogg.SampleRate, ogg.Channels, ogg.BitsPerSample, ogg.TotalSamples);
-            return true;
+            return info.SampleRate <= AudioInfo.MaxSampleRate && info.Channels <= AudioInfo.MaxChannels;
         }
         if (AudioFormats.IsWav(data) && WavDecoder.TryParse(data, out AudioMetadata wav))
         {

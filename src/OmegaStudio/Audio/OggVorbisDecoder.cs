@@ -7,57 +7,56 @@ public sealed class OggVorbisDecoder : IAudioDecoder
     private const int ChunkSamples = 65536;
     private const int PageHeaderSize = 27;
     private const int MinPageSize = PageHeaderSize;
-    private const int MaxSamples = 1 << 27;
-    private readonly short[] _pcm;
+    private readonly MemoryStream _stream;
+    private readonly VorbisReader _reader;
+    private float[] _scratch = [];
     public OggVorbisDecoder(byte[] data)
     {
         ArgumentNullException.ThrowIfNull(data);
-        using MemoryStream stream = new(data);
-        using VorbisReader reader = new(stream, true);
-        SampleRate = reader.SampleRate;
-        Channels = reader.Channels;
-        long frames = reader.TotalSamples;
-        long hint = Channels > 0 && frames > 0 && frames <= MaxSamples / Channels
-            ? frames * Channels
-            : 0;
-        short[] pcm = new short[hint > 0 ? hint : ChunkSamples];
-        float[] buffer = new float[ChunkSamples];
-        int written = 0;
-        while (written < MaxSamples)
+        _stream = new MemoryStream(data, writable: false);
+        _reader = new VorbisReader(_stream, false);
+        SampleRate = _reader.SampleRate;
+        Channels = _reader.Channels;
+        if (SampleRate <= 0 || Channels <= 0)
         {
-            int read = reader.ReadSamples(buffer, 0, ChunkSamples);
-            if (read <= 0)
-            {
-                break;
-            }
-            if (written + read > pcm.Length)
-            {
-                Array.Resize(ref pcm, (int)Math.Min(
-                    MaxSamples, Math.Max((long)written + read, pcm.Length * 2L)));
-            }
-            read = Math.Min(read, pcm.Length - written);
-            for (int i = 0; i < read; i++)
-            {
-                pcm[written + i] = (short)(Math.Clamp(buffer[i], -1f, 1f) * short.MaxValue);
-            }
-            written += read;
+            Dispose();
+            throw new InvalidDataException("the Ogg Vorbis header declares no sample rate or no channels");
         }
-        if (written != pcm.Length)
-        {
-            Array.Resize(ref pcm, written);
-        }
-        _pcm = pcm;
-        TotalSamples = _pcm.Length;
-        TotalBytes = _pcm.Length * sizeof(short);
+        TotalSamples = Math.Max(0, _reader.TotalSamples) * Channels;
+        TotalBytes = TotalSamples * sizeof(short);
     }
     public int SampleRate { get; }
     public int Channels { get; }
     public int BitsPerSample => 16;
     public long TotalSamples { get; }
-    public int TotalBytes { get; }
-    public void ReadAll(Span<byte> destination)
+    public long TotalBytes { get; }
+    public int Read(Span<byte> destination)
     {
-        MemoryMarshal.AsBytes(_pcm.AsSpan()).CopyTo(destination);
+        int want = Math.Min(destination.Length / sizeof(short), ChunkSamples);
+        want -= want % Channels;
+        if (want <= 0)
+        {
+            return 0;
+        }
+        if (_scratch.Length < want)
+        {
+            _scratch = new float[want];
+        }
+        int read = _reader.ReadSamples(_scratch, 0, want);
+        if (read <= 0)
+        {
+            return 0;
+        }
+        Span<short> pcm = MemoryMarshal.Cast<byte, short>(destination);
+        for (int i = 0; i < read; i++)
+        {
+            pcm[i] = (short)(Math.Clamp(_scratch[i], -1f, 1f) * short.MaxValue);
+        }
+        return read * sizeof(short);
+    }
+    public void SeekToFrame(long frame)
+    {
+        _reader.SamplePosition = Math.Clamp(frame, 0, Math.Max(0, _reader.TotalSamples));
     }
     public static bool TryParse(ReadOnlySpan<byte> data, out AudioMetadata metadata)
     {
@@ -127,5 +126,7 @@ public sealed class OggVorbisDecoder : IAudioDecoder
     }
     public void Dispose()
     {
+        _reader.Dispose();
+        _stream.Dispose();
     }
 }

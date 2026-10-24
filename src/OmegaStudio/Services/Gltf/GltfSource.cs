@@ -8,11 +8,11 @@ internal sealed class GltfSource : IGltfSource
     private readonly byte[][] _buffers;
     public GltfSource(string path)
     {
-        (JsonElement root, byte[][] buffers) = GltfContainer.Load(path);
+        (JsonElement root, byte[][] buffers, string baseDir) = GltfContainer.Load(path);
         Root = root;
         _buffers = buffers;
         Buffers = buffers;
-        Materials = GltfMaterials.Read(root, buffers);
+        Materials = GltfMaterials.Read(root, buffers, baseDir);
     }
     public JsonElement Root { get; }
     public IReadOnlyList<byte[]> Buffers { get; }
@@ -31,7 +31,7 @@ internal sealed class GltfSource : IGltfSource
 }
 internal static class GltfMaterials
 {
-    public static IReadOnlyList<GltfMaterial> Read(JsonElement root, byte[][] buffers)
+    public static IReadOnlyList<GltfMaterial> Read(JsonElement root, byte[][] buffers, string baseDir)
     {
         JsonElement[] materials = GltfJson.Array(root, "materials");
         JsonElement[] textures = GltfJson.Array(root, "textures");
@@ -43,14 +43,14 @@ internal static class GltfMaterials
             result.Add(new GltfMaterial
             {
                 Name = GltfJson.Name(materials[i], $"Material{i:00}"),
-                Image = TryDecodeImage(materials[i], textures, images, views, buffers),
+                Image = TryDecodeImage(materials[i], textures, images, views, buffers, baseDir),
             });
         }
         return result;
     }
     private static ImageData? TryDecodeImage(
         JsonElement material, JsonElement[] textures, JsonElement[] images,
-        JsonElement[] views, byte[][] buffers)
+        JsonElement[] views, byte[][] buffers, string baseDir)
     {
         if (!material.TryGetProperty("pbrMetallicRoughness", out JsonElement pbr)
             || !pbr.TryGetProperty("baseColorTexture", out JsonElement baseColor)
@@ -63,21 +63,18 @@ internal static class GltfMaterials
         {
             return null;
         }
-        byte[]? encoded = ReadImageBytes(images[imageIndex], views, buffers);
-        if (encoded is null)
-        {
-            return null;
-        }
+        byte[]? encoded = ReadImageBytes(images[imageIndex], views, buffers, baseDir)
+            ?? throw new InvalidDataException($"glTF image {imageIndex} names no data this build can read.");
         try
         {
             return ImageIO.Instance.Load(encoded, GltfJson.Name(images[imageIndex], $"image{imageIndex}"));
         }
-        catch (Exception ex) when (ex is InvalidDataException or ArgumentException or NotSupportedException)
+        catch (Exception ex) when (ex is ArgumentException or NotSupportedException)
         {
-            return null;
+            throw new InvalidDataException($"glTF image {imageIndex} could not be decoded: {ex.Message}", ex);
         }
     }
-    private static byte[]? ReadImageBytes(JsonElement image, JsonElement[] views, byte[][] buffers)
+    private static byte[]? ReadImageBytes(JsonElement image, JsonElement[] views, byte[][] buffers, string baseDir)
     {
         if (image.TryGetProperty("bufferView", out JsonElement viewRef)
             && viewRef.TryGetInt32(out int view)
@@ -91,6 +88,10 @@ internal static class GltfMaterials
             if (text is not null && text.StartsWith("data:", StringComparison.OrdinalIgnoreCase))
             {
                 return GltfContainer.DecodeDataUriOrNull(text);
+            }
+            if (!string.IsNullOrEmpty(text))
+            {
+                return GltfContainer.ReadSibling(baseDir, text, "image");
             }
         }
         return null;

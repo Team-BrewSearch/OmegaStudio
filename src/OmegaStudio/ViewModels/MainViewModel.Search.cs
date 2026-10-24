@@ -45,18 +45,26 @@ public partial class MainViewModel
             Stopwatch elapsed = Stopwatch.StartNew();
             TreeItemViewModel[] roots = [.. Roots];
             SearchWalk walk = new(text, token);
-            List<TreeItemViewModel> results = await Task.Run(() =>
+            List<TreeItemViewModel> results;
+            try
             {
-                List<TreeItemViewModel> found = [];
-                for (int index = 0; index < roots.Length && !walk.Full; index++)
+                results = await _session.RunAsync(_session.Generation, _ =>
                 {
-                    if (Filter(roots[index], index, walk, 0) is { } hit && Resolve(hit, roots, walk) is { } row)
+                    List<TreeItemViewModel> found = [];
+                    for (int index = 0; index < roots.Length && !walk.Full; index++)
                     {
-                        found.Add(row);
+                        if (Filter(roots[index], index, walk, 0) is { } hit && Resolve(hit, roots, walk) is { } row)
+                        {
+                            found.Add(row);
+                        }
                     }
-                }
-                return found;
-            }, token);
+                    return found;
+                });
+            }
+            catch (ArchiveClosedException)
+            {
+                return;
+            }
             token.ThrowIfCancellationRequested();
             SearchResults.Clear();
             IsSearchActive = true;
@@ -65,12 +73,15 @@ public partial class MainViewModel
                 SearchResults.Add(row);
             }
             int matches = walk.Matches;
-            Status = matches == 0
+            string status = matches == 0
                 ? "No matches found."
                 : walk.Full
                     ? $"Found {matches}+ match{(matches == 1 ? "" : "es")} in {elapsed.ElapsedMilliseconds}ms; "
                       + $"showing the first {HitLimit}."
                     : $"Found {matches} match{(matches == 1 ? "" : "es")} in {elapsed.ElapsedMilliseconds}ms.";
+            Status = walk.DepthTruncated
+                ? $"{status} Folders deeper than {DepthLimit} levels were not searched."
+                : status;
         }
         catch (OperationCanceledException)
         {
@@ -82,8 +93,9 @@ public partial class MainViewModel
         public CancellationToken Token { get; } = token;
         public int Matches { get; set; }
         public bool Full => Matches >= HitLimit;
+        public bool DepthTruncated { get; set; }
     }
-    private sealed record SearchHit(int Index, string Header, List<SearchHit> Children);
+    private sealed record SearchHit(int Index, string Header, IReadOnlyList<SearchHit> Children);
     private static SearchHit? Filter(TreeItemViewModel item, int index, SearchWalk walk, int depth)
     {
         walk.Token.ThrowIfCancellationRequested();
@@ -92,23 +104,23 @@ public partial class MainViewModel
         {
             walk.Matches++;
         }
-        List<SearchHit> children = [];
-        if (depth < DepthLimit)
+        List<SearchHit>? children = null;
+        IReadOnlyList<TreeItemViewModel> rows = item.BuildChildren();
+        if (depth >= DepthLimit)
         {
-            int position = 0;
-            foreach (TreeItemViewModel child in item.PeekChildren())
+            walk.DepthTruncated |= rows.Count > 0;
+        }
+        else
+        {
+            for (int position = 0; position < rows.Count && !walk.Full; position++)
             {
-                if (walk.Full)
+                if (Filter(rows[position], position, walk, depth + 1) is { } hit)
                 {
-                    break;
-                }
-                if (Filter(child, position++, walk, depth + 1) is { } hit)
-                {
-                    children.Add(hit);
+                    (children ??= []).Add(hit);
                 }
             }
         }
-        return self || children.Count > 0 ? new SearchHit(index, item.Header, children) : null;
+        return self || children is not null ? new SearchHit(index, item.Header, (IReadOnlyList<SearchHit>?)children ?? []) : null;
     }
     private static TreeItemViewModel? Resolve(SearchHit hit, IReadOnlyList<TreeItemViewModel> rows, SearchWalk walk)
     {

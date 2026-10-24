@@ -61,13 +61,14 @@ internal sealed class ImageView(IAssetNode inner, IHostServices host)
 {
     public override string Kind => AssetKinds.Texture;
     public override string Extension => Magic.ImageExtension(Head);
-    public ImageData Image { get => field ??= host.Images.Load(Data, Name); private set; }
+    private CachedValue<ImageData>? _image;
+    public ImageData Image => (_image ??= new CachedValue<ImageData>(() => host.Images.Load(Data, Name), image => image.Rgba.LongLength)).Value;
     public bool CanReplaceImage => CanReplaceBytes && Magic.IsPng(Head);
     public void ReplaceImage(ImageData image)
     {
         ArgumentNullException.ThrowIfNull(image);
         ReplaceBytes(host.Images.EncodePng(image));
-        Image = image;
+        _image?.Clear();
     }
     public override IEnumerable<PropertyRow> Describe()
     {

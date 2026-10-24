@@ -19,7 +19,6 @@ public partial class MainViewModel : ObservableObject, ISelectionView, ICommandR
     private TreeBuilder _tree = new(AssetRecognition.None);
     private IAudioAsset? _currentAudio;
     private IAssetNode? _sceneSource;
-    private Task? _audioLoad;
     private AudioInfo? _audioInfo;
     AudioInfo? ISelectionView.AudioInfo
     {
@@ -33,6 +32,7 @@ public partial class MainViewModel : ObservableObject, ISelectionView, ICommandR
     }
     TreeItemViewModel? ISelectionView.Owner => SelectedItem;
     Action<string> ISelectionView.Log => Log;
+    Task<T> ISelectionView.ReadArchiveAsync<T>(Func<T> work) => _session.RunAsync(_session.Generation, _ => work());
     private bool _disposed;
     public MainViewModel(IAppStorageProvider storage)
     {
@@ -40,10 +40,9 @@ public partial class MainViewModel : ObservableObject, ISelectionView, ICommandR
         _session.Logged += Log;
         _console.PropertyChanged += OnConsoleChanged;
         _audioPlayer.StateChanged += OnAudioPlayerStateChanged;
-        Animation = new AnimationPlayer();
+        _audioPlayer.ProgressChanged += OnAudioProgress;
+        Animation = new AnimationPlayer(work => _session.RunAsync(_session.Generation, _ => work()));
         Video = new VideoPlayer(_audioPlayer, LoadSoundtrackAsync, Log);
-        Animation.FrameReady += (positions, normals) => Viewport?.SetAnimatedFrame(positions, normals);
-        Animation.FrameCleared += () => Viewport?.ClearAnimatedFrame();
         Animation.PropertyChanged += (_, changed) =>
         {
             if (changed.PropertyName is (nameof(AnimationPlayer.SelectedClip))
@@ -55,7 +54,6 @@ public partial class MainViewModel : ObservableObject, ISelectionView, ICommandR
         PluginGuard.Log = Log;
         LoadPlugins();
     }
-    public GlViewport? Viewport { get; set; }
     public AnimationPlayer Animation { get; }
     public VideoPlayer Video { get; }
     [ObservableProperty]
@@ -144,6 +142,12 @@ public partial class MainViewModel : ObservableObject, ISelectionView, ICommandR
         {
             return;
         }
+        if (_session.IsBusy)
+        {
+            Log($"{row.Name} was not changed: wait for the running command or save to finish, then set it again.");
+            Dispatcher.UIThread.Post(() => Presenter.RebuildProperties(node));
+            return;
+        }
         bool applied = PluginGuard.Try($"Setting '{row.Name}'", () => { apply(value); return true; }, false);
         if (applied)
         {
@@ -197,11 +201,17 @@ public partial class MainViewModel : ObservableObject, ISelectionView, ICommandR
         _session.Logged -= Log;
         _console.PropertyChanged -= OnConsoleChanged;
         Animation.Dispose();
+        _ = Video.UnbindAsync().Wait(TimeSpan.FromSeconds(5));
         Video.Dispose();
         _audioPlayer.StateChanged -= OnAudioPlayerStateChanged;
+        _audioPlayer.ProgressChanged -= OnAudioProgress;
         _audioPlayer.Dispose();
         _session.Dispose();
         CancelSearch();
+        if (PluginGuard.Log == (Action<string>)Log)
+        {
+            PluginGuard.Log = null;
+        }
         TexturePreview = null;
         GC.SuppressFinalize(this);
     }
