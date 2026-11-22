@@ -10,6 +10,40 @@
         Background="{DynamicResource SurfaceWell}"
         FontSize="{DynamicResource FontSizeBody}"
         Icon="/Assets/icon.png">
+  <Window.DataTemplates>
+                <DataTemplate x:DataType="vm:ReadOnlyPropertyItem">
+                  <Grid ColumnDefinitions="120,*" Margin="0,3">
+                    <TextBlock Grid.Column="0" Text="{Binding Name}" Classes="label" TextWrapping="Wrap"
+                               VerticalAlignment="Top" />
+                    <TextBlock Grid.Column="1" Text="{Binding Value}" Classes="value" />
+                  </Grid>
+                </DataTemplate>
+                <DataTemplate x:DataType="vm:TextPropertyItem">
+                  <Grid ColumnDefinitions="120,*" Margin="0,3">
+                    <TextBlock Grid.Column="0" Text="{Binding Name}" Classes="label" TextWrapping="Wrap"
+                               VerticalAlignment="Center" />
+                    <TextBox Grid.Column="1" Padding="6,2"
+                             KeyDown="PropertyBox_OnKeyDown"
+                             Text="{Binding Value, Mode=TwoWay, UpdateSourceTrigger=LostFocus}" />
+                  </Grid>
+                </DataTemplate>
+                <DataTemplate x:DataType="vm:TogglePropertyItem">
+                  <Grid ColumnDefinitions="120,*" Margin="0,3">
+                    <TextBlock Grid.Column="0" Text="{Binding Name}" Classes="label" TextWrapping="Wrap"
+                               VerticalAlignment="Center" />
+                    <CheckBox Grid.Column="1" IsChecked="{Binding IsChecked, Mode=TwoWay}" />
+                  </Grid>
+                </DataTemplate>
+                <DataTemplate x:DataType="vm:ChoicePropertyItem">
+                  <Grid ColumnDefinitions="120,*" Margin="0,3">
+                    <TextBlock Grid.Column="0" Text="{Binding Name}" Classes="label" TextWrapping="Wrap"
+                               VerticalAlignment="Center" />
+                    <ComboBox Grid.Column="1" HorizontalAlignment="Stretch"
+                              ItemsSource="{Binding Choices}"
+                              SelectedItem="{Binding Selected, Mode=TwoWay}" />
+                  </Grid>
+                </DataTemplate>
+  </Window.DataTemplates>
   <Window.KeyBindings>
     <KeyBinding Gesture="Ctrl+O" Command="{Binding OpenCommand}" />
     <KeyBinding Gesture="Ctrl+S" Command="{Binding SaveCommand}" />
@@ -132,6 +166,44 @@
         </Grid.RowDefinitions>
         <TabControl Grid.Row="0" SelectedIndex="{Binding SelectedPane, Mode=TwoWay}"
                     Background="{DynamicResource SurfaceWell}">
+          <TabItem Header="Map" IsVisible="{Binding HasMap}">
+            <DockPanel Background="{DynamicResource SurfaceWell}">
+              <Border DockPanel.Dock="Top" Classes="toolbar">
+                <WrapPanel Orientation="Horizontal" ItemSpacing="{DynamicResource SpaceM}" LineSpacing="{DynamicResource SpaceS}">
+                  <TextBlock Text="Layer" Classes="label" />
+                  <ComboBox ItemsSource="{Binding MapLayers}" SelectedIndex="{Binding MapLayerIndex, Mode=TwoWay}" MinWidth="120" />
+                  <TextBlock Text="Value" Classes="label" IsVisible="{Binding MapToolHasValues}" />
+                  <ComboBox ItemsSource="{Binding MapToolValues}" SelectedItem="{Binding MapToolValue, Mode=TwoWay}"
+                            IsVisible="{Binding MapToolHasValues}" MinWidth="110" />
+                  <CheckBox Content="Grid" IsChecked="{Binding #MapView.ShowGrid, Mode=TwoWay}" />
+                  <Button Content="Fit" Click="MapFit_OnClick" />
+                  <TextBlock Classes="meta" Text="{Binding MapHint}" Margin="8,0,0,0" />
+                </WrapPanel>
+              </Border>
+              <Border DockPanel.Dock="Bottom" Classes="toolbar">
+                <TextBlock Text="{Binding MapStatus}" Classes="meta" />
+              </Border>
+              <ListBox DockPanel.Dock="Left" Width="150" ItemsSource="{Binding MapTools}"
+                       SelectedItem="{Binding MapTool, Mode=TwoWay}" Background="Transparent" BorderThickness="0">
+                <ListBox.ItemTemplate>
+                  <DataTemplate x:DataType="up:TileMapTool">
+                    <StackPanel Margin="2,1">
+                      <TextBlock Text="{Binding Name}" Foreground="{DynamicResource TextPrimary}" />
+                      <TextBlock Text="{Binding Group}" Classes="meta" />
+                    </StackPanel>
+                  </DataTemplate>
+                </ListBox.ItemTemplate>
+              </ListBox>
+              <ListBox DockPanel.Dock="Right" Width="290" ItemsSource="{Binding MapInspector}" Padding="10,8"
+                       Background="Transparent" BorderThickness="0" ItemContainerTheme="{StaticResource PropertyRow}" />
+              <views:TileMapView Name="MapView"
+                                 Map="{Binding MapSnapshot}"
+                                 Image="{Binding MapImage}"
+                                 Layer="{Binding MapViewLayer}"
+                                 Tool="{Binding MapTool}"
+                                 Selected="{Binding MapSelection, Mode=TwoWay}" />
+            </DockPanel>
+          </TabItem>
           <TabItem Header="Viewport" IsVisible="{Binding HasScene}">
             <DockPanel>
               <Border DockPanel.Dock="Top" Classes="toolbar">
@@ -288,40 +360,6 @@
           </Border>
           <ListBox ItemsSource="{Binding Properties}" Padding="10,8" Background="Transparent" BorderThickness="0"
                    ItemContainerTheme="{StaticResource PropertyRow}">
-              <ListBox.DataTemplates>
-                <DataTemplate x:DataType="vm:ReadOnlyPropertyItem">
-                  <Grid ColumnDefinitions="120,*" Margin="0,3">
-                    <TextBlock Grid.Column="0" Text="{Binding Name}" Classes="label" TextWrapping="Wrap"
-                               VerticalAlignment="Top" />
-                    <TextBlock Grid.Column="1" Text="{Binding Value}" Classes="value" />
-                  </Grid>
-                </DataTemplate>
-                <DataTemplate x:DataType="vm:TextPropertyItem">
-                  <Grid ColumnDefinitions="120,*" Margin="0,3">
-                    <TextBlock Grid.Column="0" Text="{Binding Name}" Classes="label" TextWrapping="Wrap"
-                               VerticalAlignment="Center" />
-                    <TextBox Grid.Column="1" Padding="6,2"
-                             KeyDown="PropertyBox_OnKeyDown"
-                             Text="{Binding Value, Mode=TwoWay, UpdateSourceTrigger=LostFocus}" />
-                  </Grid>
-                </DataTemplate>
-                <DataTemplate x:DataType="vm:TogglePropertyItem">
-                  <Grid ColumnDefinitions="120,*" Margin="0,3">
-                    <TextBlock Grid.Column="0" Text="{Binding Name}" Classes="label" TextWrapping="Wrap"
-                               VerticalAlignment="Center" />
-                    <CheckBox Grid.Column="1" IsChecked="{Binding IsChecked, Mode=TwoWay}" />
-                  </Grid>
-                </DataTemplate>
-                <DataTemplate x:DataType="vm:ChoicePropertyItem">
-                  <Grid ColumnDefinitions="120,*" Margin="0,3">
-                    <TextBlock Grid.Column="0" Text="{Binding Name}" Classes="label" TextWrapping="Wrap"
-                               VerticalAlignment="Center" />
-                    <ComboBox Grid.Column="1" HorizontalAlignment="Stretch"
-                              ItemsSource="{Binding Choices}"
-                              SelectedItem="{Binding Selected, Mode=TwoWay}" />
-                  </Grid>
-                </DataTemplate>
-              </ListBox.DataTemplates>
           </ListBox>
         </DockPanel>
       </Border>

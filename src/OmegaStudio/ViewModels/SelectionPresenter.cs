@@ -24,6 +24,8 @@ public interface ISelectionView
     bool HasImage { get; }
     bool HasAudio { get; }
     bool HasVideo { get; }
+    bool HasMap { get; }
+    void ShowTileMap(ITileMapAsset? source, TileMap? map, Bitmap? image);
     string TextureStatus { get; set; }
     string AudioStatus { get; }
     AudioInfo? AudioInfo { get; set; }
@@ -64,6 +66,7 @@ internal sealed class SelectionPresenter
         _view.Commands.Clear();
         if (node is null)
         {
+            _view.ShowTileMap(null, null, null);
             Show(null, s_nothing, null);
             return;
         }
@@ -76,6 +79,8 @@ internal sealed class SelectionPresenter
     {
         Selection? selection;
         Bitmap? bitmap = null;
+        TileMap? tileMap = null;
+        Bitmap? mapImage = null;
         try
         {
             selection = await _view.ReadArchiveAsync(
@@ -84,6 +89,16 @@ internal sealed class SelectionPresenter
             {
                 bitmap = await Task.Run(
                     () => PluginGuard.Try<Bitmap?>($"Rendering '{image.Name}'", () => ImageIO.ToBitmap(image), null));
+            }
+            if (node is ITileMapAsset source && generation == _generation)
+            {
+                tileMap = await _view.ReadArchiveAsync(
+                    () => PluginGuard.Try<TileMap?>($"Drawing the map of '{NodeAccess.Name(node)}'", () => source.TileMap, null));
+                if (tileMap?.Image is { } picture && generation == _generation)
+                {
+                    mapImage = await Task.Run(
+                        () => PluginGuard.Try<Bitmap?>($"Rendering the map of '{NodeAccess.Name(node)}'", () => ImageIO.ToBitmap(picture), null));
+                }
             }
         }
         catch (ArchiveClosedException)
@@ -99,8 +114,10 @@ internal sealed class SelectionPresenter
         if (selection is null || generation != _generation)
         {
             bitmap?.Dispose();
+            mapImage?.Dispose();
             return;
         }
+        _view.ShowTileMap(node as ITileMapAsset, tileMap, mapImage);
         Show(node, selection, bitmap);
     }
     private static Selection Read(IAssetNode node, Func<int> frame, VideoInfo? videoInfo)
@@ -113,11 +130,13 @@ internal sealed class SelectionPresenter
         string status = node is not IImageAsset ? NoTexture
             : image is null ? "Texture could not be read"
             : $"{image.Name}   {image.Width} x {image.Height}   {image.FormatLabel}";
-        byte[]? audio = node is IAudioAsset clip ? NodeAccess.EncodedAudio(clip).ToArray() : null;
-        AudioInfo? info = audio is null ? null : PluginGuard.Try(
-            $"Reading the audio of '{name}'",
-            () => AudioInfoHelper.TryGetInfo(audio, out AudioInfo found) ? found : (AudioInfo?)null,
-            null);
+        byte[]? audio = node is IAudioAsset clip and not IStreamingAudioAsset ? NodeAccess.EncodedAudio(clip).ToArray() : null;
+        AudioInfo? info = node is IStreamingAudioAsset streaming
+            ? PluginGuard.Try($"Reading the audio of '{name}'", () => StreamInfo(streaming), null)
+            : audio is null ? null : PluginGuard.Try(
+                $"Reading the audio of '{name}'",
+                () => AudioInfoHelper.TryGetInfo(audio, out AudioInfo found) ? found : (AudioInfo?)null,
+                null);
         string? soundtrack = node is IVideoAsset video
             ? PluginGuard.Try<string?>(
                 $"Reading the soundtrack of '{name}'",
@@ -135,6 +154,11 @@ internal sealed class SelectionPresenter
             PropertyInspector.Describe(node, info, videoInfo),
             NodeCommands.For(node, null, 0f, frame, sound.Clip, sound.Soundtrack));
     }
+    private static AudioInfo? StreamInfo(IStreamingAudioAsset asset)
+    {
+        using IAudioReader reader = asset.OpenAudio();
+        return new AudioInfo("Streamed", reader.SampleRate, reader.Channels, 16, reader.TotalFrames * reader.Channels);
+    }
     private void Show(IAssetNode? node, Selection selection, Bitmap? bitmap)
     {
         try
@@ -146,10 +170,13 @@ internal sealed class SelectionPresenter
             _view.TexturePreview = bitmap;
             _view.TextureStatus = selection.TextureStatus;
             _view.AudioInfo = selection.AudioInfo;
-            _view.ResetAudioState();
-            if (node is IAudioAsset audio && selection.Audio is { } data)
+            if (node is IAudioAsset audio && (selection.Audio is not null || (node is IStreamingAudioAsset && selection.AudioInfo is not null)))
             {
-                _ = _view.LoadAudioAsync(audio, data);
+                _ = _view.LoadAudioAsync(audio, selection.Audio);
+            }
+            else
+            {
+                _view.ResetAudioState();
             }
             ShowVideo(node);
         }
@@ -218,10 +245,11 @@ internal sealed class SelectionPresenter
     {
         int preferred = node switch
         {
-            ISceneAsset => 0,
-            IImageAsset => 1,
-            IVideoAsset => 3,
-            IAudioAsset => 2,
+            ITileMapAsset when _view.HasMap => 0,
+            ISceneAsset => 1,
+            IImageAsset => 2,
+            IVideoAsset => 4,
+            IAudioAsset => 3,
             _ => -1,
         };
         if (preferred >= 0)
@@ -229,7 +257,7 @@ internal sealed class SelectionPresenter
             _view.SelectedPane = preferred;
             return;
         }
-        bool[] available = [_view.HasScene, _view.HasImage, _view.HasAudio, _view.HasVideo];
+        bool[] available = [_view.HasMap, _view.HasScene, _view.HasImage, _view.HasAudio, _view.HasVideo];
         int selected = _view.SelectedPane;
         if (selected >= 0 && selected < available.Length && available[selected])
         {

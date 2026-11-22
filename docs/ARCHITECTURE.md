@@ -39,6 +39,7 @@ src/
     Nintendo/                Nintendo DS ROM images, WBFS Wii containers, 3DS cart images
     Polarbit/                Polarbit racing engine (iOS)
     DWSSK/                   DreamWorks Super Star Kartz (PS3, Xbox 360, Wii, 3DS)
+    Disgaea/                 Disgaea DS archives, images and sound
     Generic/                 OGG, WAV, PNG, JPEG, GIF, BMP recognisers
     PlayStation/             PlayStation 3 game discs
     Xbox/                    Xbox 360 game discs
@@ -104,6 +105,8 @@ Nodes describe themselves through capability interfaces rather than a type hiera
 | `IBinaryAsset` | Extract, and a raw file type under Replace when it says bytes can be swapped |
 | `IImageAsset` | The Texture pane, and PNG, JPEG, and BMP under both Export and Replace |
 | `IAudioAsset` | The Audio pane and Extract Audio |
+| `IStreamingAudioAsset` | The Audio pane playing from an `IAudioReader` as it plays |
+| `ITileMapAsset` | The Map tab: a top-down grid with tools, layers, markers and a cell inspector |
 | `IVideoAsset` | The Video pane, frame, soundtrack and `.mkv` under Export, and Export all frames |
 | `ISceneAsset` | The Viewport, and glTF under Export |
 | `IAnimatedAsset` | The Animation pane, its clip picker, and its dope sheet |

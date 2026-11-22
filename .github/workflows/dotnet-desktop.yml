@@ -44,7 +44,7 @@ jobs:
       shell: bash
       run: |
         out=src/publish/${{ matrix.rid }}
-        expected="DWSSK Generic Harugeki Nintendo PlayStation Polarbit Virtuos Xbox"
+        expected="DWSSK Disgaea Generic Harugeki Nintendo PlayStation Polarbit Virtuos Xbox"
         list="$out/trusted-plugins.txt"
         : > "$list"
         for name in $expected; do

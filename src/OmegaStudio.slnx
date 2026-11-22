@@ -10,4 +10,6 @@
   <Project Path="Formats/Xbox/Xbox.Formats.csproj" />
   <Project Path="Formats/Polarbit/Polarbit.Formats.csproj" />
   <Project Path="Formats/DWSSK/DWSSK.Formats.csproj" />
+  <Project Path="Formats/Disgaea/Disgaea.Formats.csproj" />
+  <Project Path="Formats/SSNCR/SSNCR.Formats.csproj" />
 </Solution>

@@ -1,6 +1,6 @@
 # Formats
 
-Eight plugins are built from this repository. The host knows nothing about any of them; each plugin teaches it one or more formats, and the host draws the panes and the edit commands from what the plugin says a row can do.
+Ten plugins are built from this repository. The host knows nothing about any of them; each plugin teaches it one or more formats, and the host draws the panes and the edit commands from what the plugin says a row can do.
 
 | Plugin | Opens | Reads | Written back |
 | --- | --- | --- | --- |
@@ -9,6 +9,8 @@ Eight plugins are built from this repository. The host knows nothing about any o
 | Nintendo | DS ROMs, WBFS containers, 3DS images | whole file systems, disc images | DS ROMs in full, WBFS by same-length patch |
 | Polarbit | iOS game archives | models, tracks, scenes, textures, fonts, sounds, music, strings | textures, sounds, scene geometry, strings |
 | DWSSK | console game WADs, sound banks, Wwise audio, Scaleform movies, Bink videos | textures, models, animation, levels, collision, navigation, data tables, strings, shaders, audio, video | textures, models, data tables, strings, shaders, audio, movie images, whole WADs and banks |
+| SSNCR | `Packfile.dat` archives (GameCube, PS2, PSP) | GameCube, PS2 and PSP models with skeletons, skin, textures and animation; GameCube, PS2 and PSP texture dictionaries; file details for audio, video, collision and paths | nothing (read-only) |
+| Disgaea DS | nothing of its own; rows inside a DS ROM | DSARC FL and DSARCIDX archives, DSEQ music, LZ10 maps and models, IMY images, SWAV and STRM sound | archive entries, DSEQ parts, LZ10 payloads, IMY images from PNG |
 | PlayStation 3 | game discs | ISO 9660 file system | nothing (read-only) |
 | Xbox 360 | game discs | game partition directory tree | nothing (read-only) |
 | Standard Formats | no archives of its own | OGG, WAV, PNG, JPEG, GIF, BMP payloads | PNG replacement where the container allows |
@@ -591,6 +593,290 @@ build is the reference: where the code reproduces floating-point behaviour, it i
   the first long-block mode in the sound's own setup), so sharp attacks can pre-echo. If
   that proves audible, the fix is a transient detector that switches to the short-block
   mode.
+
+## SSNCR
+
+*Shrek Smash n' Crash Racing* (Torus Games, 2006) on GameCube, PlayStation 2 and PSP. The
+engine is RenderWare 3.6 with Torus wrappers; every chunk header carries the library stamp
+`0x1803FFFF`.
+
+Opens `Packfile.dat` (`PAK\0`), on its own or in place inside a disc image. Entries whose
+payload starts with `!CMP` are zlib streams with a little-endian unpacked size. The archive is
+read-only.
+
+What each row does:
+
+- GameCube `.tex` texture dictionaries list their textures, and each decodes from its GX
+  format (CMPR, CI4 and CI8 with an RGB565 or RGB5A3 palette, and the other GX formats).
+- PS2 `.tex` texture dictionaries decode their PSMT4 and PSMT8 textures through an emulated
+  GS memory, so the swizzled uploads come out as the game draws them.
+- PSP `.tex` files decode every texture from its GE state (CLUT formats, 16- and 32-bit
+  formats, swizzled or linear).
+- GameCube and PS2 `.trm` and PSP `.psp` models render with their textures and play every
+  animation they carry (skinned characters and rigid props alike), and the animations export
+  with the model to glTF. A model's atomics are placed by the
+  frames its instance table names, so a level shows every placed prop. Skinned characters
+  carry their frame hierarchy as a skeleton with per-vertex bones and weights. A texture is
+  looked up by name in the `.tex` of the model's own level folder, then
+  `gcn/textures/structure`, then any other dictionary in the pack. Transparency follows
+  RenderWare's rule of blending whenever the texture raster or the prelight colors carry
+  alpha: a texture whose alpha is only 0 or 255 is drawn as a cutout, one with partial alpha
+  is blended, and so is any mesh whose vertex alpha falls below 254. No shipped vertex color
+  has alpha 255; 254 is the exporter's full opacity (on PS2 it is twice `0x7F`). Models with no atomics
+  (camera and object animation files) show only their details.
+- `.fsb` sound banks, the `.thp` movie, `.col`, `.wcol`,
+  `.path` and `.dat` show their details only.
+
+### Specification notes
+
+The model layout was read from the GameCube USA `main.dol`: the reader at `0x80144304`
+(entered from `0x80145834`, which picks it when the marker is `0xBADA5535` and otherwise the
+byte-swapping reader at `0x80144abc`), the writer at `0x8014409c`, and the animation
+relocation at `0x80143e14`. Every count below was checked against all 367 GameCube `.trm`
+files and all 5413 GameCube textures with no exception.
+
+#### Model header
+
+A `.trm` is one RW struct chunk followed by `numAtomics` RpAtomic chunks (`0x14`) and nothing
+else. The struct's payload begins with a 4-byte endian marker (`BA DA 55 35` on GameCube,
+`35 55 DA BA` on PS2) that the chunk size does not count, so the atomics start at
+`0x10 + size`. Then a 0x88-byte header in the marker's byte order:
+
+| Offset | Field |
+| --- | --- |
+| `0x00`, `0x02` | reference count and global slot, overwritten on load |
+| `0x04` | atomic count |
+| `0x06` | instance count |
+| `0x08` | first instance that may take the distance-fade render types (equals the instance count in 319 of 326 GameCube files) |
+| `0x0A` | frame count |
+| `0x0C` | frame name hash count |
+| `0x0E` | named instance count |
+| `0x10`, `0x12`, `0x14`, `0x16` | animations (32 bytes each), tracks (16), keys (8), keys (8) |
+| `0x18` | count of 0x54-byte records |
+| `0x1C`-`0x30` | pointer slots (atomics, instances, name hashes, named instances, parents, matrices); the loader at `0x80144304` overwrites them, so file values are stale exporter pointers |
+| `0x34` | animation blob size (the loader replaces it with the blob pointer) |
+| `0x38` | pointer slot for the 0x54-byte records |
+| `0x3C` | second blob size (8-aligned allocation; replaced by its pointer) |
+| `0x40`-`0x47` | zero in every file |
+| `0x48` | name, 64 bytes, such as `models\|CreatureFairy.trm` |
+
+The arrays follow in this order: instances `{u16 frame, u16 atomic, u32 ARGB colour}`, name
+hashes `{u32 hash, u32 frame}`, named instances `{u32 name hash, u32 instance index}`, parents (`s16`, always lower than the
+frame's own index), local matrices, the 0x54-byte records, the second blob, the animation
+blob. The header size equals the sum of these exactly. Local matrices are RW row-vector 4x4
+floats (translation in the last row); a frame's world matrix is its local times its
+parent's world. The atomic's own RW struct holds stale pointers and is not used.
+
+The instancing routine at `0x801459f0` builds one 0x34-byte runtime record per instance. It
+takes the atomic from the instance's u16 at +2 and the frame's world matrix from the u16 at +0.
+An instance colour of 0 becomes the default `0xFEFFFFFF`; any other colour is forced opaque
+(`| 0xFF000000`), which shows the word is ARGB. The renderer's use of that colour is not traced
+yet, so the viewer does not apply it; the properties panel lists how many instances set one.
+Named instances let the game find parts by name (pinocchio names instances 4 and 7). Exported
+meshes carry the hash in their name. No shipped model has 0x54-byte records; one GameCube file
+has a second blob (3,242 bytes) whose contents are not decoded.
+
+#### Animation
+
+The animation blob (header +0x34 bytes, last in the struct) is, in order: animations (32
+bytes), tracks (16), keys (8), events (8), then the key data; the counts are header +0x10,
++0x12, +0x14 and +0x16, and the relocation at `0x80143e14` points each animation at the key
+data. An animation is `{u32 name hash, u32 track count, f32 duration in seconds, u32 0, u16,
+u16 event count, u32 first track, u32 first event, key data}`. A track is `{u32 bone name
+hash, u32 key count, u32 type, u32 first key}`; the hash is the one in the model's frame name
+table. A key is `{f32 time in seconds, u32 byte offset into the key data}`, and an event is
+`{f32 time, u32 id}`. PSP holds the same records with pointers in place of the indices. Key
+data is little-endian on every platform, GameCube included. The track type is a mask, and a
+key holds its parts in this order: rotation (4, a quaternion x, y, z, w as s16 over 16384),
+translation (2, three floats), uniform scale (1, a float). All 373,509 GameCube and PS2
+rotation keys are unit length under that scale, all 385,728 key times rise, and the first
+translation key equals the frame's bind translation in 81% of tracks. A key builds the local
+matrix scale x rotation x translation in RenderWare's row-vector order; between keys the
+rotation is slerped and the rest interpolated linearly. Frames without a track keep their bind
+local. All 804 GameCube, 811 PS2 and 838 PSP clips pose without a non-finite value.
+
+glTF export carries every clip losslessly. Rigid atomics in a rig become one-bone skins of
+their frame, so clips move them. The skin's own inverse bind matrices are exported, including
+the 27 that disagree with the frame hierarchy. Key parts go out as the decoded translation,
+rotation and scale rather than decomposed matrices. Keys with a negative uniform scale
+(weaponnose) and mirrored binds (windmills, cogs) would otherwise decompose inconsistently
+from key to key. Clip extras hold the anim hash, exact duration, flags and events. Reimporting
+every model on all six discs and posing each clip under glTF rules matches the viewer's pose
+to within 6e-6 of model size. Rotation keys are normalized at decode.
+
+Each platform's exporter reduced keys on its own. Props, creatures and the `structure*` rigs
+carry the same keys everywhere and pose within 0.1% of model size across GameCube and PS2.
+The `character*` and `mount*` clips do not: donkey has 5,006 GameCube keys against 6,688 on
+PS2. GameCube keys still lie on the PS2 curve (PS2 sampled at GameCube key times is within
+0.6 degrees at the 95th percentile), but the dropped keys include extremes, so between keys
+the two platforms differ by up to 65 degrees. No interpolation (slerp, nlerp, Catmull-Rom)
+recovers them, and the GameCube tables are complete (every key referenced, key data covered
+exactly), so the coarser GameCube motion is the shipped data. Skinned vertices that never
+move are all weighted to bones no clip animates (or are rigid atomics on unanimated frames),
+the same set on all three platforms. Clip,
+frame and event names are hashes; the hash function is not known yet.
+
+#### GameCube native geometry
+
+Geometry flags always include `rpGEOMETRYNATIVE`; the binmesh (`0x50E`) holds no indices,
+only per mesh `{u32 index count, u32 material}`. The native data struct (`0x510`) begins with
+three little-endian words: platform `6`, header size, data size. The header is big-endian: two
+words, the attribute count, then per attribute `{u32 offset, u8 GX attribute, u8 stride, u8
+index type, u8 0}`, then per binmesh mesh `{u32 display list offset, u32 length}`. Offsets
+count from the end of the header. Attributes seen are position (9, three floats), normal
+(10, three floats), color 0 (11, RGBA8), texture 0 and 1 (13 and 14, two floats); index type
+2 is 8-bit and 3 is 16-bit. A display list is GX primitives, opcode `0x98` (triangle strip)
+in every shipped file, a big-endian vertex count, and one index per attribute per vertex in
+attribute order; it ends exactly at its stated length. GX strips are clockwise-front, so the
+host's triangles are emitted reversed.
+
+#### Skin
+
+The skin plugin (`0x116`) struct is: u32 platform `6`, u8 bone count (always the frame
+count), u8 used-bone count, u8 weights per vertex (2 or 3), a pad byte, the used bones,
+`numVerts x weights` bone indices, the same count of weights as bytes where `0x80` is 1.0,
+one inverse bind matrix per bone (RW 4x4, big-endian; the fourth column holds RW flags and
+padding, not matrix data), and 12 trailing bytes. Bone indices are frame indices. Skin
+vertices are the position array, which always has at least `numVerts` entries. Each used
+bone's inverse bind matrix times its world matrix is the identity.
+
+#### PS2 native geometry
+
+The PS2 model header is the GameCube one in little-endian order. The native data chunk
+(`0x510`) holds a struct header whose size field is wrong (it repeats the atomic's size), so
+its payload is read by hand: u32 platform `4`, then per binmesh mesh `{u32 size, u32
+no-pointers flag, size bytes}`, ending exactly at the chunk end. A mesh is a DMA chain of `cnt`,
+`ref` and `ret` tags; `ref` addresses are quadwords from the mesh start, and the chain ends at
+`ret`, after which the buffer holds `0xC5` allocator fill. Each tag's upper 8 bytes are VIF
+codes that continue into its data. Every batch ends in `MSCAL`, with `ITOP` giving the vertex
+count. Unpacks seen: position `V4-32` (the w word's bit `0x8000` is the GS ADC flag: no
+triangle closes on that vertex) or `V3-32` at slot 0, UV `V2-32`, prelight `V4-8` unsigned
+(the same bytes as the GameCube color array), normal `V3-8` signed over 127, and skin weights
+`V4-32` at slot 3, where each word is a float weight with a matrix slot in bits 2 to 9
+(`(w & 0x3FF) >> 2`, weight `w & ~0x3FF`). Slot 0 is not a bone: it only appears with weight
+0, and slot `n` is bone `n - 1`. With that, 99.7% of PS2 skin influences match the GameCube
+vertex at the same position. Geometry flags decide which of normals, colors and
+UVs the model has. All meshes are triangle strips. Batches overlap by two vertices and every
+batch length minus two is even, so strip parity restarts cleanly per batch. Strips without ADC
+restart through repeated vertices, which make zero-area triangles that are dropped.
+
+The PS2 skin struct is u32 platform `4`, bone count, used-bone count, weights per vertex, a
+pad byte, the used bones, the inverse bind matrices (RW 4x4, little-endian) and 28 trailing
+bytes. The same 27 used bones in `animgiantfrog`, `animswampbootm` and `weaponmirror` fail
+`inverse bind x world = identity` on both PS2 and GameCube, so that mismatch is in the
+shipped data.
+
+#### PSP models and textures
+
+PSP files have no RenderWare. The reader in `BOOT.BIN` (`0x1541d8`, dispatching through the
+table at `0x224620`) walks chunks `{u32 size, u16 type, u16 version, payload}`. Type 1 is the
+header (`6, 1, 0`). A model loads types 23, 19, 20 and 3 into blocks 0 to 3 (model struct, GE
+display lists, vertices, string table `{u32 count, names}`); a texture file loads 18, 19, 21
+and 22 (texture table, display lists, CLUTs, pixels). Type 2 lists pointers to relocate and
+type 16 GE address words to relocate, each entry `block << 24 | offset`; a pointer's value is
+encoded the same way. Type 17 lists texture binds: each site in the display lists holds a
+string-table offset and is patched at load to a `BASE` + `CALL` of the named texture's list.
+
+The model struct carries the same arrays as the GameCube header in its own order: u16 atomic
+count at +4, frames +6, instances +8, name hashes +0xC; pointers to atomics +0x18, instances
++0x1C, name hashes +0x20, the second table +0x24, parents +0x28, local matrices +0x2C,
+animation +0x38. Instances, hashes, parents and matrices are byte for byte the GameCube
+values in little-endian order. An atomic record is 0x34 bytes: flags, u16 skin list count at
++4 (0 when rigid), u16 vertex count, u16 stride, bounding sphere at +0x18, and at +0x28 either
+its display list or a skin record `{u32 used count, display lists, palette words, used bones,
+inverse binds}`; the inverse binds are one RW 4x4 per used bone, the same values as the
+GameCube skin (including the 27 that disagree with the hierarchy). A display list sets UV scale and offset (`0x48`-`0x4B`, applied to 16-bit
+UVs over 32768), culling (`0x1D`) and front face (`0x9B`, 47 meshes flip it), the texture
+placeholder, `VTYPE`, `BASE`/`VADDR` into the vertex block, then triangle-strip `PRIM`s; the
+vertex pointer carries over from one draw and one skin list to the next. Every vertex type in
+the game is 16-bit UV or none, 5650, 4444 or 8888 color or none, 8-bit normal or none, float
+position, and 1 to 4 16-bit weights over 32768. Each skin list's palette word gives one byte
+per weight, a 1-based index into the used-bone list. Skinned vertices are in bind space. Over
+all 69 skinned models, 97.8% of the single-bone vertices that sit on a GameCube vertex name
+the same bone (the rest lie on seams the PSP mesh tessellates differently).
+
+PSP skinned strips repeat shared vertices with positions jittered by about 5e-4, so they draw
+sliver triangles where other platforms have exact degenerates; the GE draws them too, and they
+are kept. Leaving those out, skinned triangles wind like rigid ones (99%). Some vertex types
+carry no normal (7,839 vertices that have one on GameCube); those export with zero normals and
+the viewport lights them with the face normal.
+
+A texture table entry is 0x34 bytes: display list pointer, a word, buffer width, width and
+height (u16 at +8, +0xA, +0xC), and the name at +0x12. The texture's list sets TPSM, TMODE
+(bit 0 swizzled), TSIZE (the power of two that holds the real size), TBW and TBP (the address
+high byte is the block), and the CLUT commands. Swizzled data is 16-byte by 8-row blocks. CLUT
+indices follow CMODE's shift, mask and start. One CLUT is loaded with fewer entries than its
+indices use; the decoder reads the entries that follow it in the block. All 5254 USA PSP
+textures decode, and the T8 ones agree with their PS2 copies.
+
+#### Texture dictionaries
+
+A `.tex` is an RW texture dictionary (`0x16`, device 3) of native textures (`0x15`). The
+native struct is big-endian: platform `6`, filter and addressing, four words, the name at
+`0x18` and mask at `0x38` (32 bytes each), a word, width and height at `0x5C`, depth, mip
+level count, GX format and GX palette format at `0x60`, a word, then the palette at `0x68`
+(CI4: 16 entries, CI8: 256, others none), a word with the pixel byte count of every mip
+level, and the pixels. An earlier reading put the palette after the count word, which moved
+every palette by two entries.
+
+CMPR is DXT1 in 8x8 tiles of four 4x4 blocks with big-endian RGB565 endpoints, and each row
+byte holds its four 2-bit indices with the leftmost pixel in the top two bits (reading them
+low bits first mirrors every block row). The two interpolated colors are 5/8 and 3/8 blends,
+as the GX hardware does, and 5-, 6- and 3-bit channels widen by bit replication, so RGB5A3's
+alpha 7 is 255, not 252. Checked against the PS2 copies of the same textures: CI4 2308 of
+2308 and CI8 286 of 286 agree, CMPR 1837 of 1962, and the rest differ in content (darker PS2
+skies, a re-drawn icon sheet), not in layout.
+
+A PS2 dictionary (device 6) holds RW PS2 native textures (platform `PS2\0`): a struct with the
+platform and filter, the name and mask strings, then a struct holding a 0x40-byte raster
+header (width, height, depth, raster format, TEX0, TEX1, MIPTBP1/2, sizes) and a struct of
+GIF packets. Each upload is an A+D packet setting TRXPOS, TRXREG and TRXDIR, then an IMAGE
+packet. The packets never set BITBLTBUF, so the destination is rebuilt the way the runtime
+sets it: the first upload is level 0 at TEX0's TBP0, the last is the CLUT, the upload format follows from bytes per transferred pixel (PSMT8 as
+PSMCT32 and PSMT4 as PSMCT16 at half width and height, a 16x16 PSMT4 as PSMT8 at 16x8),
+and the buffer width is TBW scaled by the two formats' page widths. Pixels are written to a
+4 MB GS memory model in the upload format and read back in TEX0's format; alpha `0x80` is
+opaque. The CLUT is read from its upload rectangle (PSMCT32, row-major, 8-bit CLUTs in CSM1
+order), not from GS memory: half the textures store TBP and CBP as 0, with the CLUT placed
+either by TRXPOS inside the texture's own buffer or at (0,0) on top of it, so only the
+rectangle itself is unambiguous. All 5344 USA and 5425 EUR PS2 textures decode.
+
+## Disgaea DS
+
+Nippon Ichi's *Disgaea DS*, checked against the USA, Europe and Japan ROMs. The plugin opens nothing by itself. Open the ROM with the Nintendo plugin and its files gain children and panes as their bytes are recognised, at any depth.
+
+- `DSARC FL` (`bgm.dat`, `se.dat`, `song.dat`, `voice.dat`, `msgvo.dat`) and `DSARCIDX` (every other `.dat`, and the `.dso` files inside `dspack.dat`) list their entries. Each entry can be extracted or replaced.
+- `.msnd` files (DSEQ) split into their `.sseq`, `.sbnk` and `.swar`. The `.sseq` plays: a copy of the DS sound driver runs it through the file's own `.sbnk` and `.swar` as it plays, for two loops and a 10-second fade, and picks up any of the three parts that is replaced. Extract Audio renders the whole song to a WAV. A `.swar` lists its waves as `.swav` files that play, extract, and replace from a SWAV or a WAV.
+- `.mpds` and `.dsm` files are LZ10. Each shows one decompressed child (`.mpd` or `.bin`), and replacing it compresses the new bytes.
+- `.mpd` maps (inside each `.mpds`) open in the Map tab, a top-down editor: paint with Raise, Lower, Set height, Level and Fill height (walls are rebuilt around every changed tile, textured like the map's most common wall on that side, 4 half-texels per height unit and down to the neighbour's top), Add tile, Erase tile, Stamp look, Mobility, Geo panel (paint or fill), Place, Move and Remove unit, and Place or Remove event tile; the Layer box tints cells by height, mobility or Geo panel, and Select shows every field of the cell's tile, units and event tile beside the map. Each stroke is one undoable edit. The same maps also open in the 3D view with their textures from `maptex.dat`, unit markers coloured by alliance, Geo panels and event tiles. Under each map, Tiles, Actors and Chunks list every record. Selecting one highlights it on the map, and its properties are editable: corner heights, side bottoms, mobility, Geo panel and colour, every face's texture, UV and transform, every actor field, objects, event tiles, chunk offsets, and the raw bytes of any record. Tiles and actors can be added, duplicated and removed; the map's texture table and model list are editable on the map. Export map as JSON writes every record with its fields and raw bytes, and Replace map from JSON reads it back (fields win over raw bytes).
+- `.imy` images show in the image pane and can be replaced from a PNG of the same size.
+- `SWAV` and `STRM` sounds (`.se`, `.swav`, `.strm`) play. PCM8, PCM16 and IMA-ADPCM decode to 16-bit WAV, and **Replace sound from WAV** encodes a WAV back in the sound's own codec. Re-importing an extracted WAV gives back the original file byte for byte.
+
+The `MAP` files (`.mpb`), `.amd`/`.amt` animation and the data tables stay raw bytes.
+
+### Specification notes
+
+- DSARCIDX: the entry table starts after the `u16` ID list, rounded up to 4 with `0xFF`. Both archive kinds place entries 512 bytes apart counted from the first entry, and the file ends on the same step. The gaps hold leftover junk, which a rebuild writes as zeros.
+- DSARC FL entries can share data: the same name, offset and size appear more than once (`voice.dat`, `song.dat`, `msgvo.dat`). They stay one block, so replacing one replaces all of them. A rebuild keeps the header bytes before the first entry and changes only the size and offset words.
+- DSEQ: the word at `0x10` is the SSEQ offset plus 16. The SBNK starts at the SSEQ end plus 16, rounded up to 32; the SWAR starts at the SBNK end rounded up to 32. The word at `0x2C` is kept as found. These rules rebuild every shipped `.msnd` byte for byte.
+- IMY: a 32-byte header (`u32` unpacked size at 4, row bytes at 8, flags at 10, bits per pixel at 11, height at 12, colour count at 14), the BGR555 palette, then the pixels. Flag bit 0 means stored; otherwise a `u16` info-byte count, the info bytes and the data follow, and the scheme is the PS2 one documented on Netherworld Research, working in 16-bit units with look-backs of 2, the row, the row plus 2 and the row minus 2. 4bpp pixels are low nibble first. Palette bit 15 is opacity: transparent sprites clear it on index 0.
+- IMY replacement keeps each pixel's old index when its colour has not changed, because palettes repeat colours. New colours must fit the palette size; otherwise the palette is rebuilt, and the image is refused when it uses more colours than the IMY holds.
+- Sound import keeps the original header and codec. A block whose samples match the original keeps its original bytes, so an unedited WAV rebuilds the file exactly; a changed block is encoded (IMA-ADPCM picks the closest of the 16 nibbles at each step and starts from the old block's step index). Any PCM WAV (8, 16, 24 or 32-bit), float WAV (32 or 64-bit) or extensible WAV is accepted. Channels are mixed to the sound's own count (mono for SWAV and SWAR waves), averaging the source channels that fold onto each one. A new sample rate scales the timer word by the rate ratio; a rate the 16-bit rate or timer cannot hold is resampled linearly to the sound's original rate. The extracted WAV of a STRM stops at the sample count in its header; if the imported WAV is that length, the samples padding out the last block are taken from the original.
+- Sequence playback is HLE in two layers. The driver layer follows the Nitro Composer driver as decompiled from Pokémon Diamond and ported by NCSF (see [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md)): 16 tracks and 16 voices, voice allocation order 4, 5, 6, 7, 2, 0, 3, 1, 8 to 15, the tempo counter stepping one tick per 240, the attack, decay, sustain and release envelope, LFO and sweep, and the SDK volume, pitch and sustain tables. It runs every 64 × 2728 ARM7 cycles and writes its register changes at the start of the next run, as the driver thread does. The hardware layer models the SPU: each channel timer counts from TMR at half the ARM7 clock and fetches a sample on overflow, a channel starts three samples late (ADPCM spends eight more on its header), ADPCM saves its state at the loop start and restores it on each loop, samples shorter than 16 bytes stay silent, and PSG and noise use the hardware duty table and LFSR. The mixer runs every 1024 cycles (32728 Hz): sample shifted by 4, 3, 2 or 0 for the volume divider, times volume, times 128 − pan and pan (127 counts as 128) shifted right 10, master volume 127, then clamped and cut to 10 bits as the DS output is. There is no interpolation; the DS has none.
+- Streaming: when a sequence is opened, a fast pass runs the driver with the SPU channels advanced by arithmetic instead of sample by sample (a channel timer's overflows over n samples, and where its position lands after a loop or at the end of a one-shot), which finds the length to the fade in milliseconds. Seeking runs the same fast pass to the target, then rebuilds each channel by replaying only the steps that matter (to its first loop, then the remainder of the loop; modulo 8 for PSG and 32767 for noise). A seek lands on the same samples as playing from the start.
+- The DSEQ word at `0x2C` is the length to the first loop point in milliseconds, entered by hand. The renderer reaches the first loop within 0.1% of it for most songs (song005: 362010 ms against 362000); bgm_33 stores two loops and the jingles, which do not loop, differ.
+- Every PCM instrument in the shipped banks uses wave archive 0, which is the DSEQ's own SWAR; an instrument that names another archive is silent.
+- SWAR: a 0x3C-byte header, a `u32` wave count at `0x38`, absolute `u32` offsets, then each wave as a SWAV without its 0x18-byte header. In every shipped SWAR the waves sit back to back in table order from the end of the table, each exactly 0x0C plus (loop + non-loop words) × 4 bytes long; a rebuild lays them out the same way and rewrites the file size and the DATA size (file size minus 0x10). A wave shows as a SWAV whose header copies the SWAR's byte-order and version words. All 138 SWARs rebuild byte for byte, also after every wave goes through WAV and back.
+- Loops: an extracted WAV carries a `smpl` chunk with one loop (start, and the last sample as end) when the sound loops. On import, a WAV with a `smpl` loop sets the loop flag and start, and samples after the loop end are dropped, since the DS loops from the end of the data; a WAV without one clears the loop flag. A SWAV loop offset counts 4-byte words from the start of the data: the ADPCM header word plus the loop start divided by the samples per word (8 for IMA-ADPCM, 4 for PCM8, 2 for PCM16). A start between words rounds down. Every shipped non-looping ADPCM wave has offset 1, which is the same formula at sample 0. A STRM stores its loop start in samples at `0x20`.
+- SWAV data is padded to whole 4-byte words. In a STRM, the last-block length at `0x38` does not include padding; the data as a whole is padded to 4 bytes at the end, and the DATA size and file size count that padding. Every SWAV and STRM in the three ROMs rebuilds byte for byte from its own WAV.
+- LZ10 back-references start at distance 2, and among equally long matches the farthest one wins. That is the game's own compressor: it rebuilds all 432 shipped `.mpds` and `.dsm` files byte for byte.
+- MPD layout on DS: a 16-byte header (`u16` chunk count, `u16` actor count), the chunks at 1408 bytes each (64-byte header with offset X and Z floats at 0 and 8, the tile count at `0x2C` and an id at `0x30`; 32 objects of 36 bytes; 16 event tiles of 4 bytes; a 128-byte base tile), then every chunk's tiles in chunk order at 128 bytes, the actors at 64 bytes, and a footer of two `u32` lists, each led by its count. The id is not a sequence: object-only chunks carry ids such as 2 or 3. The 56-byte maps are empty Item World placeholders.
+- Tile (128 bytes): twelve 8-byte faces (u, v, v right, width, height, height right, texture, transform), corner heights at 96 (corners X0Z0, X1Z0, X0Z1, X1Z1; −value ÷ 12 is the height in tiles), side bottoms at 100, visible at 112, X and Z at 113, mobility at 119, Geo colour at 120, Geo panel (100) at 121. Faces 0 to 3 are the −Z, +X, +Z and −X sides (measured against which neighbour is lower over every map), 4 the top, 5 to 8 the side decals. A face's texture *n* is entry *n* − 1 of the footer's first list, an index into `maptex.dat`; 0, or an entry of `0xFFFF`, is a face the DS does not texture. These are the PS2 decal layer and edge faces the game keeps but never loads. In the saved battle the VRAM held exactly the textures that list names. UVs are in half texels. Tops sample 16 × 16 cells of the `prd` atlases; sides tile the `t` textures. The corner order, the side quads and the rotation and mirror bits follow pg_disatools' renderer, with its local X mirrored to match the tile X field.
+- Every map in the three ROMs reads and writes byte for byte, and through JSON and back.
+- Verified in the game code (USA ARM9, loaded at `0x02000000`, uncompressed, no overlays). The map loader is `0x02042518`: chunk and actor counts are signed 16-bit, the chunk count is clamped to 6, chunks are copied at `0x580` bytes, each chunk's tile count is read signed from `0x2C`, and header bytes 4 to 15 are copied into the map state and never read again (the word at 4 is 0 or 1 in the files, a PS2 leftover). `0x02042194` opens `maptex.dat` for the footer's first list and `mapobjs.dat` for its second, through `0x020426B4`, which skips entries of `0xFFFF`: the first list is the face textures, the second the object models.
+- Tiles (`0x02042964`, the per-chunk pass, and the Geo routines `0x0205FDF8` and `0x02060E58`): byte 112 marks a tile the chunk counts (its centre is the average of those tiles); X and Z are signed bytes; a chunk's tile offset is `floor(offset / 12)`, and the game writes the chunk centre into the base tile at `0x570` and `0x574` at run time. Byte 121 is 100 for a Geo panel and 0 for none; byte 120 indexes the Geo colour table (32-byte records, built at run time at `0x020C6BBC`), and colour 0 is a real colour (8418 panels use it). Byte 123 is derived: the game sets it from the panel and its colour record, and in every map it is 1 only on panel tiles. Bytes 115 to 116 and 125 to 127 are run-time fields of the tile routines.
+- Actors are read only by the spawner `0x0206028C`: class and level signed 16-bit (the level can be scaled by 5 and 60 more under a game flag), side signed (passed to unit creation `0x0205B6B4`), X and Z signed with a world position of tile × 12 + 6 and no chunk offset, facing signed × 90°, byte 8 an appearance condition (−1 always; otherwise the unit spawns only when that entry of a battle flag table equals 2), AI at 9 (forced to mode 3 when byte 38 is not zero), byte 10 multiplies the unit's stat at `+0x5B0` by value + 1, items 1 to 4 signed 16-bit at 12, the spawn rule at 20 (0 always; otherwise (value − 1) mod 3 chooses less-than, at-least or equal and (value − 1) / 3 + 1 the threshold), the Geo effect at 22 (value / 10 and value mod 10 − 1), one signed 16-bit weapon mastery at 24 for all seven weapon types, four spells at 26 and their levels at 34. Byte 11 and bytes 39 to 63 are never read (39 to 63 are zero in all 4545 actors).
+- Still from the references rather than the code: the mobility names (the values are 0, 1 and 2 in the files), the names of the Geo colours (the table is built at run time), which game stat `+0x5B0` is, the face transform bits, and the object and chunk-header fields other than the offsets, the tile count and the id.
 
 ## PlayStation 3
 

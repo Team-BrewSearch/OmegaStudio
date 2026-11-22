@@ -4,33 +4,33 @@
     "net10.0": {
       "LTRData.DiscUtils.Iso9660": {
         "type": "Direct",
-        "requested": "[1.0.89, )",
-        "resolved": "1.0.89",
-        "contentHash": "4neH353pC19A/KQdqkzPrFrBYMdVq2MqFMCOeJCXF1o91tfGHbkdZA/80cbqQs5Pnm8wlvo/IS+uYcUq4JGm5A==",
+        "requested": "[1.0.91, )",
+        "resolved": "1.0.91",
+        "contentHash": "9YaXeB8J+A/xrYrib76c/Lxs1NBM6rlzQ3KAnipYRszC3mLZXH0COJQ/AhZu8sNyQy2s31XZaaRRZc8ifAPHHw==",
         "dependencies": {
-          "LTRData.DiscUtils.Core": "1.0.89"
+          "LTRData.DiscUtils.Core": "1.0.91"
         }
       },
       "LTRData.DiscUtils.Core": {
         "type": "Transitive",
-        "resolved": "1.0.89",
-        "contentHash": "FqTBYiKuP4TYODFFGXLELiqx3Ibj00XN/SCsZuwTeP85XPPBrkQGZ+QIv4ROUyVz3dfJL7wY68m8GytSuT9Y7g==",
+        "resolved": "1.0.91",
+        "contentHash": "CLIlc+K9kP7BJjLIrdd29tWBh53uIqKsHjT/7Oigep1HcoODeJBTti7Cdes+QmIGPHcGCkWnqNeWMkHeGz7OSw==",
         "dependencies": {
-          "LTRData.DiscUtils.Streams": "1.0.89"
+          "LTRData.DiscUtils.Streams": "1.0.91"
         }
       },
       "LTRData.DiscUtils.Streams": {
         "type": "Transitive",
-        "resolved": "1.0.89",
-        "contentHash": "AQXgoGm/HOMo8qfIYuvY1cdNYOJ8TYIjz3/YU3VySlv9PvLrT9F6gc5bNl9AQJ/XDiOmyLaSIhvOwke5czbV4g==",
+        "resolved": "1.0.91",
+        "contentHash": "bjT45BWrzr9pYEjH9yp9N1PcjdYmY9QggVsjyviXXKCN9fcBxHqnAd+3AoEEUsbR8ZL8Gwa/HAPd05pwLEBN3Q==",
         "dependencies": {
-          "LTRData.Extensions": "1.0.23"
+          "LTRData.Extensions": "1.0.24"
         }
       },
       "LTRData.Extensions": {
         "type": "Transitive",
-        "resolved": "1.0.23",
-        "contentHash": "K+Lb4/siT7+K50r4kndp5QaJLgupf5zE4qe8QxqwF0uSAiZtodsiFc3+i9IQpkGGMDwi83isG9qYA3JOJrO7UA=="
+        "resolved": "1.0.24",
+        "contentHash": "Tmkv948Mxrw7NO4gxNKvB9VDUMzcH1pv4TC07BWSFEsYTpc7H01bIstpclnDXQoKahrgGqrxo8VqE6BmK/9fug=="
       },
       "omega.disc": {
         "type": "Project",

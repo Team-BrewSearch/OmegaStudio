@@ -28,6 +28,10 @@ The search box above the tree filters the rows and highlights the part of each n
 
 Only the rows on screen are built, so a folder with tens of thousands of entries scrolls as fast as a small one. The arrow keys move and, left and right, collapse and expand; Enter, Space, or a double-click toggles a folder.
 
+### Map
+
+Shown first for a row that is a grid map, such as a Disgaea DS `.mpd`. The map is drawn from above with a tool list on the left and an inspector on the right. Pick a tool, pick a value in the toolbar if it has one, and click or drag across cells; each stroke is one edit, undone with Ctrl+Z. The Layer box tints the cells by height, mobility or Geo panel and labels them when zoomed in. The Select tool, or the first cell of any stroke, fills the inspector with every field of that cell, editable as in Properties. Right- or middle-drag to pan, the wheel to zoom, Fit to see the whole map. The status line names the cell under the pointer and what stands on it. The Viewport tab shows the same map in 3D and follows every edit.
+
 ### Viewport
 
 The Viewport appears for anything with geometry. Pick a shading mode from the toolbar: Textured, Shaded, Wireframe, Normals, or UV. **Reset Camera** puts the view back where it started.

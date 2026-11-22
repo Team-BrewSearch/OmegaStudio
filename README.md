@@ -46,7 +46,7 @@ Nothing is written until you ask. `File ▸ Save` rewrites the archive in place,
 
 ## Formats it ships with
 
-Eight plugins are built from this repository:
+Nine plugins are built from this repository:
 
 | Plugin | Games |
 | --- | --- |
@@ -55,6 +55,7 @@ Eight plugins are built from this repository:
 | Nintendo | DS ROMs, WBFS Wii containers, 3DS cart images |
 | Polarbit | Crash Bandicoot Nitro Kart 2 and 3D and three other iOS games |
 | DWSSK | DreamWorks Super Star Kartz (PS3, Xbox 360, Wii, 3DS) |
+| Disgaea DS | Disgaea DS archives, images, music and sound inside the ROM |
 | PlayStation 3 | Game discs |
 | Xbox 360 | Game discs |
 | Standard Formats | OGG, WAV, PNG, JPEG, GIF, BMP payloads, anywhere |

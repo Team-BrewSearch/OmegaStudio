@@ -1,6 +1,6 @@
 using Omega.Plugins;
 namespace OmegaStudio.Rendering;
-internal readonly record struct DrawBatch(int First, int Count, int Texture, bool AlphaClip);
+internal readonly record struct DrawBatch(int First, int Count, int Texture, bool AlphaClip, bool AlphaBlend);
 internal sealed class MeshBuffer
 {
     public const int PoseStride = 12;
@@ -37,7 +37,7 @@ internal sealed class MeshBuffer
                 int texture = submesh.TextureIndex >= 0 && submesh.TextureIndex < textures.Count
                     ? textures[submesh.TextureIndex]
                     : 0;
-                batches.Add(new DrawBatch(index, submesh.Count, texture, submesh.AlphaClip));
+                batches.Add(new DrawBatch(index, submesh.Count, texture, submesh.AlphaClip, submesh.AlphaBlend));
                 index += submesh.Count;
             }
         }

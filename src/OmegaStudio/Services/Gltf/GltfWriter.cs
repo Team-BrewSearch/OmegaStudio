@@ -49,7 +49,7 @@ internal static class GltfWriter
         private readonly JsonArray _nodes = [];
         private readonly JsonArray _meshes = [];
         private readonly JsonArray _materials = [];
-        private readonly Dictionary<(string Name, int Texture, bool AlphaClip), int> _materialIndex = [];
+        private readonly Dictionary<(string Name, int Texture, bool AlphaClip, bool AlphaBlend), int> _materialIndex = [];
         private readonly JsonArray _images = [];
         private readonly JsonArray _textures = [];
         private readonly JsonArray _sceneNodes = [];
@@ -219,7 +219,7 @@ internal static class GltfWriter
                 {
                     _sceneNodes.Add(_jointNodes[i]);
                 }
-                ((JsonObject)_nodes[_jointNodes[i]]!)["matrix"] = MatrixArray(local);
+                SetTransform((JsonObject)_nodes[_jointNodes[i]]!, local);
             }
             _skin = 0;
         }
@@ -252,16 +252,33 @@ internal static class GltfWriter
                     float[] translation = new float[track.KeyCount * 3];
                     float[] rotation = new float[track.KeyCount * 4];
                     float[] scale = new float[track.KeyCount * 3];
+                    bool given = track.Translations?.Length == track.KeyCount * 3
+                        && track.Rotations?.Length == track.KeyCount * 4
+                        && track.Scales?.Length == track.KeyCount * 3;
                     for (int key = 0; key < track.KeyCount; key++)
                     {
                         times[key] = track.Times[key] / fps;
+                        if (given)
+                        {
+                            track.Translations!.AsSpan(key * 3, 3).CopyTo(translation.AsSpan(key * 3));
+                            track.Rotations!.AsSpan(key * 4, 4).CopyTo(rotation.AsSpan(key * 4));
+                            track.Scales!.AsSpan(key * 3, 3).CopyTo(scale.AsSpan(key * 3));
+                            if (key > 0 && Quaternion.Dot(Q(rotation, key), Q(rotation, key - 1)) < 0f)
+                            {
+                                for (int c = 0; c < 4; c++) rotation[(key * 4) + c] = -rotation[(key * 4) + c];
+                            }
+                            continue;
+                        }
                         Matrix4x4 matrix = MatrixOps.ToMatrix(track.Matrices[key]);
-                        if (!Matrix4x4.Decompose(
-                            matrix, out Vector3 parts, out Quaternion turn, out Vector3 move))
+                        if (!Decompose(matrix, out Vector3 parts, out Quaternion turn, out Vector3 move))
                         {
                             parts = Vector3.One;
                             turn = Quaternion.Identity;
                             move = matrix.Translation;
+                        }
+                        if (key > 0 && Quaternion.Dot(turn, new Quaternion(rotation[(key * 4) - 4], rotation[(key * 4) - 3], rotation[(key * 4) - 2], rotation[(key * 4) - 1])) < 0f)
+                        {
+                            turn = -turn;
                         }
                         translation[key * 3] = move.X;
                         translation[(key * 3) + 1] = move.Y;
@@ -283,15 +300,26 @@ internal static class GltfWriter
                 {
                     continue;
                 }
-                animations.Add(new JsonObject
+                JsonObject animation = new()
                 {
                     ["name"] = clip.Name,
                     ["samplers"] = samplers,
                     ["channels"] = channels,
-                });
+                };
+                if (clip.Extras is { Count: > 0 } extras)
+                {
+                    JsonObject bag = [];
+                    foreach ((string key, JsonNode value) in extras)
+                    {
+                        bag[key] = value.DeepClone();
+                    }
+                    animation["extras"] = bag;
+                }
+                animations.Add(animation);
             }
             return animations;
         }
+        private static Quaternion Q(float[] r, int key) => new(r[key * 4], r[(key * 4) + 1], r[(key * 4) + 2], r[(key * 4) + 3]);
         private static void AddChannel(
             JsonArray samplers, JsonArray channels, int input, int output, int node, string path)
         {
@@ -314,7 +342,9 @@ internal static class GltfWriter
             for (int i = 0; i < joints.Count; i++)
             {
                 MatrixOps.CopyTo(
-                    MatrixOps.InvertOrIdentity(MatrixOps.ToMatrix(joints[i].Bind)), inverseBind, i * 16);
+                    joints[i].InverseBind is { Length: 16 } given
+                        ? MatrixOps.ToMatrix(given)
+                        : MatrixOps.InvertOrIdentity(MatrixOps.ToMatrix(joints[i].Bind)), inverseBind, i * 16);
             }
             return
             [
@@ -420,7 +450,7 @@ internal static class GltfWriter
         }
         private int Material(SceneSubmesh submesh)
         {
-            (string, int, bool) key = (submesh.Name, submesh.TextureIndex, submesh.AlphaClip);
+            (string, int, bool, bool) key = (submesh.Name, submesh.TextureIndex, submesh.AlphaClip, submesh.AlphaBlend);
             if (_materialIndex.TryGetValue(key, out int existing))
             {
                 return existing;
@@ -445,7 +475,11 @@ internal static class GltfWriter
                 ["pbrMetallicRoughness"] = pbr,
                 ["doubleSided"] = true,
             };
-            if (submesh.AlphaClip)
+            if (submesh.AlphaBlend)
+            {
+                material["alphaMode"] = "BLEND";
+            }
+            else if (submesh.AlphaClip)
             {
                 material["alphaMode"] = "MASK";
                 material["alphaCutoff"] = 0.5;
@@ -453,6 +487,49 @@ internal static class GltfWriter
             _materials.Add(material);
             _materialIndex[key] = _materials.Count - 1;
             return _materials.Count - 1;
+        }
+        private static void SetTransform(JsonObject node, in Matrix4x4 local)
+        {
+            // animation channels may only target TRS nodes, so use TRS whenever it rebuilds the matrix
+            if (Decompose(local, out Vector3 scale, out Quaternion rotation, out Vector3 translation))
+            {
+                Matrix4x4 rebuilt = Matrix4x4.CreateScale(scale) * Matrix4x4.CreateFromQuaternion(rotation)
+                    * Matrix4x4.CreateTranslation(translation);
+                float tolerance = 1e-5f * MathF.Max(1f, MathF.Max(MathF.Abs(translation.X), MathF.Max(MathF.Abs(translation.Y), MathF.Abs(translation.Z))));
+                if (MaxDifference(rebuilt, local) <= tolerance)
+                {
+                    node["translation"] = new JsonArray(translation.X, translation.Y, translation.Z);
+                    node["rotation"] = new JsonArray(rotation.X, rotation.Y, rotation.Z, rotation.W);
+                    node["scale"] = new JsonArray(scale.X, scale.Y, scale.Z);
+                    return;
+                }
+            }
+            node["matrix"] = MatrixArray(local);
+        }
+        // a mirrored matrix always takes its negative scale on Z, so keys of one track decompose alike
+        private static bool Decompose(Matrix4x4 m, out Vector3 scale, out Quaternion rotation, out Vector3 translation)
+        {
+            float det = (m.M11 * ((m.M22 * m.M33) - (m.M23 * m.M32))) - (m.M12 * ((m.M21 * m.M33) - (m.M23 * m.M31)))
+                + (m.M13 * ((m.M21 * m.M32) - (m.M22 * m.M31)));
+            if (det >= 0f)
+            {
+                return Matrix4x4.Decompose(m, out scale, out rotation, out translation);
+            }
+            m.M31 = -m.M31;
+            m.M32 = -m.M32;
+            m.M33 = -m.M33;
+            bool ok = Matrix4x4.Decompose(m, out scale, out rotation, out translation);
+            scale.Z = -scale.Z;
+            return ok;
+        }
+        private static float MaxDifference(in Matrix4x4 a, in Matrix4x4 b)
+        {
+            Span<float> x = stackalloc float[16], y = stackalloc float[16];
+            MatrixOps.CopyTo(a, x);
+            MatrixOps.CopyTo(b, y);
+            float most = 0f;
+            for (int i = 0; i < 16; i++) most = MathF.Max(most, MathF.Abs(x[i] - y[i]));
+            return most;
         }
         private static JsonArray MatrixArray(in Matrix4x4 m)
         {

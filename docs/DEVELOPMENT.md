@@ -38,6 +38,7 @@ src/
     Nintendo/                Nintendo DS ROM images, WBFS Wii containers, 3DS cart images
     Polarbit/                Polarbit racing engine (iOS)
     DWSSK/                   DreamWorks Super Star Kartz (PS3, Xbox 360, Wii, 3DS)
+    Disgaea/                 Disgaea DS archives, images and sound
     Generic/                 OGG, WAV, PNG, JPEG, GIF, BMP recognisers
     PlayStation/             PlayStation 3 game discs
     Xbox/                    Xbox 360 game discs

@@ -74,6 +74,7 @@ namespace Omega.Disc.Formats.Nintendo
         public const int BlockDataSize = 0x7C00;
         public const int BlockTotalSize = BlockHeaderSize + BlockDataSize;
         public const uint WiiMagic = 0x5D1C9EA3;
+        public const uint GcnMagic = 0xC23C200C;
         public const int OffsetShift = 2;
         public const long PartitionTableOffset = 0x40000;
         public const int MaxFileSystemSize = 128 * 1024 * 1024;
@@ -185,7 +186,16 @@ namespace Omega.Disc.Formats.Nintendo
             data.ReadExactly(table);
             return ReadFileSystemTable(table);
         }
+        public static bool IsGcn(ReadOnlySpan<byte> head)
+        {
+            if (head.Length < 0x20) return false;
+            uint gcn = BinaryPrimitives.ReadUInt32BigEndian(head[0x1C..]);
+            uint wii = BinaryPrimitives.ReadUInt32BigEndian(head[0x18..]);
+            return gcn == GcnMagic && wii != WiiMagic;
+        }
         public static IReadOnlyList<WiiFstEntry> ReadFileSystemTable(byte[] table)
+            => ReadFileSystemTable(table, OffsetShift);
+        public static IReadOnlyList<WiiFstEntry> ReadFileSystemTable(byte[] table, int offsetShift)
         {
             ArgumentNullException.ThrowIfNull(table);
             if (table.Length < 24)
@@ -193,9 +203,9 @@ namespace Omega.Disc.Formats.Nintendo
                 throw new InvalidDataException(
                     $"a file system table of {table.Length} bytes cannot hold the root entry");
             }
-            return ReadEntries(table);
+            return ReadEntries(table, offsetShift);
         }
-        private static WiiFstEntry[] ReadEntries(byte[] table)
+        private static WiiFstEntry[] ReadEntries(byte[] table, int offsetShift)
         {
             uint count = BinaryPrimitives.ReadUInt32BigEndian(table.AsSpan(8, 4));
             if (count < 1 || (count * 12L) + 1 > table.Length)
@@ -218,7 +228,7 @@ namespace Omega.Disc.Formats.Nintendo
                     : ReadName(table, nameTable, nameOffset, index);
                 entries[index] = new WiiFstEntry(
                     name,
-                    isDirectory ? 0 : (long)offset << OffsetShift,
+                    isDirectory ? 0 : (long)offset << offsetShift,
                     isDirectory ? 0 : size,
                     isDirectory ? size : (uint)(index + 1),
                     index,

@@ -4,6 +4,7 @@ public sealed record SceneSubmesh(
     string Name, int First, int Count, int TextureIndex, bool AlphaClip = false)
 {
     public IReadOnlyDictionary<string, JsonNode>? Extras { get; init; }
+    public bool AlphaBlend { get; init; }
 }
 public sealed class SceneMesh
 {
@@ -44,7 +45,10 @@ public enum TextureFiltering
     Smooth,
     Nearest,
 }
-public sealed record SceneJoint(string Name, int ParentIndex, float[] Bind);
+public sealed record SceneJoint(string Name, int ParentIndex, float[] Bind)
+{
+    public float[]? InverseBind { get; init; }
+}
 public sealed class SceneGeometry
 {
     public IReadOnlyList<SceneMesh> Meshes { get; init; } = [];

@@ -4,7 +4,7 @@
   </PropertyGroup>
   <Import Project="../../Plugin.props" />
   <ItemGroup>
-    <PackageReference Include="LTRData.DiscUtils.Iso9660" Version="1.0.89" />
+    <PackageReference Include="LTRData.DiscUtils.Iso9660" Version="1.0.91" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="../../Omega.Disc/Omega.Disc.csproj" />

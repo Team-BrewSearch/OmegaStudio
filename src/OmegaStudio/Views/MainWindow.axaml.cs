@@ -18,6 +18,7 @@ public partial class MainWindow : Window
     private readonly GlViewport? _vp;
     private readonly ScrollViewer? _consoleScroll;
     private readonly TextureView? _texture;
+    private readonly TileMapView? _map;
     private readonly Outliner? _outliner;
     public MainWindow()
     {
@@ -25,6 +26,19 @@ public partial class MainWindow : Window
         _vp = this.FindControl<GlViewport>("Viewport");
         _consoleScroll = this.FindControl<ScrollViewer>("ConsoleScroll");
         _texture = this.FindControl<TextureView>("TexturePreviewView");
+        _map = this.FindControl<TileMapView>("MapView");
+        if (_map is not null)
+        {
+            _map.StrokeFinished += stroke => _ = (DataContext as MainViewModel)?.PaintMapAsync(stroke);
+            _map.CellPicked += point => (DataContext as MainViewModel)?.InspectMapCell(point);
+            _map.HoverChanged += text =>
+            {
+                if (DataContext is MainViewModel model && text.Length > 0)
+                {
+                    model.MapStatus = text;
+                }
+            };
+        }
         _outliner = this.FindControl<Outliner>("OutlinerTree");
         _outliner?.AddHandler(ContextRequestedEvent, Tree_OnContextRequested, RoutingStrategies.Tunnel);
         Slider? seek = this.FindControl<Slider>("AudioSeek");
@@ -257,6 +271,10 @@ public partial class MainWindow : Window
     private void TextureFit_OnClick(object? sender, RoutedEventArgs e)
     {
         _texture?.Fit();
+    }
+    private void MapFit_OnClick(object? sender, RoutedEventArgs e)
+    {
+        _map?.Fit();
     }
     private void TextureActualSize_OnClick(object? sender, RoutedEventArgs e)
     {

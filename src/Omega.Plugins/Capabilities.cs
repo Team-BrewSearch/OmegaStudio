@@ -23,6 +23,18 @@ public interface IAudioAsset
 {
     ReadOnlySpan<byte> EncodedAudio { get; }
 }
+public interface IAudioReader : IDisposable
+{
+    int SampleRate { get; }
+    int Channels { get; }
+    long TotalFrames { get; }
+    int Read(Span<short> interleaved);
+    void Seek(long frame);
+}
+public interface IStreamingAudioAsset : IAudioAsset
+{
+    IAudioReader OpenAudio();
+}
 public interface IVideoAsset
 {
     VideoInfo Video { get; }

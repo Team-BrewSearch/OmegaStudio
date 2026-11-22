@@ -169,12 +169,7 @@ public class AudioPlaybackEngine : IDisposable
         {
             return;
         }
-        int queued = QueuedBuffers();
-        if (queued > 0)
-        {
-            uint[] unqueue = new uint[queued];
-            _al.SourceUnqueueBuffers(_source, unqueue);
-        }
+        _al.SetSourceProperty(_source, SourceInteger.Buffer, 0);
         _bufferFrames.Clear();
     }
     public void Play()

@@ -16,7 +16,7 @@ public sealed class NintendoPlugin : IFormatPlugin
             + "and banner, with SceneGate Ekona and the disc decryption that goes with them.",
     };
     public IEnumerable<IArchiveFormat> Archives { get; } =
-        [new NdsRomFormat(), new WbfsArchiveFormat(), new Nintendo3DSArchiveFormat()];
+        [new NdsRomFormat(), new WbfsArchiveFormat(), new Nintendo3DSArchiveFormat(), new GcnDiscArchiveFormat(), new GcnCisoFormat()];
 }
 public sealed class NdsRomFormat : IArchiveFormat
 {

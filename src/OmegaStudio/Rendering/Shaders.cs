@@ -16,11 +16,13 @@ internal static class Shaders
         uniform mat4 uMvp;
         uniform mat4 uView;
         out vec3 vNormal;
+        out vec3 vViewPos;
         out vec2 vUv;
         out vec4 vColor;
         void main()
         {
             vNormal = mat3(uView) * aNormal;
+            vViewPos = (uView * vec4(aPos, 1.0)).xyz;
             vUv = aUv;
             vColor = aColor;
             gl_Position = uMvp * vec4(aPos, 1.0);
@@ -32,23 +34,30 @@ internal static class Shaders
         uniform float uHasTex;
         uniform float uAlphaClip;
         uniform float uVertexLit;
+        uniform float uBlend;
         in vec3 vNormal;
+        in vec3 vViewPos;
         in vec2 vUv;
         in vec4 vColor;
         out vec4 fragColor;
         void main()
         {
+            // meshes without normals get the camera-facing face normal; derivatives stay outside the branch
+            vec3 face = cross(dFdx(vViewPos), dFdy(vViewPos));
             vec3 n = normalize(vNormal);
-            if (!gl_FrontFacing) n = -n;
+            if (dot(vNormal, vNormal) < 1e-8) n = normalize(face);
+            else if (!gl_FrontFacing) n = -n;
             float lambert = 0.28 + 0.72 * max(n.z, 0.0);
             if (uMode == 3) { fragColor = vec4(n * 0.5 + 0.5, 1.0); return; }
             if (uMode == 4) { fragColor = vec4(fract(vUv), 0.0, 1.0); return; }
             if (uMode == 2) { fragColor = vec4(0.55, 0.85, 1.0, 1.0); return; }
             vec4 base = uHasTex > 0.5 ? texture(uTex, vUv) : vec4(0.78, 0.78, 0.80, 1.0);
             if (uAlphaClip > 0.5 && base.a < 0.5) discard;
+            float alpha = uBlend > 0.5 ? base.a * vColor.a : 1.0;
+            if (alpha <= 0.0) discard;
             if (uMode == 1) base = vec4(0.78, 0.78, 0.80, 1.0);
             vec3 light = uVertexLit > 0.5 ? vColor.rgb : vec3(lambert);
-            fragColor = vec4(base.rgb * light, 1.0);
+            fragColor = vec4(base.rgb * light, alpha);
         }
         """;
     public const string FlatVertex = """

@@ -49,7 +49,10 @@ public class GlViewport : OpenGlControlBase
     private GlUniforms? _uniforms;
     private BufferSubDataProc? _bufferSubData;
     private int _vao, _poseVbo, _surfaceVbo, _triangleIbo, _lineIbo, _white;
-    private int _uMvp, _uView, _uMode, _uHasTex, _uTex, _uAlphaClip, _uVertexLit;
+    private int _uMvp, _uView, _uMode, _uHasTex, _uTex, _uAlphaClip, _uVertexLit, _uBlend;
+    private BlendFuncSeparateProc? _blendFuncSeparate;
+    private delegate void BlendFuncSeparateProc(int srcRgb, int dstRgb, int srcAlpha, int dstAlpha);
+    private const int GL_BLEND = 0x0BE2, GL_SRC_ALPHA = 0x0302, GL_ONE_MINUS_SRC_ALPHA = 0x0303, GL_ZERO = 0, GL_ONE = 1;
     private int _gridVao, _gridVbo, _gridMvp, _gridVertexCount;
     private int _gridR, _gridG, _gridB;
     private int _axisVao, _axisVbo, _axisMvp, _axisVertexCount;
@@ -202,6 +205,8 @@ public class GlViewport : OpenGlControlBase
         _uTex = _model.Uniform(gl, "uTex");
         _uAlphaClip = _model.Uniform(gl, "uAlphaClip");
         _uVertexLit = _model.Uniform(gl, "uVertexLit");
+        _uBlend = _model.Uniform(gl, "uBlend");
+        _blendFuncSeparate = Gl.Resolve<BlendFuncSeparateProc>(gl, "glBlendFuncSeparate");
         _flat = GlProgram.Build(gl, header, Shaders.FlatVertex, Shaders.FlatFragment, "grid");
         _gridMvp = _flat.Uniform(gl, "uMvp");
         _gridR = _flat.Uniform(gl, "uR");
@@ -369,6 +374,7 @@ public class GlViewport : OpenGlControlBase
             gl.Uniform1f(_uHasTex, 0f);
             gl.Uniform1f(_uAlphaClip, 0f);
             gl.Uniform1f(_uVertexLit, 0f);
+            gl.Uniform1f(_uBlend, 0f);
             gl.BindBuffer(GL_ELEMENT_ARRAY_BUFFER, _lineIbo);
             if (!_linesUploaded)
             {
@@ -381,14 +387,35 @@ public class GlViewport : OpenGlControlBase
         gl.BindBuffer(GL_ELEMENT_ARRAY_BUFFER, _triangleIbo);
         gl.Uniform1i(_uMode, (int)Shading);
         gl.Uniform1f(_uVertexLit, _buffer.Scene.Lighting == SceneLighting.VertexBaked ? 1f : 0f);
-        foreach ((int first, int count, int texture, bool alphaClip) in _buffer.Batches)
+        bool blending = Shading == ShadingMode.Textured && _blendFuncSeparate is not null;
+        gl.Uniform1f(_uBlend, 0f);
+        DrawBatches(gl, blended: false, blending);
+        if (blending && _buffer.Batches.Any(b => b.AlphaBlend))
         {
-            bool textured = Shading == ShadingMode.Textured && texture != 0;
+            gl.Enable(GL_BLEND);
+            _blendFuncSeparate!(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA, GL_ZERO, GL_ONE);
+            gl.DepthMask(0);
+            gl.Uniform1f(_uBlend, 1f);
+            DrawBatches(gl, blended: true, blending);
+            gl.Uniform1f(_uBlend, 0f);
+            gl.DepthMask(1);
+            gl.Disable(GL_BLEND);
+        }
+    }
+    private void DrawBatches(GlInterface gl, bool blended, bool blending)
+    {
+        foreach (DrawBatch batch in _buffer!.Batches)
+        {
+            if (blending && batch.AlphaBlend != blended)
+            {
+                continue;
+            }
+            bool textured = Shading == ShadingMode.Textured && batch.Texture != 0;
             gl.ActiveTexture(GL_TEXTURE0);
-            gl.BindTexture(GL_TEXTURE_2D, textured ? texture : _white);
+            gl.BindTexture(GL_TEXTURE_2D, textured ? batch.Texture : _white);
             gl.Uniform1f(_uHasTex, textured ? 1f : 0f);
-            gl.Uniform1f(_uAlphaClip, textured && alphaClip ? 1f : 0f);
-            gl.DrawElements(GL_TRIANGLES, count, Gl.UnsignedInt, first * sizeof(int));
+            gl.Uniform1f(_uAlphaClip, textured && batch.AlphaClip ? 1f : 0f);
+            gl.DrawElements(GL_TRIANGLES, batch.Count, Gl.UnsignedInt, batch.First * sizeof(int));
         }
     }
     private Vector3 EyePosition()

@@ -21,8 +21,8 @@ public abstract class RecognizedAsset : IAssetNode, IBinaryAsset, IDescribable, 
     public string PathText => Inner.PathText;
     public virtual string FileStem => Inner.FileStem;
     public virtual string Kind => Inner.Kind;
-    public bool HasChildren => Inner.HasChildren;
-    public IEnumerable<IAssetNode> GetChildren()
+    public virtual bool HasChildren => Inner.HasChildren;
+    public virtual IEnumerable<IAssetNode> GetChildren()
     {
         return Inner.GetChildren();
     }

@@ -70,16 +70,18 @@ public partial class MainViewModel
             return _audioLoad;
         }
         _currentAudio = audio;
-        _audioLoad = InstallAudioAsync(++_audioGeneration, data is null ? () => NodeAccess.EncodedAudio(audio).ToArray() : () => data);
+        _audioLoad = InstallAudioAsync(++_audioGeneration, audio is IStreamingAudioAsset streaming
+            ? () => new PreparedAudio(new ReaderDecoder(streaming.OpenAudio()))
+            : () => AudioPlaybackService.Prepare(data ?? NodeAccess.EncodedAudio(audio).ToArray()));
         return _audioLoad;
     }
     private Task<bool> LoadSoundtrackAsync(byte[] data)
     {
         _currentAudio = null;
         _audioLoad = null;
-        return InstallAudioAsync(++_audioGeneration, () => data);
+        return InstallAudioAsync(++_audioGeneration, () => AudioPlaybackService.Prepare(data));
     }
-    private async Task<bool> InstallAudioAsync(int generation, Func<byte[]> data)
+    private async Task<bool> InstallAudioAsync(int generation, Func<PreparedAudio> prepare)
     {
         await _audioGate.WaitAsync();
         try
@@ -88,7 +90,7 @@ public partial class MainViewModel
             {
                 return false;
             }
-            using PreparedAudio prepared = await Task.Run(() => AudioPlaybackService.Prepare(data()));
+            using PreparedAudio prepared = await Task.Run(prepare);
             if (generation != _audioGeneration || _disposed)
             {
                 return false;
