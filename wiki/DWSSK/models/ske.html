@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<script src="../../script.js"></script>
+</head>
+<body>
+<p>A <code>.gds</code> holds one skeleton per LOD, named by the header's six offsets at 0x28 (Wii loader <code>0x800f3b10</code>). Animation tracks and bone-attached collision find bones by name hash.</p>
+
+<h2>Skeleton Header</h2>
+<table>
+  <thead><tr><th>Offset</th><th>Size</th><th>Type</th><th>Description</th></tr></thead>
+  <tbody>
+    <tr><td>0x00</td><td>4</td><td>u32</td><td><code>0x44444444</code> ("DDDD")</td></tr>
+    <tr><td>0x04</td><td>4</td><td>u32</td><td>Bone count</td></tr>
+    <tr><td>0x08</td><td>4</td><td>off</td><td>Bones, 0x50 bytes each</td></tr>
+    <tr><td>0x0C</td><td>4</td><td>off</td><td>Rest poses, 0x30 bytes each</td></tr>
+    <tr><td>0x10</td><td>4</td><td>off</td><td>Relocated when not 0; 0 in every file</td></tr>
+    <tr><td>0x14</td><td>4</td><td>off</td><td>LOD 1 to 5: one byte per bone, the index of the same bone in the LOD 0 skeleton; 0 for LOD 0</td></tr>
+    <tr><td>0x18</td><td>8</td><td>u32[2]</td><td>0</td></tr>
+  </tbody>
+</table>
+
+<h3>Bone (0x50 bytes)</h3>
+<table>
+  <thead><tr><th>Offset</th><th>Size</th><th>Type</th><th>Description</th></tr></thead>
+  <tbody>
+    <tr><td>0x00</td><td>64</td><td>f32[16]</td><td>Inverse bind matrix, row-major for row vectors (<code>v * M</code>); it can carry scale</td></tr>
+    <tr><td>0x40</td><td>4</td><td>u32</td><td>Bone name hash</td></tr>
+    <tr><td>0x44</td><td>4</td><td>u32</td><td><code>0x33333333</code> in every file; not read</td></tr>
+    <tr><td>0x48</td><td>1</td><td>u8</td><td>Parent bone, 0xFF for the root; parents always come before their children</td></tr>
+    <tr><td>0x49</td><td>7</td><td>u8[7]</td><td>0</td></tr>
+  </tbody>
+</table>
+
+<h3>Rest Pose (0x30 bytes)</h3>
+<table>
+  <thead><tr><th>Offset</th><th>Size</th><th>Type</th><th>Description</th></tr></thead>
+  <tbody>
+    <tr><td>0x00</td><td>16</td><td>f32[4]</td><td>Rotation quaternion x, y, z, w</td></tr>
+    <tr><td>0x10</td><td>16</td><td>f32[3], pad</td><td>Scale</td></tr>
+    <tr><td>0x20</td><td>16</td><td>f32[3], pad</td><td>Translation, centimetres</td></tr>
+  </tbody>
+</table>
+
+<h2>Skinning Palette</h2>
+<p>Built by <code>0x800cab00</code>, for each bone in index order:</p>
+<ol>
+  <li><strong>Local:</strong> the rotation matrix of the quaternion (<code>0x8000bd00</code>, the same as <code>System.Numerics.Matrix4x4.CreateFromQuaternion</code>), each row scaled by the matching scale component, with the translation times 0.00125 (1/800) on the bottom row.</li>
+  <li><strong>World:</strong> local times the parent's world; the root's world is its local matrix.</li>
+  <li><strong>Palette:</strong> inverse bind times world, kept as a 3x4 matrix.</li>
+</ol>
+<p>Both products are affine. Element (r, c) is <code>fma(a[r][2], b[2][c], fma(a[r][0], b[0][c], a[r][1] * b[1][c]))</code>, the bottom row adds b's translation last, and the last column is never computed. The Wii's single-precision unit works in double and rounds to single, so fused and summed values round twice.</p>
+
+<h2>Skinning on the Wii</h2>
+<p><code>0x80149dc0</code> skins each 32-byte vertex: <code>M = sum of weight[k] * palette[joint[k]]</code> over the four joints, then the position (s16, /16384) and normal (s8, /64) are multiplied by M and written back as s16 and s8 to the instance's skinned output. The weights are not normalised. The draw then applies the mesh scale of 8.0. PS3, Xbox 360 and 3DS skin on the GPU from the same palettes.</p>
+
+<h2>In OmegaStudio</h2>
+<ul>
+  <li>Bone worlds and palettes are built with the game's own single-precision arithmetic, rounding included. Given poses sampled from real clips, 25,020 palette floats across 10 characters and 30 random clips came out bit-identical to the Wii builder.</li>
+  <li>Joints are named <code>bone_</code> plus the eight-digit hex hash. A parent that does not come before its child is rejected.</li>
+</ul>
+</body>
+</html>

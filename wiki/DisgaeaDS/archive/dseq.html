@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<script src="../../script.js"></script>
+</head>
+<body>
+<p><strong>DSEQ</strong> packs one piece of music into a <code>.msnd</code> file: an <a href="../audio/sseq.html">SSEQ</a> sequence, the <a href="../audio/sbnk.html">SBNK</a> bank it plays through, and the <a href="../audio/swar.html">SWAR</a> of samples that bank uses. Nintendo's SDKs keep these in an SDAT; <em>Disgaea DS</em> loads the three directly.</p>
+
+<h2>Header</h2>
+<table>
+  <thead><tr><th>Offset</th><th>Size</th><th>Type</th><th>Description</th></tr></thead>
+  <tbody>
+    <tr><td>0x00</td><td>4</td><td>char[4]</td><td>Magic <code>"DSEQ"</code></td></tr>
+    <tr><td>0x04</td><td>12</td><td>u8[12]</td><td>0</td></tr>
+    <tr><td>0x10</td><td>4</td><td>u32</td><td>SSEQ offset plus 0x10</td></tr>
+    <tr><td>0x14</td><td>4</td><td>u32</td><td>SBNK offset</td></tr>
+    <tr><td>0x18</td><td>4</td><td>u32</td><td>SWAR offset</td></tr>
+    <tr><td>0x1C</td><td>4</td><td>u32</td><td>0</td></tr>
+    <tr><td>0x20</td><td>4</td><td>u32</td><td>SSEQ size</td></tr>
+    <tr><td>0x24</td><td>4</td><td>u32</td><td>SBNK size</td></tr>
+    <tr><td>0x28</td><td>4</td><td>u32</td><td>SWAR size</td></tr>
+    <tr><td>0x2C</td><td>4</td><td>u32</td><td>Unknown; possibly the high half of the SWAR size</td></tr>
+  </tbody>
+</table>
+
+<p>Offsets count from the start of the file; subtract 0x10 from the word at 0x10 to get the SSEQ's. The three chunks always come in the order SSEQ, SBNK, SWAR, each directly after the last.</p>
+</body>
+</html>

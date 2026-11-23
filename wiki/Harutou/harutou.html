@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<script src="../script.js"></script>
+</head>
+<body>
+<p><em>Suzumiya Haruhi no Chourantou</em>, best known in its updated release <em>Suzumiya Haruhi no Gekitou</em>, is a 2007 Direct3D 9 game for Windows. These pages cover its <code>data/*.bin</code> archives and the assets inside them. Every layout here is checked against OmegaStudio's Harugeki plugin.</p>
+
+<h2>File Formats</h2>
+<ul data-list></ul>
+
+<h2>Conventions</h2>
+<div class="spec-grid">
+  <div class="label">Byte order</div><div>Little-endian</div>
+  <div class="label">Floats</div><div>IEEE-754 binary32</div>
+  <div class="label">Strings</div><div>Fixed-width ASCII, null padded, not always null terminated</div>
+  <div class="label">Matrices</div><div>4x4, row-vector Direct3D convention (<code>v' = v * M</code>), translation in the last row</div>
+  <div class="label">Axes</div><div>Y up, roughly 1 unit per centimetre</div>
+  <div class="label">Padding</div><div><code>0xFE</code> inside archive tables, <code>0x00</code> after payloads</div>
+</div>
+
+<p>Geometry, bind matrices and animation keys all share one space. OmegaStudio brings it into glTF space by negating X and Z on every position and normal and conjugating every matrix by <code>diag(-1, 1, -1, 1)</code>. Triangle order is kept as stored.</p>
+
+<h2>Data Layout</h2>
+<p>Every <code>.bin</code> under <code>data/</code> is the same <a href="archive/bin.html">nested table of contents</a>. Leaves carry no names, so the labels in parentheses below describe what a payload is; nothing in the file stores them.</p>
+
+<div class="file-tree">data/
+├── *.bin [BIN] - character and stage archives
+│   ├── (model) - node graph, meshes, embedded ringtex2 textures
+│   └── (animations) - one clip each, siblings of the model
+├── bgm.bin [BIN]
+│   └── (Ogg Vorbis) - background music
+├── se.bin [BIN]
+│   └── (RIFF WAVE) - sound effects
+├── voice.bin [BIN]
+│   └── (RIFF WAVE) - voice clips
+├── eff.bin [BIN]
+│   └── (BTEF) - 29 effect scripts, not decoded
+├── param.bin - gameplay tables, not decoded
+├── sce.bin - not decoded
+├── sys.bin - not decoded
+└── sel.cdt - UI data, not decoded</div>
+
+<h2>In OmegaStudio</h2>
+<ul>
+  <li>Any <code>data/*.bin</code> whose root passes the <a href="archive/bin.html#checks">table check</a> opens as a tree. Models, their meshes, materials, skeleton and embedded textures, and animation clips all appear as rows.</li>
+  <li>A model plays every clip that sits beside it in the same table.</li>
+  <li>A texture is replaced from a PNG of any size. An embedded texture is spliced back into its model, and the model's offsets are moved to match.</li>
+  <li>A model's geometry is replaced from a glTF file, with joints bound to bones by name. See <a href="model/model.html#import">Model</a>.</li>
+  <li>Any slot can be extracted or replaced as raw bytes, and Ogg and WAV leaves play in the Audio pane.</li>
+  <li>Saving rebuilds the whole archive in place.</li>
+</ul>
+</body>
+</html>

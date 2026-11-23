@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<script src="../../script.js"></script>
+</head>
+<body>
+<p><code>bgm.bin</code>, <code>se.bin</code> and <code>voice.bin</code> are ordinary <a href="../archive/bin.html">BIN archives</a> whose leaves are standard audio files. There is no custom container or codec: extract a leaf and any player opens it.</p>
+
+<h2>Payload Identification</h2>
+<table>
+  <thead><tr><th>Format</th><th>Magic</th><th>Bytes</th><th>Used by</th></tr></thead>
+  <tbody>
+    <tr><td>Ogg Vorbis</td><td><code>"OggS"</code> at 0</td><td><code>4F 67 67 53</code></td><td><code>bgm.bin</code></td></tr>
+    <tr><td>RIFF WAVE</td><td><code>"RIFF"</code> at 0, <code>"WAVE"</code> at 8</td><td><code>52 49 46 46</code></td><td><code>se.bin</code>, <code>voice.bin</code></td></tr>
+  </tbody>
+</table>
+
+<p>These are the only audio formats in the retail data. The game ships <code>ogg.dll</code> and <code>vorbis.dll</code> and decodes Vorbis through them.</p>
+
+<h2>In OmegaStudio</h2>
+<p>The Standard Formats plugin recognises both payloads inside the archive, so they play in the Audio pane and extract as <code>.ogg</code> or <code>.wav</code>. The archive walk stops at them rather than reading them as tables.</p>
+</body>
+</html>

@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<script src="../../script.js"></script>
+</head>
+<body>
+<p>Plates map the sub-images packed into a texture atlas. Each plate sits next to a <code>.pvr</code> of the same name and size. Reckless Getaway and Raging Thunder 2 use different layouts.</p>
+
+<h2>TLPB (Getaway)</h2>
+<table>
+  <thead><tr><th>Offset</th><th>Size</th><th>Type</th><th>Description</th></tr></thead>
+  <tbody>
+    <tr><td>0x00</td><td>4</td><td>char[4]</td><td>Magic <code>"TLPB"</code></td></tr>
+    <tr><td>0x04</td><td>4</td><td>u32</td><td>4, version</td></tr>
+    <tr><td>0x08</td><td>4</td><td>u32</td><td>Atlas width</td></tr>
+    <tr><td>0x0C</td><td>4</td><td>u32</td><td>Atlas height</td></tr>
+    <tr><td>0x10</td><td>20</td><td>u32[5]</td><td>Unknown, small values (0/4/5, 0/1, 0/1, 1, 0/1)</td></tr>
+    <tr><td>0x24</td><td>4</td><td>u32</td><td>Entry count</td></tr>
+    <tr><td>0x28</td><td>4</td><td>i32</td><td>-1</td></tr>
+    <tr><td>0x2C</td><td>var</td><td>entry[]</td><td>Entries, back to back</td></tr>
+  </tbody>
+</table>
+
+<h3>Entry</h3>
+<table>
+  <thead><tr><th>Offset</th><th>Size</th><th>Type</th><th>Description</th></tr></thead>
+  <tbody>
+    <tr><td>+0x00</td><td>16</td><td>fixed[4]</td><td>u, v, du, dv as fractions of the atlas size</td></tr>
+    <tr><td>+0x10</td><td>4</td><td>u16[2]</td><td>Width and height in pixels, equal to du * W and dv * H</td></tr>
+    <tr><td>+0x14</td><td>4</td><td>u32</td><td>0</td></tr>
+    <tr><td>+0x18</td><td>2</td><td>u16</td><td>Name length L, NUL included</td></tr>
+    <tr><td>+0x1A</td><td>L</td><td>char[L]</td><td>Name and NUL</td></tr>
+  </tbody>
+</table>
+<p>Names are unique within a plate: <code>TRACK_SELECT_BG</code>, <code>money1</code>, <code>sparks_blue_add</code>, and the 573 glyph images of <code>frontend/gray_plate.plt</code>.</p>
+
+<h2>PLT (Raging Thunder 2)</h2>
+<p>RT2 plates have no magic and mix byte orders: a little-endian header, then big-endian records. They are the one exception to the little-endian rule.</p>
+<table>
+  <thead><tr><th>Offset</th><th>Size</th><th>Type</th><th>Description</th></tr></thead>
+  <tbody>
+    <tr><td>0x00</td><td>2</td><td>u16</td><td>Atlas width W</td></tr>
+    <tr><td>0x02</td><td>2</td><td>u16</td><td>Atlas height H</td></tr>
+    <tr><td>0x04</td><td>2</td><td>u16</td><td>Rectangle count N</td></tr>
+    <tr><td>0x06</td><td>2</td><td>u16</td><td>9</td></tr>
+    <tr><td>0x08</td><td>4</td><td>u32</td><td><code>W * H</code></td></tr>
+    <tr><td>0x0C</td><td>4</td><td>u32</td><td>0</td></tr>
+    <tr><td>0x10</td><td>4</td><td>u32</td><td>1</td></tr>
+    <tr><td>0x14</td><td>40 * N</td><td>record[N]</td><td>Rectangles, big-endian</td></tr>
+  </tbody>
+</table>
+
+<h3>Rectangle (40 bytes, big-endian)</h3>
+<table>
+  <thead><tr><th>Offset</th><th>Size</th><th>Type</th><th>Description</th></tr></thead>
+  <tbody>
+    <tr><td>+0x00</td><td>8</td><td>u32[2]</td><td>Width and height in pixels</td></tr>
+    <tr><td>+0x08</td><td>32</td><td>fixed[4][2]</td><td>u, v of the corners: top-left, top-right, bottom-left, bottom-right</td></tr>
+  </tbody>
+</table>
+<p>The corners always form an axis-aligned rectangle whose size matches the pixel width and height. Rectangles have no names, so the game refers to them by index.</p>
+
+<h2>In OmegaStudio</h2>
+<ul>
+  <li>A TLPB plate needs version 4 and the -1 at 0x28, and its entries must end exactly at the end of the file.</li>
+  <li>A payload is a PLT plate when its length is exactly <code>20 + 40 * N</code>, the word at 0x06 is 9, and the word at 0x08 equals <code>W * H</code>.</li>
+  <li>The Properties pane lists the atlas size and every rectangle, named or numbered (<code>#0</code>, <code>#1</code>, ...), with its size and pixel position. Plates are read-only apart from raw byte replacement.</li>
+</ul>
+</body>
+</html>

@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<script src="../../script.js"></script>
+</head>
+<body>
+<p>A <code>.wad</code>, <code>.wad.mem1</code> and <code>.wad.vram</code> share one layout: a little-endian header, then a TJZIP-compressed image of hash buckets and typed entries. The Wii loader (<code>0x800f49d0</code>) checks the <code>HIG!</code> magic, version 9, the size and the CRC-32, then decompresses the image in place.</p>
+
+<h2>Layout</h2>
+<p>Once decompressed, the image is laid out like this, with the header still at its start, so every offset counts from the start of the header:</p>
+<table>
+  <thead><tr><th>Offset</th><th>Size</th><th>Description</th></tr></thead>
+  <tbody>
+    <tr><td>0x0000</td><td>0x80</td><td>Header, little-endian</td></tr>
+    <tr><td>0x0080</td><td>0x1000</td><td>1024 hash buckets, a u32 entry offset each (0 = empty)</td></tr>
+    <tr><td>0x1080</td><td>var</td><td>Entries: a 0xC0-byte header, then the entry's data</td></tr>
+  </tbody>
+</table>
+
+<h2>Header (0x80 bytes)</h2>
+<table>
+  <thead><tr><th>Offset</th><th>Size</th><th>Type</th><th>Description</th></tr></thead>
+  <tbody>
+    <tr><td>0x00</td><td>4</td><td>char[4]</td><td>Magic <code>HIG!</code></td></tr>
+    <tr><td>0x04</td><td>68</td><td>u32[17]</td><td>First entry of each type list, types 0 to 16; 0 = none</td></tr>
+    <tr><td>0x48</td><td>4</td><td>u32</td><td>CRC-32 of the decompressed payload, started from register 0 (<code>zlib.crc32(payload, 0xFFFFFFFF)</code>)</td></tr>
+    <tr><td>0x4C</td><td>4</td><td>u32</td><td>Version, 9</td></tr>
+    <tr><td>0x50</td><td>4</td><td>u32</td><td>Decompressed payload size, not counting the header</td></tr>
+    <tr><td>0x54</td><td>4</td><td>u32</td><td>Compressed size; the TJZIP stream starts at 0x80</td></tr>
+    <tr><td>0x58</td><td>4</td><td>u32</td><td>Alignment the image is allocated on: 0x40 Wii, 0x80 PS3 and 3DS, 0x1000 Xbox 360</td></tr>
+    <tr><td>0x5C</td><td>36</td><td>-</td><td>0, not read</td></tr>
+  </tbody>
+</table>
+
+<p>The loader byte-swaps the header on big-endian consoles and allocates <code>(size + 0x9F) &amp; ~0x1F</code> bytes for the image plus a 0x20020-byte margin. It reads <code>(compressed size + 0x1F) &amp; ~0x1F</code> bytes into the margin, decompresses in place to image + 0x80, checks the size and CRC, and frees the margin.</p>
+
+<h2>Entry Header (0xC0 bytes, little-endian)</h2>
+<table>
+  <thead><tr><th>Offset</th><th>Size</th><th>Type</th><th>Description</th></tr></thead>
+  <tbody>
+    <tr><td>0x00</td><td>4</td><td>u32</td><td>Path hash (below)</td></tr>
+    <tr><td>0x04</td><td>96</td><td>char[96]</td><td>Source path, NUL-padded, cut to 95 characters; not read</td></tr>
+    <tr><td>0x64</td><td>4</td><td>u32</td><td><a href="#types">Type</a>; 25 is an alias</td></tr>
+    <tr><td>0x68</td><td>4</td><td>u32</td><td>Data size; 0 for an alias, which takes its target's at load</td></tr>
+    <tr><td>0x6C</td><td>4</td><td>off</td><td>Next entry in the same hash bucket</td></tr>
+    <tr><td>0x70</td><td>4</td><td>off</td><td>Next entry in the same type list</td></tr>
+    <tr><td>0x74</td><td>4</td><td>u32</td><td>Entry index in image order</td></tr>
+    <tr><td>0x78</td><td>4</td><td>u32</td><td>Runtime: load state, 0 not loaded, 1 loaded, -1 loading or failed</td></tr>
+    <tr><td>0x7C</td><td>4</td><td>u32</td><td>Runtime: the loaded object</td></tr>
+    <tr><td>0x80</td><td>4</td><td>u32</td><td>0, not read</td></tr>
+    <tr><td>0x84</td><td>4</td><td>u32</td><td>Alias only: the target entry's offset minus 0x1080</td></tr>
+    <tr><td>0x88</td><td>56</td><td>-</td><td>0, not read</td></tr>
+  </tbody>
+</table>
+
+<p>The entry's data follows at +0xC0 in the platform's byte order. An alias copies its target's 0x7C and 0x68 at load (and 0x78 if its own is 0), then returns the target.</p>
+
+<h3>Path Hash</h3>
+<p>The CRC-32 of the source path below its platform folder (the part after <code>...\DATA\&lt;platform&gt;\</code>), with <code>a</code>-<code>z</code> upper-cased and <code>/</code> turned into <code>\</code>.</p>
+
+<h2>Finding an Entry</h2>
+<ul>
+  <li><strong>By hash</strong> (<code>0x800f4f20</code>): the bucket is <code>(hash &amp; 0x3FF) ^ (type | type &lt;&lt; 5)</code>, which equals <code>(hash ^ 33 * type) &amp; 1023</code> for every type in use. The chain is followed until an entry has the same hash and either the requested type or type 25. An alias sits in the bucket of its target's type.</li>
+  <li><strong>By type</strong> (<code>0x800f4ed0</code>): from the head at 0x04, along the type-list links at 0x70.</li>
+  <li><strong>Across WADs</strong> (<code>0x800f2f80</code>, <code>0x800f2e50</code>): five slots, each searched as <code>.wad</code> then <code>.wad.mem1</code>.</li>
+</ul>
+
+<h2 id="types">Entry Types</h2>
+<table>
+  <thead><tr><th>Type</th><th>Files</th></tr></thead>
+  <tbody>
+    <tr><td>0</td><td>World <code>.gdw</code>; the level loader (<code>0x8008ce80</code>) loads the first one</td></tr>
+    <tr><td>1</td><td>Sky dome <code>.gdw</code></td></tr>
+    <tr><td>2</td><td>World <code>.col</code></td></tr>
+    <tr><td>3</td><td><code>.bog</code> level database</td></tr>
+    <tr><td>5</td><td>Character, prop and pickup assets: <code>.gds</code>, <code>.gdt</code>, <code>.gdt.piece</code>, <code>.animpack</code>, <code>.col</code>, <code>.col.piece</code>, <code>.tuning.p2b</code></td></tr>
+    <tr><td>7</td><td>Tie models <code>.gdt</code> and their <code>.col</code>, found through the <code>.bog</code> tie groups</td></tr>
+    <tr><td>8</td><td>Shrub models <code>.gdi</code>, found through the <code>.bog</code> shrub layers</td></tr>
+    <tr><td>9</td><td><code>.htx</code> textures</td></tr>
+    <tr><td>10</td><td><code>.vs_bin</code> and <code>.ps_bin</code> shaders</td></tr>
+    <tr><td>13</td><td><code>.arc</code>, <code>.csv</code>, <code>.txt</code>, <code>.lcl</code>, <code>.fkd</code>, <code>.csd</code>, <code>.tuning.p2b</code></td></tr>
+    <tr><td>14</td><td><code>.nav</code> navigation mesh</td></tr>
+    <tr><td>15</td><td><code>.htx</code>, <code>.tuning.p2b</code>, <code>.cam</code></td></tr>
+    <tr><td>16</td><td><code>.htx</code>, <code>.tuning.p2b</code></td></tr>
+    <tr><td>25</td><td>Alias of another entry</td></tr>
+  </tbody>
+</table>
+<p>Types 4, 6, 11 and 12 never occur.</p>
+
+<h2>Placement</h2>
+<p>The loader checks none of this, but every file follows it. Entry headers and data start on 64-byte boundaries. On PS3 all data starts on 128 bytes except shaders (type 10). On 3DS types 9, 13, 15 and 16 start on 128. On Xbox 360 the same four types put data + 0x80 on a 4 KB boundary, so <code>.htx</code> pixel data stored at offset 0x80 is page-aligned. Gaps are zero-filled. A WAD with no entries ends with 0xC0 zero bytes after the buckets.</p>
+
+<p>When asked to, the loader runs a fixup (<code>0x800f46f0</code>): it walks the 17 type lists and the 1024 bucket chains, byte-swaps each entry's 0x00, 0x64, 0x68, 0x70, 0x74, 0x78 and 0x84 words, and turns the links into addresses.</p>
+
+<h2>TJZIP</h2>
+<p>An LZ77 variant with byte-aligned codes. The stream opens with a literal run, then alternates back-references and literals until the output reaches the stated size. Distances run from 1 to 32767 and copies may overlap.</p>
+
+<h3>Literal Run</h3>
+<p>A byte <code>n</code>. If it is non-zero, <code>n + 2</code> literal bytes follow (3 to 257). If it is zero, a little-endian u16 count follows, then that many bytes.</p>
+
+<h3>Back-Reference</h3>
+<table>
+  <thead><tr><th>First byte</th><th>Bytes</th><th>Length</th><th>Distance</th><th>Post</th></tr></thead>
+  <tbody>
+    <tr><td><code>0x00</code>-<code>0xBF</code></td><td>2</td><td><code>(b0 &gt;&gt; 5) + 4</code> (4-9)</td><td><code>(b0 &amp; 0x0C) &lt;&lt; 6 | b1</code> (10 bits)</td><td><code>b0 &amp; 3</code></td></tr>
+    <tr><td><code>0xC0</code>-<code>0xDF</code></td><td>3</td><td><code>(b0 &amp; 0x1F) + 4</code> (4-35)</td><td><code>(b1 &amp; 0xFC) &lt;&lt; 6 | b2</code> (14 bits)</td><td><code>b1 &amp; 3</code></td></tr>
+    <tr><td><code>0xE0</code>-<code>0xFF</code>, low nibble set</td><td>3</td><td><code>(b0 &amp; 0x0F) + 3</code> (4-18)</td><td><code>hi | (b1 &amp; 0xFC) &lt;&lt; 6 | b2</code></td><td><code>b1 &amp; 3</code></td></tr>
+    <tr><td><code>0xE0</code>-<code>0xFF</code>, low nibble 0, <code>b1 != 0</code></td><td>4</td><td><code>b1 + 18</code> (19-273)</td><td><code>hi | (b2 &amp; 0xFC) &lt;&lt; 6 | b3</code></td><td><code>b2 &amp; 3</code></td></tr>
+    <tr><td><code>0xE0</code>-<code>0xFF</code>, low nibble 0, <code>b1 == 0</code></td><td>6</td><td><code>b2 &lt;&lt; 8 | b3</code></td><td><code>hi | (b4 &amp; 0xFC) &lt;&lt; 6 | b5</code></td><td><code>b4 &amp; 3</code></td></tr>
+  </tbody>
+</table>
+<p>In the <code>0xE0</code> forms, <code>hi = (b0 &amp; 0x10) &lt;&lt; 10</code> supplies distance bit 14. After each copy, <em>post</em> says what follows: 0 a literal run, 1 or 2 that many literal bytes and then another back-reference, 3 another back-reference straight away. OmegaStudio's compressor splits literal runs longer than 65,535 bytes with a zero-length back-reference (<code>E0 00 00 00 00 01</code>).</p>
+
+<h2>In OmegaStudio</h2>
+<ul>
+  <li>Entries are found by walking every bucket chain and type list, and must be stored in their 0x74 index order. The CRC must match the decompressed image.</li>
+  <li>A path cut at 95 characters is restored when the hash proves it: the plugin tries the stored path with the tails of known names (<code>.gdt.piece</code>, <code>.col.piece</code>, <code>.tuning.p2b</code>, <code>.animpack</code>, <code>.htx</code> and the archive's own names) until one hashes to the entry.</li>
+  <li>An alias's target type is recovered from its bucket, <code>((bucket ^ hash) &amp; 1023) / 33</code>.</li>
+  <li>The platform comes from the stored paths, or else the alignment word: 0x40 Wii, 0x1000 Xbox 360, otherwise PS3.</li>
+  <li>Saving lays the entries out with the placement rules above, relinks the buckets and type lists, writes the version, sizes and CRC, and compresses with TJZIP. An untouched WAD saves byte for byte.</li>
+  <li>A WAD extracts to a folder of files plus a manifest of paths, hashes, types and aliases, and rebuilds from it. A new file takes the entry type of an existing file with the same extension.</li>
+</ul>
+</body>
+</html>

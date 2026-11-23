@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<script src="../../script.js"></script>
+</head>
+<body>
+<p><code>.fkd</code> is font kerning data: glyph cells and advances for a font texture. The Wii loader is <code>0x80ee9c0</code>.</p>
+
+<h2>Layout</h2>
+<table>
+  <thead><tr><th>Offset</th><th>Size</th><th>Type</th><th>Description</th></tr></thead>
+  <tbody>
+    <tr><td>0x00</td><td>4</td><td>char[4]</td><td>Magic <code>FKD.</code></td></tr>
+    <tr><td>0x04</td><td>1</td><td>u8</td><td>8</td></tr>
+    <tr><td>0x05</td><td>1</td><td>u8</td><td>8</td></tr>
+    <tr><td>0x06</td><td>1</td><td>u8</td><td>1</td></tr>
+    <tr><td>0x07</td><td>1</td><td>u8</td><td>0</td></tr>
+    <tr><td>0x08</td><td>2</td><td>u16</td><td>Texture width</td></tr>
+    <tr><td>0x0A</td><td>2</td><td>u16</td><td>Texture height</td></tr>
+    <tr><td>0x0C</td><td>1</td><td>u8</td><td>Glyph cell size; the loader copies it as both width and height</td></tr>
+    <tr><td>0x0D</td><td>1</td><td>u8</td><td>Non-zero</td></tr>
+    <tr><td>0x0E</td><td>1</td><td>u8</td><td>1 in big-endian files, 0 in little-endian ones</td></tr>
+    <tr><td>0x0F</td><td>1</td><td>u8</td><td>0</td></tr>
+    <tr><td>0x10</td><td>12</td><td>f32[3]</td><td>Metrics</td></tr>
+    <tr><td>0x1C</td><td>28</td><td>{u16 first, u16 last}[7]</td><td>Character code ranges; (0, 0) is unused</td></tr>
+    <tr><td>0x38</td><td>8 * n</td><td>glyph[]</td><td>Glyphs</td></tr>
+  </tbody>
+</table>
+<p>The loader rejects a font whose bytes 0x04-0x06 or 0x0D are wrong, and keeps a pointer to the glyphs at 0x38.</p>
+
+<h2>Glyph (8 bytes)</h2>
+<p>One per character code, in range order: u16 x, u16 y, u16 advance, u16 height.</p>
+
+<h2>In OmegaStudio</h2>
+<ul>
+  <li>Byte order is taken from the first metric. The glyph table must be a whole number of 8-byte glyphs and no longer than the ranges cover; each glyph is labelled with its character.</li>
+  <li>The file exports and imports as JSON. Bytes 0x04-0x0F are carried through as they are.</li>
+</ul>
+</body>
+</html>

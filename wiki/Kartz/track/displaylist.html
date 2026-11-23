@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<script src="../../script.js"></script>
+</head>
+<body>
+<p>A <a href="trk.html">TRK</a> chunk's payload is a Nintendo DS GX command stream, packed four opcodes per 32-bit word. Each opcode then takes zero or more whole parameter words from the same stream before the next opcode is read. A final group of fewer than four opcodes is padded with <code>0x00</code>, which takes no parameters and does nothing. <a href="../data/zon.html">ZON</a>, <a href="../data/car.html">CAR</a> and <a href="../data/amd.html">AMD</a> chunks use the same stream. The notes below are measured on the two Kartz games.</p>
+
+<h2>Opcodes in Use</h2>
+<table>
+  <thead><tr><th>Opcode</th><th>Name</th><th>Params</th><th>Encoding</th></tr></thead>
+  <tbody>
+    <tr><td>0x11</td><td>MTX_PUSH</td><td>0</td><td>Push the matrix stack</td></tr>
+    <tr><td>0x12</td><td>MTX_POP</td><td>1</td><td><code>param &amp; 0x3F</code> levels; always 1 in tracks</td></tr>
+    <tr><td>0x14</td><td>MTX_RESTORE</td><td>1</td><td>Restore stack slot <code>param &amp; 0x1F</code>. Character models use it to pick the bone the next vertices hang from, as bone index plus ten</td></tr>
+    <tr><td>0x1B</td><td>MTX_SCALE</td><td>3</td><td>i32 x 3, 20.12</td></tr>
+    <tr><td>0x1C</td><td>MTX_TRANS</td><td>3</td><td>i32 x 3, 20.12</td></tr>
+    <tr><td>0x20</td><td>COLOR</td><td>1</td><td>RGB555, <code>r | g &lt;&lt; 5 | b &lt;&lt; 10</code></td></tr>
+    <tr><td>0x21</td><td>NORMAL</td><td>1</td><td>3 x signed 10-bit, packed low to high, divided by 512. Never used in tracks</td></tr>
+    <tr><td>0x22</td><td>TEXCOORD</td><td>1</td><td>2 x signed 16-bit, 12.4. U in the low half, V in the high half</td></tr>
+    <tr><td>0x23</td><td>VTX_16</td><td>2</td><td>3 x signed 16-bit, 4.12. Word 0 holds X low and Y high, word 1 holds Z</td></tr>
+    <tr><td>0x28</td><td>VTX_DIFF</td><td>1</td><td>3 x signed 10-bit delta from the previous vertex. Always 0 in tracks</td></tr>
+    <tr><td>0x2A</td><td>TEXIMAGE_PARAM</td><td>1</td><td><code>0x40000000</code> for textured groups, <code>0x00000000</code> for untextured</td></tr>
+    <tr><td>0x2B</td><td>PLTT_BASE</td><td>1</td><td>Always 0</td></tr>
+    <tr><td>0x40</td><td>BEGIN_VTXS</td><td>1</td><td>Low 2 bits are the primitive: 0 triangles, 1 quads, 2 triangle strip, 3 quad strip</td></tr>
+    <tr><td>0x41</td><td>END_VTXS</td><td>0</td><td>No-op</td></tr>
+  </tbody>
+</table>
+
+<p>No other opcode appears in Kartz track data, and <code>MTX_RESTORE</code> appears only in character models.</p>
+
+<h2>Chunk Shape</h2>
+<ul>
+  <li>A chunk opens with <code>MTX_PUSH</code>, <code>MTX_TRANS</code>, <code>MTX_SCALE</code>, in that order. Both matrix opcodes multiply the current matrix, so scaling first would give <code>scale * translate + scale * v</code> instead of <code>translate + scale * v</code>.</li>
+  <li>Every <code>TEXIMAGE_PARAM</code> is followed by <code>PLTT_BASE</code> and then a baseline white <code>COLOR</code> of <code>0x7FFF</code>, all before <code>BEGIN_VTXS</code>.</li>
+  <li><code>COLOR</code> holds across a whole texture group, the run of blocks under one <code>TEXIMAGE_PARAM</code>, and is re-sent only when it changes or a group opens.</li>
+  <li><code>TEXCOORD</code> marks only the next vertex as textured.</li>
+  <li><code>NORMAL</code> never appears. Track geometry is shaded by vertex colour only.</li>
+  <li>Every non-empty chunk ends with one <code>MTX_POP</code> right after its last <code>END_VTXS</code>, then whatever no-ops complete the word.</li>
+</ul>
+
+<div class="note">
+  <strong>Note:</strong> Every non-empty chunk pushes once and pops once. The DS position and direction matrix stack is 31 levels deep and raises a <code>GXSTAT</code> overflow bit, so a chunk that pushes without popping is a hardware fault, not a cosmetic difference.
+</div>
+
+<h3>END_VTXS Padding</h3>
+<p>When <code>END_VTXS</code> lands as the fourth opcode of its word, a whole word of four no-ops follows before the next real opcode, even though the stream is already aligned. In slots 0, 1 and 2 no padding follows. The rule depends only on the slot.</p>
+
+<h3>Group Types</h3>
+<table>
+  <thead><tr><th>Group</th><th>Chunk header</th><th>Display list</th></tr></thead>
+  <tbody>
+    <tr><td>Textured</td><td>One texture reference per group</td><td><code>TEXIMAGE_PARAM 0x40000000</code>, <code>PLTT_BASE</code>, baseline <code>COLOR</code>, then blocks</td></tr>
+    <tr><td>Untextured</td><td>No reference</td><td><code>TEXIMAGE_PARAM 0x00000000</code>, no <code>PLTT_BASE</code>, never a <code>TEXCOORD</code></td></tr>
+    <tr><td>Empty chunk</td><td><code>texCount == 0</code></td><td><code>dlSize == 0</code>, no display list at all</td></tr>
+  </tbody>
+</table>
+
+<p>Empty chunks are rare, 8 of Super Star Kartz's 3996, and no non-empty display list emits zero vertices. Untextured geometry is always the shape above, never a reference to slot 0.</p>
+
+<p>Every group either opens its chunk or follows a different texture, with one exception across both games: chunk 0 of Madagascar's PlaneWreck reopens the same texture. A new <code>TEXIMAGE_PARAM</code> is nearly, but not quite, a reliable texture-change signal.</p>
+
+<h2>Vertices</h2>
+<p>Of the six GX vertex opcodes, tracks use two: <code>VTX_16</code> for every new position, and <code>VTX_DIFF</code> with a parameter of exactly 0 for a position equal to the previous vertex. No <code>VTX_16</code> repeats the preceding position. Repeats are common because a mode-0 block sends three vertices per triangle, so a triangle that reuses a corner restates it.</p>
+<p><code>VTX_16</code> reaches only about &plusmn;8 units, which is why each chunk carries its own translate and scale. <code>MTX_SCALE</code> is always a power of two (2, 4, 8, 16, 32, 64 and 256 occur) but not always the smallest that fits: it follows the level tool's cell size for that chunk index, which the geometry does not record.</p>
+
+<h2>Strips</h2>
+<p>Real chunks use mode 2 strips heavily, not just mode 0 triangles: a strip of N triangles costs N + 2 vertices instead of 3N. No mode-2 block has fewer than 4 vertices. Three rules describe how strips are built:</p>
+<ol>
+  <li><strong>Sequential.</strong> A strip only grows by the very next triangle.</li>
+  <li><strong>Never rotated.</strong> A strip continues only when the next triangle is already written as <code>(x, y, z)</code> for the pair the strip needs.</li>
+  <li><strong>The fallback is final.</strong> Once a triangle cannot open a strip, every remaining triangle in the group goes out as one list.</li>
+</ol>
+<p>Block layout is an authoring choice, not a property of the geometry. Mode-0 blocks routinely hold triangles that would chain into valid strips, and nothing in the geometry tells a two-triangle strip followed by a list apart from a pure list.</p>
+
+<h2>In OmegaStudio</h2>
+<h3>Reading</h3>
+<p>Every command is given a parameter count and consumes that many words, whether or not it is applied:</p>
+<table>
+  <thead><tr><th>Words</th><th>Applied</th><th>Skipped</th></tr></thead>
+  <tbody>
+    <tr><td>0</td><td><code>0x11</code></td><td><code>0x00</code>, <code>0x15</code>, <code>0x41</code>, and any unlisted opcode</td></tr>
+    <tr><td>1</td><td><code>0x14</code>, <code>0x20</code>-<code>0x22</code>, <code>0x24</code>-<code>0x28</code>, <code>0x2A</code>, <code>0x40</code></td><td><code>0x10</code>, <code>0x12</code>, <code>0x13</code>, <code>0x29</code>, <code>0x2B</code>, <code>0x30</code>-<code>0x33</code>, <code>0x50</code>, <code>0x60</code>, <code>0x72</code></td></tr>
+    <tr><td>2</td><td><code>0x23</code></td><td><code>0x71</code></td></tr>
+    <tr><td>3</td><td><code>0x1B</code>, <code>0x1C</code></td><td><code>0x70</code></td></tr>
+    <tr><td>9, 12, 16, 32</td><td>-</td><td><code>0x1A</code>; <code>0x17</code>, <code>0x19</code>; <code>0x16</code>, <code>0x18</code>; <code>0x34</code></td></tr>
+  </tbody>
+</table>
+<ul>
+  <li><code>MTX_PUSH</code> resets the reader's scale and translation; the hardware stack itself is not modelled. A vertex is placed at <code>v * scale + translate</code>.</li>
+  <li>Position updates: <code>VTX_16</code>, <code>VTX_XY</code>, <code>VTX_XZ</code> and <code>VTX_YZ</code> take signed 16-bit values divided by 4096; <code>VTX_10</code> takes signed 10-bit values divided by 64; <code>VTX_DIFF</code> adds signed 10-bit values divided by 4096.</li>
+  <li><code>COLOR</code> expands each 5-bit channel by bit replication. <code>TEXCOORD</code> divides by 16 and marks only the next vertex as textured.</li>
+  <li><code>TEXIMAGE_PARAM</code> switches texture by matching the byte offset of its parameter word, counted from the start of the display list, against the chunk's references.</li>
+  <li>Quads split as (0, 1, 2) and (0, 2, 3); strips alternate winding; quad strips emit (0, 1, 3) and (0, 3, 2).</li>
+</ul>
+
+<h3>Writing</h3>
+<p>The track writer emits exactly the chunk shape above: push, translate, scale, then per group <code>TEXIMAGE_PARAM</code>, <code>PLTT_BASE</code> and baseline <code>COLOR</code>, blocks, and a final <code>MTX_POP</code>, with the <code>END_VTXS</code> padding rule. It re-sends <code>COLOR</code> only when it changes and <code>TEXCOORD</code> when it changes or a block opens, unless the imported glTF records which vertices carried one, and writes <code>VTX_DIFF 0</code> for a repeated position. A glTF exported by OmegaStudio carries each primitive's block list, texcoord flags and group breaks in its extras, so an unedited track rebuilds with the blocks it came with; otherwise triangles are grouped by texture and chained into strips under the three rules above.</p>
+</body>
+</html>

@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<script src="../../script.js"></script>
+</head>
+<body>
+<p>An <code>.rdf</code> is a serialised object tree: records of named, typed properties. It names the files a level loads, the slot each of its textures fills and every value the level designer tuned. A <a href="../track/trk.html">TRK</a> chunk's texture index points into a table this file holds. Each <code>.rdf</code> is paired with a <a href="raf.html">RAF</a> that lists its pointers.</p>
+
+<h2>Files</h2>
+<table>
+  <thead><tr><th>Game</th><th>Files</th></tr></thead>
+  <tbody>
+    <tr><td>Super Star Kartz</td><td><code>main.rdf</code>, <code>ingamemenu.rdf</code>, <code>menupages.rdf</code>, and one <code>maintrack&lt;track&gt;.rdf</code> per track</td></tr>
+    <tr><td>Madagascar Kartz</td><td>A single <code>main.rdf</code> covering every track</td></tr>
+  </tbody>
+</table>
+
+<p>The record format is the same in every game. This file split is the only real difference between the two Kartz games.</p>
+
+<h2>Layout</h2>
+<pre>+----------------------+   &lt;-- 0x00
+| u32 dictionary       |       offset of the name dictionary
+| u32 root             |       offset of the root record, 0x08 in retail files
++----------------------+   &lt;-- 0x08
+| Records              |       the object tree, in writer order
++----------------------+
+| Arrays, vectors      |       out-of-line property values
++----------------------+
+| Name dictionary      |
++----------------------+
+| String pool          |       null-terminated ASCII
++----------------------+   &lt;-- EOF</pre>
+
+<p>Both header words are pointers, so the RAF lists them as offsets 0 and 4.</p>
+
+<h2>Record</h2>
+<table>
+  <thead><tr><th>Offset</th><th>Size</th><th>Type</th><th>Description</th></tr></thead>
+  <tbody>
+    <tr><td>+0x00</td><td>4</td><td>u32</td><td>Property count</td></tr>
+    <tr><td>+0x04</td><td>8 * count</td><td>{u32 key, u32 value}[]</td><td>Properties, in authored order</td></tr>
+  </tbody>
+</table>
+
+<p>A record is <code>4 + 8 * count</code> bytes, with no class name, size or terminator. The key packs two dictionary indices:</p>
+
+<table>
+  <thead><tr><th>Bits</th><th>Meaning</th></tr></thead>
+  <tbody>
+    <tr><td>16-31</td><td>Property name index</td></tr>
+    <tr><td>0-15</td><td>Type name index</td></tr>
+  </tbody>
+</table>
+
+<p>Both index the same dictionary, so a property reads out as plain text: <code>startdist</code> of type <code>fx32</code>, <code>model</code> of type <code>fileidlist</code>. Type names are stored like any other name; only the way each type encodes its value is fixed.</p>
+
+<h2>Types</h2>
+<table>
+  <thead><tr><th>Type</th><th>Storage</th><th>Encoding</th></tr></thead>
+  <tbody>
+    <tr><td><code>fx32</code></td><td>inline</td><td>20.12 signed fixed point</td></tr>
+    <tr><td><code>fx16</code></td><td>inline</td><td>Fixed point in the low half of the slot</td></tr>
+    <tr><td><code>int32</code> / <code>uint32</code></td><td>inline</td><td>Signed / unsigned 32-bit</td></tr>
+    <tr><td><code>int16</code> / <code>uint16</code></td><td>inline</td><td>Low half of the slot</td></tr>
+    <tr><td><code>bool8</code></td><td>inline</td><td>0 or 255</td></tr>
+    <tr><td><code>fileid</code></td><td>inline</td><td>Index into the <a href="../archive/gda.html">GDF</a> path table</td></tr>
+    <tr><td><code>lstring</code></td><td>inline</td><td>Localised string id, resolved against the files under <code>loc</code></td></tr>
+    <tr><td><code>resource</code></td><td>referenced</td><td>Offset of a nested record</td></tr>
+    <tr><td><code>string</code></td><td>referenced</td><td>Null-terminated ASCII in the string pool</td></tr>
+    <tr><td><code>vector3fx</code></td><td>referenced</td><td>Three 20.12 words</td></tr>
+    <tr><td><code>fileidlist</code></td><td>referenced</td><td>Offset of a word that holds the offset of a <code>fileid[]</code></td></tr>
+    <tr><td><code>T[]</code></td><td>referenced</td><td>Array of <code>T</code>, for every <code>T</code> above except <code>vector3fx</code></td></tr>
+  </tbody>
+</table>
+
+<p>A <code>T[]</code> value points at a <code>u32 count</code> followed by <code>count</code> four-byte elements, each encoded as that type would be inline. Elements of a referenced type are themselves pointers. An empty array is written as a lone zero word, not omitted.</p>
+
+<p><code>fileidlist</code> adds one hop: the slot points at a single word, and that word points at the <code>u32 count</code>. Otherwise it is the same as <code>fileid[]</code>.</p>
+
+<h2>Name Dictionary</h2>
+<table>
+  <thead><tr><th>Offset</th><th>Size</th><th>Type</th><th>Description</th></tr></thead>
+  <tbody>
+    <tr><td>+0x00</td><td>4</td><td>u32</td><td>Name count</td></tr>
+    <tr><td>+0x04</td><td>4</td><td>u32</td><td>Offset of the key array</td></tr>
+    <tr><td>+0x08</td><td>4</td><td>u32</td><td>Offset of the string-offset array</td></tr>
+  </tbody>
+</table>
+
+<p>The two arrays are <code>count</code> words long, parallel and contiguous, the string array starting right after the key array. Entry <em>i</em> pairs key <em>i</em> with string <em>i</em>. Keys are in ascending order, so lookup is a binary search. Entry 0 is the empty string with key 0. Dictionaries hold 54 to 1942 names.</p>
+
+<div class="note">
+  <strong>Unknown:</strong> how a key is derived from its name. It is a pure function of the string, since a name carries the same key in every file, and the empty string maps to 0 while a single character maps to its own byte value. It is not CRC-32 under any common polynomial, not Jenkins one-at-a-time, and not a multiply-accumulate chain in either direction. Reading never needs it, and existing names carry through unchanged; only a brand-new name would.
+</div>
+
+<h2 id="slots">Texture Slot Table</h2>
+<p>A track's textures live in its record's <code>textures</code> property: a record holding a <code>texture</code> array. The array index is the slot number a <a href="../track/trk.html">TRK</a> stores, and the table is written out in full, empty slots included. Each element is a seven-property record:</p>
+
+<table>
+  <thead><tr><th>Property</th><th>Type</th><th>Meaning</th></tr></thead>
+  <tbody>
+    <tr><td><code>name</code></td><td><code>fileid[]</code></td><td>The <code>.5tx</code> files bound to the slot. Empty for an unused slot; several for an animated slot, played in order</td></tr>
+    <tr><td><code>animationframetime</code></td><td><code>fx32</code></td><td>Seconds per frame</td></tr>
+    <tr><td><code>texturesizeinv</code></td><td><code>fx32</code></td><td>Reciprocal of the texture size, for the UV scale</td></tr>
+    <tr><td><code>animationtype</code></td><td><code>int32</code></td><td>0 for a still texture</td></tr>
+    <tr><td><code>loopmode</code></td><td><code>int32</code></td><td>Unknown</td></tr>
+    <tr><td><code>updatemode</code></td><td><code>int32</code></td><td>Unknown</td></tr>
+    <tr><td><code>pixelinterval</code></td><td><code>int32</code></td><td>Unknown</td></tr>
+  </tbody>
+</table>
+
+<p>Measured on all 28 tracks of the two Kartz games:</p>
+<ul>
+  <li>Slot 0 is always empty, which is why a TRK's stored texture index is never 0.</li>
+  <li>No track draws a slot whose <code>name</code> list is empty, and every table is longer than the highest slot its track draws.</li>
+  <li>The table is not a permutation. One <code>fileid</code> can fill several slots: Madagascar's FoosaRocks binds <code>FR_fast_rock</code> to slots 3 and 4, <code>FR_grass_tile</code> to 5 and 8, and <code>FR_fast_mud</code> to 1 and 7.</li>
+</ul>
+
+<h2>Track Subtree</h2>
+<p>Each entry of <code>trackarray</code> holds <code>nameid</code>, an <code>env</code> record, the <code>track</code> itself and a <code>trackobject</code> list.</p>
+
+<table>
+  <thead><tr><th>Path</th><th>Type</th><th>Contents</th></tr></thead>
+  <tbody>
+    <tr><td><code>track.model</code></td><td><code>fileidlist</code></td><td>Four ids in fixed order: the <code>.col</code>, the <code>.trk</code>, the <code>.bpvs</code>, then <code>-1</code>. The only place a track's geometry file is named</td></tr>
+    <tr><td><code>track.textures.texture</code></td><td><code>resource[]</code></td><td>The <a href="#slots">slot table</a></td></tr>
+    <tr><td><code>track.billboardobject.allbillboardobjects</code></td><td><code>resource[]</code></td><td>Scenery billboards</td></tr>
+    <tr><td><code>track.dynamicobject.alldynamicobjects</code></td><td><code>resource[]</code></td><td>Animated scenery</td></tr>
+    <tr><td><code>track.startdist</code>, <code>deltaforwarddist</code>, <code>deltasidedist</code></td><td><code>fx32</code></td><td>Start-grid spacing, from which the grid is generated</td></tr>
+    <tr><td><code>trackobject.alltrackobjects</code></td><td><code>resource[]</code></td><td>Gameplay props, each with <code>tracksectionindex</code>, <code>type</code>, <code>sidedistance</code>, <code>fowarddistance</code> and <code>height</code></td></tr>
+  </tbody>
+</table>
+
+<p>A billboard is a full placement: <code>x</code>, <code>y</code>, <code>z</code>, <code>width</code>, <code>height</code>, <code>scalex</code>, <code>scaley</code>, <code>scaletime</code>, <code>movedirection</code>, <code>movespeed</code>, <code>moveheight</code> and a <code>texture</code> <code>fileid</code>. It names its texture by archive id, not by slot, so billboard textures never appear in the slot table.</p>
+
+<p>A dynamic object adds <code>movetype</code>, rotation and up-down motion, four texture-scroll values, <code>renderborder</code>, <code>vertexalphavalue</code>, a <code>model</code> <code>fileid</code> naming a <code>.zon</code>, and a <code>textures</code> record of its own.</p>
+
+<h2>Root</h2>
+<p>Super Star Kartz's <code>main.rdf</code> opens with <code>sound</code>, <code>boot</code>, <code>loc</code>, <code>tracks</code>, <code>ai</code>, <code>cars</code>, <code>menusetting</code>, <code>sfx</code>, <code>gameplay</code>, <code>lotcheck</code>, <code>driveranimations</code>, <code>weaponanimations</code>, <code>weapons</code> and <code>skybox</code>. Madagascar's adds <code>test</code>, <code>menus</code> and <code>huds</code>. A per-track file's root is a single <code>trackarray</code> with one entry.</p>
+
+<p><code>tracks</code> also carries <code>txvram</code> and <code>plvram</code>, two <code>int32[]</code> holding the texture and palette VRAM budgets, and <code>trackobjectconfig</code>.</p>
+
+<h2>In OmegaStudio</h2>
+<p>The plugin reads every <code>.rdf</code> beside the archive, in path order, skipping files it cannot read. If none parses, track textures fall back to a name match (see <a href="../texture/5tx.html#binding">5TX</a>).</p>
+<ul>
+  <li>The file must hold the 8-byte header. The dictionary and its string-offset array must fit the file, every string offset must point inside it, and a name is read up to 128 bytes.</li>
+  <li>Each record offset is read once, so two pointers to one record give the same object. Records nest at most 64 levels deep. A record with a property that fails to read fails as a whole.</li>
+  <li>Only <code>resource</code>, <code>resource[]</code>, <code>fileid</code>, <code>fileid[]</code> and <code>fileidlist</code> are followed. Every other type is kept as its raw 32-bit slot.</li>
+  <li>Texture slots come from any record that carries both a <code>model</code> id list and a <code>textures</code> table, given as a <code>resource[]</code> or as a record with a <code>texture</code> array. A slot's ids come from its own <code>name</code> list or from the <code>name</code> lists of nested <code>texture</code> records, up to three levels down.</li>
+  <li>When a record names several models and its table has exactly as many entries, the two lists pair up: model <em>i</em> gets entry <em>i</em> as its only slot. Every skybox in a game is bound this way.</li>
+  <li>The RDF is never written.</li>
+</ul>
+</body>
+</html>

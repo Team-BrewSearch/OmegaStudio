@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<script src="../../script.js"></script>
+</head>
+<body>
+<p><code>.bpvs</code> is one track's visibility data: for each sector of the paired <a href="col.html">COL</a> surface, which <a href="trk.html">TRK</a> chunks to draw. The figures below are measured on the two Kartz games.</p>
+
+<h2>Layout</h2>
+<table>
+  <thead><tr><th>Offset</th><th>Size</th><th>Type</th><th>Description</th></tr></thead>
+  <tbody>
+    <tr><td>0x00</td><td>4</td><td>u32</td><td>Sector count, matching the <code>.col</code></td></tr>
+    <tr><td>0x04</td><td>4</td><td>u32</td><td>8, the offset of the table below</td></tr>
+    <tr><td>0x08</td><td>4 * sectors</td><td>u32[]</td><td>Absolute offset of each sector's run list</td></tr>
+    <tr><td>var</td><td>4</td><td>u32</td><td>Zero terminator</td></tr>
+    <tr><td>var</td><td>var</td><td>u8[]</td><td>Run lists, back to back</td></tr>
+  </tbody>
+</table>
+
+<h2>Run Lists</h2>
+<p>A run list is a sequence of bytes. The low seven bits are a run length; bit 7 set means those chunks are hidden, clear means they are drawn. A list ends once its runs cover the track's chunk count, so lists need no terminator and several sectors can share one. A run longer than 127 chunks is split across bytes of the same kind.</p>
+
+<p>A sector draws between a third and three quarters of a track's chunks.</p>
+
+<p>Four tracks carry a well-formed run list that no sector points at, left over from whatever built them.</p>
+
+<h2>In OmegaStudio</h2>
+<ul>
+  <li>The chunk count comes from the <code>.trk</code> with the same path and name, so a <code>.bpvs</code> decodes only beside its track.</li>
+  <li>The file is at least 16 bytes, the word at <code>+0x04</code> is 8, the sector count is 1 to 8192, the table and terminator fit, the terminator is zero, and every list offset lands after the table and inside the file.</li>
+  <li>Each list must cover the chunk count exactly. A list that runs off the end of the file fails with its offset; one that covers the wrong count fails with both counts.</li>
+  <li>The Properties pane shows the sector count, the average and range of chunks drawn, and how many lists are shared.</li>
+  <li>Writing back an unchanged file keeps every byte, orphan lists included. A table built from scratch drops them.</li>
+</ul>
+<p>All 28 Kartz visibility files decode and re-encode to the same visible chunk set. Monster Jam's 29 files are 12-byte stubs with no lists.</p>
+</body>
+</html>

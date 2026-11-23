@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<script src="../../script.js"></script>
+</head>
+<body>
+<p>String tables and text data across the five games. The older games keep strings in one LANG table; the 2011 games use FCOL tables, CSV sources and hand-written resource files.</p>
+
+<h2>LANG</h2>
+<p><code>data/lang/lang.bin</code> in CNK2, CNK3D and Krazy Kart Racing.</p>
+<table>
+  <thead><tr><th>Offset</th><th>Size</th><th>Type</th><th>Description</th></tr></thead>
+  <tbody>
+    <tr><td>0x00</td><td>4</td><td>char[4]</td><td>Magic <code>"LANG"</code></td></tr>
+    <tr><td>0x04</td><td>4</td><td>u32</td><td>Language count L</td></tr>
+    <tr><td>0x08</td><td>4</td><td>u32</td><td>Strings per language S</td></tr>
+    <tr><td>0x0C</td><td>4</td><td>u32</td><td>Encoding: 1 UTF-8, 2 UTF-16LE</td></tr>
+    <tr><td>0x10</td><td>4</td><td>u32</td><td>Byte length of the language name block</td></tr>
+    <tr><td>0x14</td><td>var</td><td>-</td><td>Language names, NUL-terminated, in the file's encoding</td></tr>
+    <tr><td>var</td><td>16 * L</td><td>{u32 offset, u32 size, u32 packed size, u32 name offset}[L]</td><td>Language records</td></tr>
+    <tr><td>var</td><td>var</td><td>-</td><td>One zlib blob per language, back to back</td></tr>
+  </tbody>
+</table>
+<p>Each blob inflates to exactly S NUL-terminated strings, so string <em>k</em> means the same thing in every language.</p>
+<table>
+  <thead><tr><th>Game</th><th>Encoding</th><th>Languages</th><th>Strings</th></tr></thead>
+  <tbody>
+    <tr><td>CNK2</td><td>UTF-8</td><td>ENGLISH, FRANÇAIS, ITALIANO, DEUTSCH, ESPAÑOL</td><td>193</td></tr>
+    <tr><td>CNK3D</td><td>UTF-16LE</td><td>The same five</td><td>315</td></tr>
+    <tr><td>Krazy Kart Racing</td><td>UTF-8</td><td>The same five plus JAPANESE</td><td>270</td></tr>
+  </tbody>
+</table>
+
+<h2>FCOL</h2>
+<p><code>data/locale/bstrings.*</code> in Raging Thunder 2.</p>
+<table>
+  <thead><tr><th>Offset</th><th>Size</th><th>Type</th><th>Description</th></tr></thead>
+  <tbody>
+    <tr><td>0x00</td><td>4</td><td>char[4]</td><td>Magic <code>"FCOL"</code></td></tr>
+    <tr><td>0x04</td><td>4</td><td>u32</td><td>Count N</td></tr>
+    <tr><td>0x08</td><td>8 * N</td><td>{u32 key offset, u32 value offset}[N]</td><td>String records</td></tr>
+    <tr><td>var</td><td>var</td><td>char[]</td><td>Keys, ASCII, NUL-terminated, back to back</td></tr>
+    <tr><td>var</td><td>0 or 1</td><td>u8</td><td><code>0xFF</code> when needed to reach an even offset</td></tr>
+    <tr><td>var</td><td>var</td><td>u16[]</td><td>Values, UTF-16LE, NUL-terminated, back to back</td></tr>
+  </tbody>
+</table>
+<p>All five files (<code>.eng</code>, <code>.fre</code>, <code>.ger</code>, <code>.ita</code>, <code>.spa</code>) hold the same 304 keys in sorted order. Only English is translated; the rest say <code>translate</code>.</p>
+
+<h2>Getaway Locale Sources</h2>
+<p><code>frontend/locale/strings.b??</code> (<code>bde</code>, <code>ben</code>, <code>bes</code>, <code>bfr</code>, <code>bit</code>) are CSV files with CRLF line ends, a header row and 424 strings:</p>
+<pre>"String Identifier","Source Language Text","Target Language Translation"
+"buyfull_to_enable","Kauf die vollversion, um zugang zu der strecke zu bekommen",""</pre>
+<p>Fields are not escaped: some text contains bare quotes and blank lines, so split on <code>","</code>.</p>
+
+<p><code>frontend/locale/loc_??.hxx</code> are small hand-written resource files, also CRLF:</p>
+<pre>strings
+{
+	node
+	{
+		string id = "achievements";
+		string data = "translate";
+	}
+	...
+}</pre>
+
+<h2>Shaders and Credits</h2>
+<p><code>rg/shaders.vfs</code> holds 17 fragment (<code>.fp</code>) and 19 vertex (<code>.vp</code>) GLSL ES programs, ASCII with CRLF, such as <code>default_vcolor</code>, <code>lightmap_dynlight</code>, <code>topdown_car</code>, <code>blur</code> and <code>game/cpy_cheapvideocam</code>.</p>
+<p>RT2's <code>data/menu/credits.txt</code> is CRLF text with light markup: lines starting with <code>+</code> are headings, and <code>@1</code> to <code>@3</code> lines place a logo.</p>
+
+<h2>XML</h2>
+<p>CNK2 has 27 XML files: minimap generators, a system configuration, and a 57 KB game database covering kart physics, surface materials, characters, karts, tracks, cups, missions, power-ups and unlocks. Krazy Kart Racing has one, its "Krazy Racers database" for race flow and unlocks.</p>
+
+<h2>In OmegaStudio</h2>
+<ul>
+  <li>LANG: the encoding must be 1 or 2, fewer than 256 languages, each blob must start where the previous one ended and inflate to exactly S strings, and nothing may follow the last blob. Each language is a row whose strings are edited in the Properties pane.</li>
+  <li>Saving a LANG rewrites it with the name block padded to 4 bytes and each language re-compressed at level 9.</li>
+  <li>FCOL: every key and value must start where the previous one ended, the pad byte must be <code>0xFF</code>, and nothing may follow the last value. Values are edited in the Properties pane by key.</li>
+  <li>CSV, HXX, shaders, credits and XML open as text rows.</li>
+</ul>
+</body>
+</html>

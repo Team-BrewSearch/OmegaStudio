@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<script src="../../script.js"></script>
+</head>
+<body>
+<p>Every Virtuos DS game stores its assets in three files that only work together: the <code>.gda</code> holds the bytes, the <code>.gdf</code> the paths and the <code>.gdt</code> the byte ranges. Super Star Kartz ships them as <code>DWK.gda</code>, <code>DWK.gdf</code> and <code>DWK.gdt</code>; Madagascar Kartz as <code>MAD.*</code>. Entry <em>n</em> takes its path from the GDF and its byte range from the GDT.</p>
+
+<h2>GDF: Path Table</h2>
+<table>
+  <thead><tr><th>Offset</th><th>Size</th><th>Type</th><th>Description</th></tr></thead>
+  <tbody>
+    <tr><td>0x00</td><td>4</td><td>u32</td><td>Entry count</td></tr>
+    <tr><td>0x04</td><td>4 * count</td><td>u32[count]</td><td>Path offsets, relative to the string pool that follows</td></tr>
+    <tr><td>var</td><td>var</td><td>char[]</td><td>String pool: null-terminated ASCII paths, backslash-separated</td></tr>
+  </tbody>
+</table>
+
+<p>A path looks like <code>Models\Tracks\FarFarAway\FarFarAway.trk</code>.</p>
+
+<h2>GDT: Range Table</h2>
+<table>
+  <thead><tr><th>Offset</th><th>Size</th><th>Type</th><th>Description</th></tr></thead>
+  <tbody>
+    <tr><td>0x00</td><td>4</td><td>u32</td><td>Always 0</td></tr>
+    <tr><td>0x04</td><td>4</td><td>u32</td><td>Entry count, equal to the GDF count in retail files</td></tr>
+    <tr><td>0x08</td><td>8 * count</td><td>{u32 offset, u32 size}[]</td><td>Byte range of each entry inside the GDA</td></tr>
+  </tbody>
+</table>
+
+<p>An entry exists only when <code>size &gt; 0</code> and <code>offset + size</code> fits inside the GDA. Anything else is an empty slot.</p>
+
+<h2>GDA: Data</h2>
+<p>One region per non-empty entry, with no header of its own. Each region is zero-padded to the archive's alignment. Both Kartz archives align to 32 bytes.</p>
+
+<h2>Shared Content</h2>
+<p>The Kartz archives point several GDT entries at the <strong>same</strong> GDA offset whenever their bytes are identical: a driver's <code>player</code> and <code>ai</code> textures share one copy, and two tracks' skyboxes share one scenery mesh.</p>
+
+<table>
+  <thead><tr><th>Archive</th><th>Entries</th><th>Distinct offsets</th><th>Shared entries</th><th>Bytes saved</th></tr></thead>
+  <tbody>
+    <tr><td>Super Star Kartz <code>DWK.gda</code></td><td>1770</td><td>1443</td><td>327</td><td>941 KB</td></tr>
+    <tr><td>Madagascar Kartz <code>MAD.gda</code></td><td>1377</td><td>1132</td><td>245</td><td>626 KB</td></tr>
+  </tbody>
+</table>
+
+<div class="note">
+  <strong>Note:</strong> The sharing is load-bearing. An archive rebuilt with a private copy per entry decodes fine but breaks the running game, which drops geometry and unrelated character, kart and UI assets. The engine appears to cache a loaded asset by its GDA offset, so entries that share an offset load once.
+</div>
+
+<h2>In OmegaStudio</h2>
+<ul>
+  <li>The entry count is the smallest of the GDF count, the GDT's stated count and the number of entries the GDT's bytes can hold. Every index below it becomes a row, empty or not.</li>
+  <li>A path whose offset falls outside the GDF reads as empty.</li>
+  <li>The alignment is the largest power of two from 4096 down to 4 that divides every non-zero offset; 32 when every offset is zero, 4 when nothing larger fits.</li>
+  <li>Saving rebuilds the GDA and GDT and leaves the GDF alone. Entries are written in index order, each padded to the alignment. An entry whose bytes match an earlier one (SHA-256, then a full compare) points at the earlier copy, so sharing survives edits. An empty entry gets size 0 at the current end of the data.</li>
+  <li>Before anything is written, the rebuilt pair is read back and every entry is compared with the bytes it should hold.</li>
+</ul>
+</body>
+</html>

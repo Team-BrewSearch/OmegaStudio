@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<script src="../../script.js"></script>
+</head>
+<body>
+<p>A model blob holds one character or object: a flat list of <strong>nodes</strong>, each either a bone or a mesh, followed by any number of embedded <a href="../texture/ringtex2.html">ringtex2</a> textures. The skeleton is rebuilt from parent indices stored on the bones. <a href="../animation/anim.html">Animation clips</a> are separate blobs in the same archive table as the model.</p>
+
+<h2>Header</h2>
+<table>
+  <thead><tr><th>Offset</th><th>Size</th><th>Type</th><th>Description</th></tr></thead>
+  <tbody>
+    <tr><td>0x00</td><td>4</td><td>u32</td><td>Version, always 1</td></tr>
+    <tr><td>0x04</td><td>4</td><td>u32</td><td>Node count</td></tr>
+    <tr><td>0x08</td><td>4</td><td>u32</td><td>Unknown</td></tr>
+    <tr><td>0x0C</td><td>4</td><td>u32</td><td>Embedded texture count, at most 16</td></tr>
+    <tr><td>0x10</td><td>0x40</td><td>u32[16]</td><td>Offsets of the embedded textures, one per texture</td></tr>
+    <tr><td>0x50</td><td>4 * nodes</td><td>u32[]</td><td>Node offsets</td></tr>
+  </tbody>
+</table>
+
+<p>Offsets count from the start of the blob. The first node starts right after the node table, at <code>0x50 + 4 * node_count</code>, with no padding. A node runs to the next node offset; the last node runs to the first texture, or to the end of the blob when there are no textures.</p>
+
+<h2>Node Type</h2>
+<p>No type tag is stored. A node is a <strong>mesh</strong> when the four bytes at <code>+0x70</code> are <code>"Mate"</code>, the start of its first material name. Every other node is a <strong>bone</strong>.</p>
+
+<h2>Bone Node</h2>
+<table>
+  <thead><tr><th>Offset</th><th>Size</th><th>Type</th><th>Description</th></tr></thead>
+  <tbody>
+    <tr><td>0x00</td><td>0x70</td><td>char[0x70]</td><td>Bone name, null padded</td></tr>
+    <tr><td>0x70</td><td>4</td><td>u32</td><td><code>related</code>: parent node index plus one</td></tr>
+    <tr><td>0x74</td><td>12</td><td>-</td><td>Unknown</td></tr>
+    <tr><td>0x80</td><td>4</td><td>u32</td><td>Node index of the mesh this bone skins</td></tr>
+    <tr><td>0x84</td><td>4</td><td>u32</td><td>Weight count</td></tr>
+    <tr><td>0x88</td><td>0x40</td><td>f32[16]</td><td>World bind matrix</td></tr>
+    <tr><td>0xC8</td><td>0x40</td><td>f32[16]</td><td>Inverse bind matrix, unreliable (see below)</td></tr>
+    <tr><td>0x108</td><td>0x48</td><td>-</td><td>Unknown</td></tr>
+    <tr><td>0x150</td><td>8 * n</td><td>{u32, f32}[n]</td><td>Skin weights: skin vertex index, weight</td></tr>
+  </tbody>
+</table>
+
+<p>A bone node is exactly <code>0x150 + 8 * weight_count</code> bytes, for every bone of every character in the retail data.</p>
+
+<h3>Skeleton</h3>
+<p><code>parent = related - 1</code> rebuilds the whole hierarchy with no special cases: <code>Lshoulder</code> under <code>Spine1</code>, <code>Lupleg</code> under <code>Hips</code>, hair chains under <code>Head</code>, skirt chains under <code>Hips</code>. The first node, <code>ABone</code>, is the root. Bones prefixed <code>DBS_</code> and <code>DBE_</code> mark the start and end of dynamic-bone chains for hair, skirts, ribbons and collars.</p>
+
+<div class="note">
+  <strong>Note:</strong> The matrix at <code>0xC8</code> is the inverse of the bind matrix for ordinary bones, but a few weightless <code>DBS_</code> anchors store something else there. Invert the bind matrix at <code>0x88</code> instead; OmegaStudio never reads <code>0xC8</code>.
+</div>
+
+<h2>Mesh Node</h2>
+<table>
+  <thead><tr><th>Offset</th><th>Size</th><th>Type</th><th>Description</th></tr></thead>
+  <tbody>
+    <tr><td>0x00</td><td>0x20</td><td>char[0x20]</td><td>Mesh name, null padded</td></tr>
+    <tr><td>0x20</td><td>4</td><td>-</td><td>Unknown</td></tr>
+    <tr><td>0x24</td><td>4</td><td>u32</td><td>Can hold the blob offset of an embedded texture. OmegaStudio moves it with the texture</td></tr>
+    <tr><td>0x28</td><td>4</td><td>u32</td><td>Looks like a material count but does not match the data; unused</td></tr>
+    <tr><td>0x2C</td><td>4</td><td>-</td><td>Unknown</td></tr>
+    <tr><td>0x30</td><td>0x40</td><td>u32[16]</td><td>Triangle count per material, ended by the first zero</td></tr>
+    <tr><td>0x70</td><td>0x44 * m</td><td>record[m]</td><td>Material records, one per non-zero triangle count</td></tr>
+    <tr><td>0x70 + 0x44m</td><td>4</td><td>-</td><td>Unknown</td></tr>
+    <tr><td>0x74 + 0x44m</td><td>0x10</td><td>u32[4]</td><td>Count block: skin vertex count, the same count again, triangle count, own node index</td></tr>
+    <tr><td>+0x10</td><td>0xCC</td><td>-</td><td>Unknown, directly after the count block</td></tr>
+    <tr><td>+0xDC</td><td>12 * v</td><td>f32[3][v]</td><td>Skin-space positions, counted from the start of the count block</td></tr>
+    <tr><td>var</td><td>12 * v</td><td>f32[3][v]</td><td>Skin-space normals</td></tr>
+    <tr><td>var</td><td>148 * t</td><td>-</td><td><a href="#draw">Draw stream</a></td></tr>
+  </tbody>
+</table>
+
+<p>The material count is the number of entries before the first zero in the table at <code>0x30</code>. Triangles are handed to materials in order: the first material takes the first <code>tri_counts[0]</code> triangles, the next takes the following <code>tri_counts[1]</code>, and so on.</p>
+
+<p>The count block sits 4 bytes after the last material record. OmegaStudio's reader still locates it by scanning from <code>0x70</code> up to <code>0x400</code> for four words where the first two are equal and between 1 and 2<sup>20</sup> - 1 and the third equals the summed triangle count.</p>
+
+<h3>Material Record (0x44 bytes)</h3>
+<table>
+  <thead><tr><th>Offset</th><th>Size</th><th>Type</th><th>Description</th></tr></thead>
+  <tbody>
+    <tr><td>0x00</td><td>0x20</td><td>char[0x20]</td><td>Material name, null padded</td></tr>
+    <tr><td>0x20</td><td>4</td><td>u32</td><td>Index into the model's embedded textures, <code>0xFFFFFFFF</code> when untextured</td></tr>
+    <tr><td>0x24</td><td>16</td><td>f32[4]</td><td>RGBA colour</td></tr>
+    <tr><td>0x34</td><td>0x10</td><td>-</td><td>Unknown</td></tr>
+  </tbody>
+</table>
+
+<h2 id="draw">Draw Stream</h2>
+<p>A plain triangle list with <strong>no index buffer</strong>. Each triangle stores three full 40-byte vertices and a 28-byte trailer, 148 bytes in all.</p>
+
+<h3>Vertex (40 bytes)</h3>
+<table>
+  <thead><tr><th>Offset</th><th>Size</th><th>Type</th><th>Description</th></tr></thead>
+  <tbody>
+    <tr><td>0x00</td><td>12</td><td>f32[3]</td><td>Position, always equal to <code>positions[vertex_id]</code></td></tr>
+    <tr><td>0x0C</td><td>12</td><td>f32[3]</td><td>Normal, unit length</td></tr>
+    <tr><td>0x18</td><td>8</td><td>f32[2]</td><td>UV, origin top-left</td></tr>
+    <tr><td>0x20</td><td>4</td><td>u8[4]</td><td>Vertex colour, B, G, R, A. Neutral grey throughout the retail data, typically <code>0x808080FF</code></td></tr>
+    <tr><td>0x24</td><td>4</td><td>u16[2]</td><td><code>vertex_id</code>, stored twice</td></tr>
+  </tbody>
+</table>
+
+<h3>Triangle Trailer (28 bytes)</h3>
+<table>
+  <thead><tr><th>Offset</th><th>Size</th><th>Type</th><th>Description</th></tr></thead>
+  <tbody>
+    <tr><td>0x00</td><td>12</td><td>f32[3]</td><td>Face normal</td></tr>
+    <tr><td>0x0C</td><td>12</td><td>f32[3]</td><td>The same face normal again in retail files</td></tr>
+    <tr><td>0x18</td><td>4</td><td>-</td><td>Unknown</td></tr>
+  </tbody>
+</table>
+
+<h3>Skinning</h3>
+<p><code>vertex_id</code> links the draw stream to the skin. Bone weight lists index the skin-space position and normal arrays, not the draw vertices. No vertex has more than four bone influences.</p>
+
+<h2 id="import">In OmegaStudio</h2>
+<ul>
+  <li>A blob is a model when it is at least 0x60 bytes, the version is 1, the node count is 1 to 4095, the texture count is at most 64, and the first node offset equals <code>0x50 + 4 * node_count</code>.</li>
+  <li>For each skin vertex the reader keeps the four heaviest influences and normalises them.</li>
+  <li>Replacing from glTF fills the model's meshes in order. Extra glTF meshes are merged into the last mesh, and extra materials into the last material. Joints bind to bones by name, ignoring case; an unmatched joint takes the bone at the same place in the list.</li>
+  <li>The writer limits a mesh to 65,535 vertices, since <code>vertex_id</code> is 16-bit, and 16 materials. It writes <code>vertex_id</code> twice, recomputes each face normal from its triangle, and zeroes the rest of the trailer.</li>
+  <li>Weight lists are rewritten for the bones of each replaced mesh. Everything else, unknown fields and the 0xCC bytes after the count block included, is copied from the original. Nodes are rebuilt back to back after the node table, with the textures after them.</li>
+</ul>
+</body>
+</html>

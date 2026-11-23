@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<script src="../../script.js"></script>
+</head>
+<body>
+<p>A <code>.ske</code> holds the skeleton a character's <a href="amd.html">model</a> and <a href="ani.html">clips</a> share. Bones come in two record sizes: 68 bytes in the Kartz games, 132 bytes in the later ones.</p>
+
+<h2>Layout</h2>
+<table>
+  <thead><tr><th>Offset</th><th>Size</th><th>Type</th><th>Description</th></tr></thead>
+  <tbody>
+    <tr><td>0x00</td><td>4</td><td>u32</td><td>Bone count</td></tr>
+    <tr><td>0x04</td><td>4</td><td>u32</td><td>8, the header size</td></tr>
+    <tr><td>0x08</td><td>68 or 132 each</td><td>bone[]</td><td>Bones</td></tr>
+  </tbody>
+</table>
+
+<h3>Bone (68 bytes)</h3>
+<table>
+  <thead><tr><th>Offset</th><th>Size</th><th>Type</th><th>Description</th></tr></thead>
+  <tbody>
+    <tr><td>+0x00</td><td>4</td><td>i32</td><td>Parent index, -1 for the root, always lower than the bone's own index</td></tr>
+    <tr><td>+0x04</td><td>64</td><td>i32[16]</td><td>Rest transform relative to the parent, row-major 4x4, 20.12</td></tr>
+  </tbody>
+</table>
+
+<h3>Bone (132 bytes)</h3>
+<table>
+  <thead><tr><th>Offset</th><th>Size</th><th>Type</th><th>Description</th></tr></thead>
+  <tbody>
+    <tr><td>+0x00</td><td>4</td><td>i32</td><td>Parent index, as above</td></tr>
+    <tr><td>+0x04</td><td>64</td><td>i32[16]</td><td>Placed rest transform, row-major 4x4, 20.12</td></tr>
+    <tr><td>+0x44</td><td>64</td><td>i32[16]</td><td>The transform back into the parent, same form</td></tr>
+  </tbody>
+</table>
+
+<p>A 68-byte bone stores the step from its parent, so its world transform is its own matrix chained up through every parent. A 132-byte bone stores itself already placed, so its first matrix is the world transform. Both shapes give the same rest pose.</p>
+
+<p>The fourth column of every matrix is <code>(0, 0, 0, 4096)</code>. Across the 381 bones of the 28 Kartz skeletons the three rotation rows are always unit length, each file has exactly one root, and no parent comes after its child.</p>
+
+<h2>Up Axis</h2>
+<p>A skeleton stands in the game's own frame, with up on the third axis. The viewport and glTF put up on the second, so OmegaStudio turns every rest transform a quarter turn about X on the way out (<code>(x, y, z)</code> becomes <code>(x, z, -y)</code>) and back on the way in. The turn is applied once in the skeleton reader and shared by the placed mesh, joint binds, posed frames, the model writer and animation roots.</p>
+
+<h2>In OmegaStudio</h2>
+<ul>
+  <li>The file is exactly <code>8 + 68 * bones</code> or <code>8 + 132 * bones</code> bytes, with 1 to 1024 bones, a header size of 8, every parent either -1 or lower than its bone, and the fourth column of every matrix (both, for 132-byte bones) equal to <code>(0, 0, 0, 4096)</code>. The 68-byte shape is tried first.</li>
+  <li>A 68-byte <code>.ske</code> also passes the looser <code>.trk</code> test, so the skeleton test runs first.</li>
+  <li>Writing keeps the record size the file came in. Joints export as <code>bone0</code>, <code>bone1</code> and so on.</li>
+</ul>
+<p>All 43 skeletons across the five games re-serialise to their original bytes and come back byte for byte through glTF.</p>
+</body>
+</html>

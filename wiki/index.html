@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<script src="script.js"></script>
+</head>
+<body>
+<p>File formats of the games BrewSearch takes apart, read from the game data and the games' own code. Where <a href="https://github.com/Team-BrewSearch/OmegaStudio" target="_blank" rel="noopener">OmegaStudio</a> has a plugin for a game, every layout is checked against it; the other pages name their sources.</p>
+
+<h2>Games</h2>
+<ul data-list></ul>
+
+<h2>Reading a Page</h2>
+<ul>
+  <li>The opening paragraph says what the format holds and where the game uses it.</li>
+  <li>Layout tables follow, one per structure, in file order.</li>
+  <li><strong>In OmegaStudio</strong> closes each page for a supported format: what the reader checks, what it shows and how it writes the format back.</li>
+  <li>Byte order, units and other rules that hold across a game are on that game's home page.</li>
+</ul>
+
+<h2>Notation</h2>
+<div class="spec-grid">
+  <div class="label">Numbers</div><div>Hex with a <code>0x</code> prefix, decimal otherwise. Sizes are in bytes.</div>
+  <div class="label">+0x10</div><div>An offset inside the record or chunk being described</div>
+  <div class="label">u8, u16, u32</div><div>Unsigned integers of 8, 16 and 32 bits</div>
+  <div class="label">i8, i16, i32</div><div>Signed integers of the same widths</div>
+  <div class="label">f32</div><div>IEEE-754 single-precision float</div>
+  <div class="label">off</div><div>A u32 byte offset; the game's home page says where it counts from</div>
+  <div class="label">char[n]</div><div>n bytes of text</div>
+  <div class="label">T[n]</div><div>n values of type T, back to back</div>
+  <div class="label">var</div><div>A size or position that depends on other fields</div>
+  <div class="label">-</div><div>Raw bytes, padding or a field with no fixed type</div>
+  <div class="label">Unknown</div><div>A field whose purpose is not known</div>
+</div>
+</body>
+</html>

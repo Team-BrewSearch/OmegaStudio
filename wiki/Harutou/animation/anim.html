@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<script src="../../script.js"></script>
+</head>
+<body>
+<p>One blob is one clip. Clips sit beside the <a href="../model/model.html">model</a> in the same archive table and carry one track per model node, each track naming its node.</p>
+
+<h2>Header</h2>
+<table>
+  <thead><tr><th>Offset</th><th>Size</th><th>Type</th><th>Description</th></tr></thead>
+  <tbody>
+    <tr><td>0x00</td><td>4</td><td>u32</td><td>Node count, matching the model's</td></tr>
+    <tr><td>0x04</td><td>4</td><td>u32</td><td>Duration in frames</td></tr>
+    <tr><td>0x08</td><td>4 * nodes</td><td>u32[]</td><td>Track offsets, from the start of the blob</td></tr>
+  </tbody>
+</table>
+
+<p>The first track starts right after the offset table, at <code>0x08 + 4 * node_count</code>.</p>
+
+<h2>Track</h2>
+<table>
+  <thead><tr><th>Offset</th><th>Size</th><th>Type</th><th>Description</th></tr></thead>
+  <tbody>
+    <tr><td>0x00</td><td>0x20</td><td>char[0x20]</td><td>Node name, matching a model node</td></tr>
+    <tr><td>0x20</td><td>4</td><td>u32</td><td>Key count</td></tr>
+    <tr><td>0x24</td><td>68 * n</td><td>key[n]</td><td>Keys</td></tr>
+  </tbody>
+</table>
+
+<p>A track is exactly <code>0x24 + 68 * key_count</code> bytes.</p>
+
+<h3>Key (68 bytes)</h3>
+<table>
+  <thead><tr><th>Offset</th><th>Size</th><th>Type</th><th>Description</th></tr></thead>
+  <tbody>
+    <tr><td>0x00</td><td>0x40</td><td>f32[16]</td><td>Matrix, same layout and same space as the bind matrix</td></tr>
+    <tr><td>0x40</td><td>4</td><td>f32</td><td>Time in frames</td></tr>
+  </tbody>
+</table>
+
+<h2>Semantics</h2>
+<ul>
+  <li>Key matrices are <strong>absolute</strong>, in bind-pose space, not relative to the parent. A joint's local transform at key <em>i</em> is <code>key[i] * inverse(parent_key[i])</code>.</li>
+  <li>Every track in a clip shares the same key times, so tracks line up without resampling.</li>
+  <li>Keys are sparse. A 96-frame clip typically stores 25 keys, one every fourth frame.</li>
+  <li>Frames run at <strong>60 fps</strong>, and key times are whole frames.</li>
+</ul>
+
+<div class="note">
+  <strong>Note:</strong> A clip starts with a count followed by offsets, the same shape as an <a href="../archive/bin.html">archive table</a>. Recognise clips before recursing into a table, or a walk will split them into bone tracks.
+</div>
+
+<h2>In OmegaStudio</h2>
+<ul>
+  <li>A blob is a clip when it is at least 16 bytes, the node count is 1 to 4095, the duration is 1 to 99,999 frames, the first track offset equals <code>8 + 4 * node_count</code>, and the first track's key count is 1 to 99,999 and fits the blob.</li>
+  <li>Every clip in a table plays on the model in that table. Tracks drive bones by name, ignoring case.</li>
+  <li>Playback runs at 60 fps and blends the two keys either side of the current frame.</li>
+</ul>
+</body>
+</html>

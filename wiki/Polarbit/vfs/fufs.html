@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<script src="../../script.js"></script>
+</head>
+<body>
+<p>A <code>.vfs</code> archive is a FUFS container: a table of entries sorted by name hash, pointing into one contiguous payload region. Entries carry no type; a payload's format is read from its first bytes.</p>
+
+<h2>Layout</h2>
+<table>
+  <thead><tr><th>Offset</th><th>Size</th><th>Type</th><th>Description</th></tr></thead>
+  <tbody>
+    <tr><td>0x00</td><td>4</td><td>char[4]</td><td>Magic <code>"FUFS"</code></td></tr>
+    <tr><td>0x04</td><td>4</td><td>u32</td><td><code>0x80000000 | end</code>, see below</td></tr>
+    <tr><td>0x08</td><td>4</td><td>u32</td><td>Entry count N</td></tr>
+    <tr><td>0x0C</td><td>12 * N</td><td>{u32 offset, u32 nameHash, u32 size}[]</td><td>Entry table</td></tr>
+    <tr><td>0x0C + 12N</td><td>var</td><td>-</td><td>Payloads, back to back</td></tr>
+  </tbody>
+</table>
+
+<ul>
+  <li>The table is sorted by <code>nameHash</code>, ascending, with no duplicates.</li>
+  <li>Payloads follow in table order, packed back to back from the end of the table, with no padding or alignment.</li>
+</ul>
+
+<h2>Name Tables</h2>
+<p>In CNK2, CNK3D and Krazy Kart Racing the archive ends after the last payload, and the word at 0x04 holds the file size with bit 31 set.</p>
+<p>The four 2011 archives (Getaway and RT2) append the file names:</p>
+<table>
+  <thead><tr><th>Offset</th><th>Size</th><th>Type</th><th>Description</th></tr></thead>
+  <tbody>
+    <tr><td>P</td><td>E - P</td><td>char[]</td><td>Names, NUL-terminated, one per entry in table order</td></tr>
+    <tr><td>E</td><td>4</td><td>u32</td><td>Byte length of the name block, <code>E - P</code></td></tr>
+    <tr><td>E + 4</td><td>var</td><td>-</td><td>A zlib copy of the same names (<code>78 DA</code>), sync-flushed and never finished</td></tr>
+  </tbody>
+</table>
+<p>Here the word at 0x04 is <code>0x80000000 | E</code>: it covers the plain names but not the length word or the compressed copy. The copy ends with the <code>00 00 FF FF</code> of a sync flush and has no final block or Adler-32. Names are relative paths with forward slashes, such as <code>data/levels/Track_Coastal_1.pxc</code>, <code>frontend/locale/strings.ben</code> and <code>shaders/blur.fp</code>.</p>
+
+<h2>Name Hash</h2>
+<pre>h = 0
+for each byte c of the path:
+    h = (h * 67 + toupper(c) - 113) mod 2^32</pre>
+<p>Recovered from the 649 stored names of the 2011 archives. It ignores case. The older archives use the same function: <code>data/lang/lang.bin</code> hashes to the LANG entry in CNK2, CNK3D and Krazy Kart Racing. About 45 standard hashes (CRC-32 variants, FNV, djb2, Murmur) were tried against the older archives first; none can match a custom multiplicative hash with an offset of -113.</p>
+
+<h2 id="names">Recovering Names</h2>
+<p>The older archives store only hashes. OmegaStudio rebuilds names by hashing candidate paths and keeping a match only when the payload fits the extension:</p>
+<ol>
+  <li>It collects every run of three or more path characters, in ASCII or UTF-16, from every payload that is not a texture, sound, module or font, and keeps those ending in a known extension.</li>
+  <li>It hashes a short list of known paths, then each collected path as written and with <code>data/</code> in front.</li>
+  <li>It joins each collected file stem with a built-in list of texture and audio directories, then with every directory and extension the earlier hits revealed.</li>
+</ol>
+
+<table>
+  <thead><tr><th>Extension</th><th>Must hold</th></tr></thead>
+  <tbody>
+    <tr><td><code>.png</code></td><td>PNG or PVR</td></tr>
+    <tr><td><code>.pvr</code></td><td>PVR</td></tr>
+    <tr><td><code>.psn</code></td><td>PSND</td></tr>
+    <tr><td><code>.pof</code>, <code>.trk</code></td><td>PIFF</td></tr>
+    <tr><td><code>.pxc</code>, <code>.fnt</code>, <code>.xml</code>, <code>.db</code></td><td>PXC, PFNT, XML, OLE file</td></tr>
+    <tr><td><code>.bin</code></td><td>LANG</td></tr>
+    <tr><td><code>.plt</code></td><td>TLPB or PLT</td></tr>
+    <tr><td><code>.txt</code>, <code>.vp</code>, <code>.fp</code>, <code>.hxx</code></td><td>Text</td></tr>
+  </tbody>
+</table>
+
+<table>
+  <thead><tr><th>Archive</th><th>Named</th><th>Expected chance matches</th></tr></thead>
+  <tbody>
+    <tr><td>CNK2</td><td>470 of 787</td><td>0.0023</td></tr>
+    <tr><td>CNK3D</td><td>218 of 426</td><td>0.0001</td></tr>
+    <tr><td>Krazy Kart Racing</td><td>307 of 649</td><td>0.0006</td></tr>
+  </tbody>
+</table>
+
+<h2>In OmegaStudio</h2>
+<ul>
+  <li>The archive opens when the magic is <code>FUFS</code>, bit 31 of the word at 0x04 is set, its low bits do not exceed the file size, and the table fits the file.</li>
+  <li>Every entry must lie inside the file and after the table, and no two entries may share a hash. An unsorted table is sorted on load.</li>
+  <li>A name table is read when the end word points past the last payload but short of the file end. Its length word must match, its last byte must be NUL and it must hold one name per entry; a name is kept only when it hashes to its entry.</li>
+  <li>Saving packs the payloads in table order, keeps the name block and its compressed copy as they were (rebuilding both if the table had to be sorted), and writes the end word to match.</li>
+</ul>
+</body>
+</html>

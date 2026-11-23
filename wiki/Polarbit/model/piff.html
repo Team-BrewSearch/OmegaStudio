@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<script src="../../script.js"></script>
+</head>
+<body>
+<p><strong>PIFF</strong> is an IFF-style chunk container for models (<code>.pof</code>, type <code>3DOB</code>) and tracks (<code>.trk</code>, type <code>SCEN</code>) in CNK2, CNK3D and Krazy Kart Racing. Krazy Kart Racing's two tracks use the CNK3D record layouts throughout.</p>
+
+<h2>Container</h2>
+<table>
+  <thead><tr><th>Offset</th><th>Size</th><th>Type</th><th>Description</th></tr></thead>
+  <tbody>
+    <tr><td>0x00</td><td>4</td><td>char[4]</td><td>Magic <code>"PIFF"</code></td></tr>
+    <tr><td>0x04</td><td>4</td><td>u32</td><td>File size minus 8</td></tr>
+    <tr><td>0x08</td><td>4</td><td>char[4]</td><td>File type: <code>3DOB</code> (model) or <code>SCEN</code> (track)</td></tr>
+    <tr><td>0x0C</td><td>var</td><td>chunk[]</td><td>Chunks: 4-byte id, u32 size, then <code>size</code> bytes</td></tr>
+  </tbody>
+</table>
+<p>Chunks are not padded, so odd sizes such as MTRL's 25 bytes are normal. A <code>FORM</code> chunk is a group: its data starts with a 4-byte group type, followed by child chunks. Below, <code>FORM:SKIN</code> means a FORM of type <code>SKIN</code>.</p>
+
+<h2>3DOB Models</h2>
+<p>Top-level chunks in file order: <code>HEAD</code>, <code>TEXL</code>, then <code>MTRL</code> and <code>APPR</code> (newer models) or <code>MATL</code> or <code>MAT2</code> (older ones), <code>MESH</code>, <code>NORM</code>, <code>TXUV</code>, <code>COLR</code>, one <code>POLY</code> per primitive group, <code>ID  </code>, then optional <code>FORM:SKIN</code>, <code>FORM:ANIM</code> and <code>FORM:LOD </code>.</p>
+
+<h3>HEAD</h3>
+<p>76 bytes (19 i32) on models with <code>MTRL</code> and <code>APPR</code>, 72 bytes (18 i32) on the rest.</p>
+<table>
+  <thead><tr><th>Index</th><th>Meaning</th></tr></thead>
+  <tbody>
+    <tr><td>0</td><td>POLY chunk count</td></tr>
+    <tr><td>1</td><td>Position buffer size in vertices: the vertex count, doubled for skinned models</td></tr>
+    <tr><td>2</td><td>Position type, 5132 (<code>GL_FIXED</code>)</td></tr>
+    <tr><td>3</td><td>Normal count, 0 or the vertex count</td></tr>
+    <tr><td>4</td><td>5132</td></tr>
+    <tr><td>5</td><td>Texture coordinate count, 0 or the vertex count</td></tr>
+    <tr><td>6</td><td>5132</td></tr>
+    <tr><td>7</td><td>Texture count</td></tr>
+    <tr><td>8</td><td>Material count</td></tr>
+    <tr><td>9</td><td>Total index bytes, each POLY rounded up to a multiple of 4</td></tr>
+    <tr><td>10</td><td>Colour count, 0 or the vertex count</td></tr>
+    <tr><td>11</td><td>Colour type: 5121 for 4-byte RGBA, 21505 (<code>0x5401</code>) for 3-byte RGB, 5132 for none</td></tr>
+    <tr><td>12-14</td><td>Scale x, y, z, always 1.0</td></tr>
+    <tr><td>15-17</td><td>Translation, always 0</td></tr>
+    <tr><td>18</td><td>Appearance count, 76-byte header only</td></tr>
+  </tbody>
+</table>
+
+<h3>Vertex Data</h3>
+<table>
+  <thead><tr><th>Chunk</th><th>Data</th></tr></thead>
+  <tbody>
+    <tr><td><code>TEXL</code></td><td>Texture file names, NUL-terminated. Can be followed by zero padding to 4 bytes and one 8-byte record per texture, <code>{u32 flags, i32 -1}</code></td></tr>
+    <tr><td><code>MESH</code></td><td>Fixed x, y, z per vertex</td></tr>
+    <tr><td><code>NORM</code></td><td>Fixed x, y, z per vertex</td></tr>
+    <tr><td><code>TXUV</code></td><td>Fixed u, v per vertex, v running up from the bottom</td></tr>
+    <tr><td><code>COLR</code></td><td>3 or 4 bytes per vertex, per HEAD[11]</td></tr>
+  </tbody>
+</table>
+
+<h3>Materials</h3>
+<table>
+  <thead><tr><th>Chunk</th><th>Layout</th></tr></thead>
+  <tbody>
+    <tr><td><code>MTRL</code></td><td><code>u32 21</code> (record size), then 21-byte records, all zero</td></tr>
+    <tr><td><code>APPR</code></td><td><code>u32</code> record size (4 or 16), then per appearance <code>u16 material, u16 texture</code> (1-based), plus <code>u32 0, u32 0x2000, u32 1</code> in the 16-byte form</td></tr>
+    <tr><td><code>MATL</code></td><td>24-byte records: <code>u16 1, u16 texture</code> (1-based), then 20 zero bytes</td></tr>
+    <tr><td><code>MAT2</code></td><td><code>u32 28</code>, then 28-byte records: <code>u16 0, u16 texture</code> (1-based), then zeros</td></tr>
+  </tbody>
+</table>
+
+<h3>POLY</h3>
+<table>
+  <thead><tr><th>Offset</th><th>Size</th><th>Type</th><th>Description</th></tr></thead>
+  <tbody>
+    <tr><td>0x00</td><td>4</td><td>u32</td><td>Primitive: 4 triangles, 5 triangle strip (one model)</td></tr>
+    <tr><td>0x04</td><td>4</td><td>u32</td><td>Index count</td></tr>
+    <tr><td>0x08</td><td>4</td><td>u32</td><td>Appearance, 1-based; 0 for none</td></tr>
+    <tr><td>0x0C</td><td>4</td><td>u32</td><td>Index type: 5121 u8, 5123 u16</td></tr>
+    <tr><td>0x10</td><td>var</td><td>u8[] or u16[]</td><td>Indices</td></tr>
+  </tbody>
+</table>
+
+<h3>ID</h3>
+<p>Four ASCII characters, such as <code>LOD1</code>, <code>LOD2</code>, <code>TNT </code> or <code>lod0</code>, marking which level of detail or variant a standalone file is.</p>
+
+<h2>Skinning: FORM:SKIN</h2>
+<h3>JNTS</h3>
+<table>
+  <thead><tr><th>Size</th><th>Type</th><th>Description</th></tr></thead>
+  <tbody>
+    <tr><td>4</td><td>u32</td><td>Index count NI</td></tr>
+    <tr><td>4</td><td>u32</td><td>Weight count NW</td></tr>
+    <tr><td>4</td><td>u32</td><td>Copy count NC</td></tr>
+    <tr><td>2 * NI</td><td>u16[NI]</td><td>Vertex indices, zero-padded to 4 bytes when NW &gt; 0</td></tr>
+    <tr><td>4 * NW</td><td>fixed[NW]</td><td>Weights, 0 to 1</td></tr>
+    <tr><td>4 * NC</td><td>{u16 source, u16 dest}[NC]</td><td>Seam copies</td></tr>
+  </tbody>
+</table>
+
+<h3>SKEL</h3>
+<p><code>u32</code> bone count, then 40 bytes per bone:</p>
+<table>
+  <thead><tr><th>Offset</th><th>Size</th><th>Type</th><th>Description</th></tr></thead>
+  <tbody>
+    <tr><td>+0x00</td><td>4</td><td>u32</td><td>Bone id: a 4CC name (<code>root</code>, <code>hip </code>, <code>neck</code>, <code>head</code>, <code>back</code>, <code>base</code>, <code>nose</code>) or a small integer</td></tr>
+    <tr><td>+0x04</td><td>4</td><td>u32</td><td>Parent's id, not its position; -1 for the root</td></tr>
+    <tr><td>+0x08</td><td>4</td><td>i32</td><td>Rigid vertex count</td></tr>
+    <tr><td>+0x0C</td><td>4</td><td>i32</td><td>Weighted vertex count</td></tr>
+    <tr><td>+0x10</td><td>4</td><td>i32</td><td>First rigid entry in the JNTS index list, -1 if none</td></tr>
+    <tr><td>+0x14</td><td>4</td><td>i32</td><td>First weighted entry in the JNTS index list, -1 if none</td></tr>
+    <tr><td>+0x18</td><td>4</td><td>i32</td><td>First weight in the JNTS weight list, -1 if none</td></tr>
+    <tr><td>+0x1C</td><td>12</td><td>fixed[3]</td><td>Bone pivot in model space</td></tr>
+  </tbody>
+</table>
+<p>A bone's rigid vertices take weight 1; its weighted vertices take weights from the weight list starting at its own offset. The copy list handles UV seams: after skinning, vertex <em>dest</em> copies vertex <em>source</em>. In every skin, rigid, weighted and copied vertices together cover each vertex exactly once, and every vertex's weights sum to 1 within 0.03.</p>
+
+<h2>Animation: FORM:ANIM</h2>
+<table>
+  <thead><tr><th>Chunk</th><th>Layout</th></tr></thead>
+  <tbody>
+    <tr><td><code>KEYF</code></td><td><code>u32</code> key count NK, two reserved zero words, then <code>i32 time[NK]</code> in milliseconds. Times rise through the file and can start below zero</td></tr>
+    <tr><td><code>ARNG</code></td><td><code>u32</code> clip count, then per clip <code>{4CC name, u32 first key, u32 last key}</code></td></tr>
+    <tr><td><code>BANI</code></td><td><code>u32</code> NT, the number of bones with translation keys (0 or the bone count), then <code>fixed translation[NK][NT][3]</code>, then <code>fixed rotation[NK][bones][4]</code> as quaternions w, x, y, z</td></tr>
+    <tr><td><code>XFRM</code></td><td><code>u32 2</code>, then fixed x, y, z scale per key</td></tr>
+  </tbody>
+</table>
+<p>Clip names seen: ACCL, ACT0, ATCK, BNDP, BOOM, BREK, DEAD, HAPY, HIT1, IDLE, LBCK, LOSE, NULL, SAAD, SAD1, SPWN, STAD, STLS, TURN, WIN1, WIN2.</p>
+
+<h2>Levels of Detail: FORM:LOD</h2>
+<p><code>LODI</code> holds a <code>u32</code> count, then per entry a fixed switch distance and a <code>u32</code> level. Level 0 is the top-level mesh. Each further level is a <code>FORM:MESH</code> holding <code>MSHD</code> (10 i32 matching HEAD[1..9]), <code>MESH</code>, <code>TXUV</code>, <code>POLY</code> and its own <code>FORM:SKIN</code>.</p>
+
+<h2>SCEN Tracks</h2>
+<p>Chunks in order: <code>VERS</code> (CNK2 only), <code>VERT</code>, <code>TCOR</code>, <code>COLR</code>, <code>TXTR</code>, <code>MATL</code>, <code>INDS</code>, <code>CHNK</code>, <code>CHAN</code>, <code>POSI</code>, <code>CAMS</code> (CNK3D only), <code>PICK</code>, <code>EMIT</code> (CNK2), <code>LINE</code>, <code>CELL</code>, <code>PORT</code>, <code>FORM:BSPS</code>, plus <code>VOFF</code>. A <code>VERS</code> chunk marks the CNK2 layout.</p>
+
+<h3>Geometry</h3>
+<table>
+  <thead><tr><th>Chunk</th><th>Layout</th></tr></thead>
+  <tbody>
+    <tr><td><code>VERS</code></td><td>4 bytes, <code>03 01 01 00</code></td></tr>
+    <tr><td><code>VERT</code></td><td><code>u32</code> count, then <code>i16 x, y, z</code> per vertex in 1/64 units, relative to its grid cell</td></tr>
+    <tr><td><code>TCOR</code></td><td><code>u32</code> count, then <code>i16 u, v</code> per vertex in 1/256 units</td></tr>
+    <tr><td><code>COLR</code></td><td><code>u32 1</code>, <code>u32</code> count, then a <code>u16</code> ARGB4444 colour each</td></tr>
+    <tr><td><code>TXTR</code></td><td><code>u32</code> count, then names: <code>{u8 flag, u8 length, chars}</code> in CNK2, <code>{u8 length, chars}</code> in the CNK3D layout, where entry 0 is an empty name</td></tr>
+    <tr><td><code>MATL</code></td><td><code>u32</code> count, then 14-byte records (CNK2: flags at +0, texture at +6) or 8-byte records (CNK3D layout: texture at +0, flags at +2). Flag bit 0 means textured, bit 4 (<code>0x10</code>) vertex-coloured</td></tr>
+    <tr><td><code>INDS</code></td><td><code>u32</code> byte length, then index data, 8 or 16 bits per chunk</td></tr>
+    <tr><td><code>CHNK</code></td><td><code>u32</code> count, then one draw chunk record each</td></tr>
+    <tr><td><code>VOFF</code></td><td><code>u32</code> count, then a 20-byte record per grid cell</td></tr>
+  </tbody>
+</table>
+
+<h3>CHNK Record</h3>
+<table>
+  <thead><tr><th>Layout</th><th>Size</th><th>Fields (all u16)</th></tr></thead>
+  <tbody>
+    <tr><td>CNK2</td><td>18 bytes</td><td>material, vertex base, 1, texcoord base, colour base, index size (1 or 2), index count, index offset (2-byte units), 0</td></tr>
+    <tr><td>CNK3D</td><td>14 bytes</td><td>material, vertex base, texcoord base, colour base, index size, index count, index offset</td></tr>
+  </tbody>
+</table>
+<p>A chunk draws a triangle list. Each index is added to the chunk's vertex, texcoord and colour bases.</p>
+
+<h3>VOFF Grid Cell (20 bytes)</h3>
+<table>
+  <thead><tr><th>Offset</th><th>Size</th><th>Type</th><th>Description</th></tr></thead>
+  <tbody>
+    <tr><td>+0x00</td><td>12</td><td>fixed[3]</td><td>Cell origin</td></tr>
+    <tr><td>+0x0C</td><td>4</td><td>u16[2]</td><td>First vertex and count, run A</td></tr>
+    <tr><td>+0x10</td><td>4</td><td>u16[2]</td><td>First vertex and count, run B</td></tr>
+  </tbody>
+</table>
+<p>Cells are 100 by 100 world units. A vertex's world position is its cell origin plus <code>VERT / 64</code>.</p>
+
+<h3>Gameplay Data</h3>
+<table>
+  <thead><tr><th>Chunk</th><th>Contents</th></tr></thead>
+  <tbody>
+    <tr><td><code>CHAN</code></td><td>Animated objects and cameras: flags (bit 0 position, 1 rotation, 2 scale), key count, parameter, then values per key</td></tr>
+    <tr><td><code>POSI</code></td><td>Named positions, 32 bytes each: <code>{4CC tag, u32 kind, fixed position[3], fixed direction[3]}</code></td></tr>
+    <tr><td><code>CAMS</code></td><td>Cameras, CNK3D layout, same 32-byte record</td></tr>
+    <tr><td><code>PICK</code></td><td>Pick-ups and crates: type, subtype, fixed position[3], fixed direction[3]</td></tr>
+    <tr><td><code>EMIT</code></td><td>CNK2 particle emitters: type, position[3], direction[3], kind, parameter</td></tr>
+    <tr><td><code>LINE</code></td><td>36-byte lines: LAP0-LAP3, CHK*, JMP*, WW0-WW3, DRV*, CAM1</td></tr>
+    <tr><td><code>CELL</code></td><td>Cell-and-portal visibility, 16 bytes per cell</td></tr>
+    <tr><td><code>PORT</code></td><td>152 bytes per portal: target cell, vertex count (3 to 12), fixed vertices[12][3]</td></tr>
+  </tbody>
+</table>
+
+<h3>FORM:BSPS: Collision and Quads</h3>
+<p><code>FORM:BSPS</code> holds <code>BSPC</code> (the quad count) and <code>FORM:QUAD</code> groups. Each quad has:</p>
+<ul>
+  <li><strong>COLL</strong>: polygon groups. Each is a <code>u16</code> polygon count, then per polygon <code>u16 (material &lt;&lt; 10 | vertex count)</code> and vertex indices into <code>VERT</code>. Materials index the game's material response list.</li>
+  <li><strong>OBJS</strong>: placed objects. A <code>u32</code> count, then per object fixed position[3], rotation[3] and scale[3], a <code>u16</code> type and a type-dependent tail.</li>
+  <li><strong>OLST</strong>, <strong>BORD</strong>, <strong>RECT</strong>: quad-tree spatial partitioning with polygon strips.</li>
+</ul>
+
+<h2>In OmegaStudio</h2>
+<h3>Reading</h3>
+<ul>
+  <li>The size word must equal the file size minus 8, every chunk must fit inside its parent, and the chunk list must end exactly at the parent's end.</li>
+  <li>3DOB: HEAD is 72 or 76 bytes; NORM, TXUV and COLR must match the MESH vertex count; POLY uses mode 4 or 5 and index type 5121 or 5123, its size matches its count, and every index is in range. Degenerate strip triangles are dropped.</li>
+  <li>Skins: JNTS and SKEL sizes must match their counts, every index and weight lookup must be in range, and every parent id must name a bone in the skeleton. Each vertex keeps its four heaviest influences, normalised.</li>
+  <li>Clips play at 30 fps, timed from KEYF milliseconds. Bones rotate about their pivots, and BANI translations add to the pivot offset.</li>
+  <li>SCEN: VERT, TCOR and COLR sizes must match their counts; MATL, CHNK and VOFF too; every CHNK record must name a material and stay inside INDS. Vertex colours are used only when a material sets bit 4. The Properties pane counts positions, cameras, pick-ups, emitters, lines and collision quads.</li>
+</ul>
+<h3>Replacing a Model from glTF</h3>
+<ul>
+  <li>Every glTF mesh is merged into the model's single mesh, up to 65,535 vertices. Materials map to appearances by texture name; surplus materials draw with the last one.</li>
+  <li>MESH, NORM, TXUV, COLR and POLY are rewritten (POLY as 16-bit triangle lists) and HEAD updated to match. Every other chunk is copied, <code>FORM:ANIM</code> included. Lower levels of detail are dropped.</li>
+  <li>On a skinned model, joints bind to bones by name (ignoring case and a <code>_n</code> suffix) or by position in the list. A vertex with one bone at 99.9% or more becomes rigid; others are weighted. Unskinned vertices follow the root. No seam copies are written.</li>
+  <li>PIFF tracks cannot be replaced from glTF.</li>
+</ul>
+</body>
+</html>

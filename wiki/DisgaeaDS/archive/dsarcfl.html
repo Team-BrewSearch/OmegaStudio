@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<script src="../../script.js"></script>
+</head>
+<body>
+<p><strong>DSARC FL</strong> bundles named files into one <code>.dat</code> archive. <em>Disgaea DS</em> uses it for all its audio: <code>bgm.dat</code>, <code>song.dat</code>, <code>se.dat</code>, <code>voice.dat</code> and <code>msgvo.dat</code>, each with a <code>.tbl</code> beside it.</p>
+
+<h2>Layout</h2>
+<pre>+----------------------+   &lt;-- 0x00
+| Header               |       16 bytes
++----------------------+   &lt;-- 0x10
+| Entry table          |       count * 48 bytes
++----------------------+
+| File data            |       in table order
++----------------------+   &lt;-- EOF</pre>
+
+<h2>Header</h2>
+<table>
+  <thead><tr><th>Offset</th><th>Size</th><th>Type</th><th>Description</th></tr></thead>
+  <tbody>
+    <tr><td>0x00</td><td>8</td><td>char[8]</td><td>Magic <code>"DSARC FL"</code></td></tr>
+    <tr><td>0x08</td><td>4</td><td>u32</td><td>Entry count</td></tr>
+    <tr><td>0x0C</td><td>4</td><td>u32</td><td>Version, 1</td></tr>
+  </tbody>
+</table>
+
+<h2>Entry (48 bytes)</h2>
+<table>
+  <thead><tr><th>Offset</th><th>Size</th><th>Type</th><th>Description</th></tr></thead>
+  <tbody>
+    <tr><td>0x00</td><td>40</td><td>char[40]</td><td>Relative file path, NUL-padded</td></tr>
+    <tr><td>0x28</td><td>4</td><td>u32</td><td>File size</td></tr>
+    <tr><td>0x2C</td><td>4</td><td>u32</td><td>Data offset, from the start of the archive</td></tr>
+  </tbody>
+</table>
+
+<p>All integers are little-endian. File data follows the entry table directly, in table order.</p>
+</body>
+</html>

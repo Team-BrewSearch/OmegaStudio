@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<script src="../../script.js"></script>
+</head>
+<body>
+<p><code>.bog</code> is the level database: lights, entities, triggers, splines, and the placements of every tie and shrub. The Wii loader (<code>0x8008e730</code>) checks the header, relocates the file in place and fills a 0x90-byte level table. No objects are created yet; the tie, shrub and entity code builds them from that table later.</p>
+
+<h2>Header</h2>
+<table>
+  <thead><tr><th>Offset</th><th>Size</th><th>Type</th><th>Description</th></tr></thead>
+  <tbody>
+    <tr><td>0x00</td><td>4</td><td>char[4]</td><td>Magic <code>BOG </code></td></tr>
+    <tr><td>0x04</td><td>4</td><td>u32</td><td>Version, 0x48</td></tr>
+    <tr><td>0x08</td><td>4</td><td>u32</td><td>File size; 0xAC or less loads as an empty database</td></tr>
+    <tr><td>0x0C</td><td>4</td><td>u32</td><td>Level hash; not read by the loader</td></tr>
+    <tr><td>0x10</td><td>4</td><td>u32</td><td>A colour, copied to level table +0x00</td></tr>
+    <tr><td>0x14</td><td>8</td><td>off, u32</td><td>A section with no known reader, level table +0x04 and +0x08; empty in every file</td></tr>
+    <tr><td>0x1C</td><td>144</td><td>(off, u32)[18]</td><td>Sections 0 to 17: offset, then record count</td></tr>
+    <tr><td>0xAC</td><td>4</td><td>u32</td><td>0</td></tr>
+  </tbody>
+</table>
+<p>Every offset counts from the start of the file. Relocating one adds the file's load address, and the loader leaves a zero offset at zero.</p>
+
+<h2>Sections</h2>
+<table>
+  <thead><tr><th>#</th><th>Header</th><th>Name</th><th>Record</th><th>Fields</th><th>Loader relocates</th></tr></thead>
+  <tbody>
+    <tr><td>0</td><td>0x1C</td><td>lights</td><td>0x18</td><td>f32 direction[3], u32, u32 colour, u32 second colour</td><td>None</td></tr>
+    <tr><td>1</td><td>0x24</td><td>spawners</td><td>0x58</td><td>f32 matrix[16], hash, kind, u32, off template, off data, data size</td><td>0x4C template, 0x50 data</td></tr>
+    <tr><td>2</td><td>0x2C</td><td>components</td><td>0x18</td><td>off name, off defaults, hash, layout, size, use count</td><td>0x04 defaults</td></tr>
+    <tr><td>3</td><td>0x34</td><td>classes</td><td>0x1C</td><td>off name, off component list, component count, hash, off entities, entity count, placed count</td><td>0x04 component list and each word in it, 0x10 entities</td></tr>
+    <tr><td>4</td><td>0x3C</td><td>templates</td><td>0x34</td><td>off name, hash, off class, resources[6], off spawners, spawner count, two u32</td><td>0x08 class, 0x24 spawners</td></tr>
+    <tr><td>5</td><td>0x44</td><td>entities</td><td>0x58</td><td>off name, hash, f32 matrix[16], off template, off data, id, flags</td><td>0x48 template, 0x4C data</td></tr>
+    <tr><td>6</td><td>0x4C</td><td>path_nodes</td><td>0xA8</td><td>off name, hash, f32 matrix[16], links[24]</td><td>None</td></tr>
+    <tr><td>7-9</td><td>0x54-0x6B</td><td>-</td><td>-</td><td>-</td><td>Not read; empty in every file</td></tr>
+    <tr><td>10</td><td>0x6C</td><td>triggers</td><td>0x90</td><td>off name, f32 matrix[16], f32 inverse[16], hash, two u32</td><td>None</td></tr>
+    <tr><td>11</td><td>0x74</td><td>points</td><td>0x10</td><td>f32 position[3], u32</td><td>0x0C</td></tr>
+    <tr><td>12</td><td>0x7C</td><td>splines</td><td>0x1C</td><td>off name, off points, u32, hash, three u32</td><td>0x04 points, 0x08</td></tr>
+    <tr><td>13</td><td>0x84</td><td>tie_groups</td><td>0x14</td><td>hash, <code>.gdt</code> hash, <code>.col</code> hash, off ties, tie count</td><td>0x0C ties</td></tr>
+    <tr><td>14</td><td>0x8C</td><td>ties</td><td>0x70 + 12n</td><td><a href="#tie">Below</a></td><td>None</td></tr>
+    <tr><td>15</td><td>0x94</td><td>shrub_layers</td><td>0x3C</td><td>hash, <code>.gdi</code> hash, u32, off shrubs, shrub count, f32 bounds min[3], max[3], cell size, cells x, cells y, off cells</td><td>0x0C shrubs, then 0x38 cells, only when 0x0C is non-zero</td></tr>
+    <tr><td>16</td><td>0x9C</td><td>shrub_cells</td><td>8</td><td>off first shrub, off end</td><td>Both</td></tr>
+    <tr><td>17</td><td>0xA4</td><td>shrubs</td><td>0x50</td><td>f32 matrix[16], three u32 (the third a hash), f32</td><td>None</td></tr>
+  </tbody>
+</table>
+
+<p>Some pointers depend on other counts. The tie group and tie pointers, and both tie counts, are set only when there is at least one tie group. The shrub layer, cell and shrub pointers are set only when there is at least one layer, and the points pointer only when there is at least one spline. A class's 0x04 and 0x10, a template's 0x08 and a spline's 0x04 are relocated even when they are zero.</p>
+
+<h3>Components and Entity Data</h3>
+<p>A class lists the components its entities carry. An entity's (or spawner's) data is one blob holding each of its class's components in list order, each <code>size</code> bytes and aligned, and a component's defaults use the same layout. Component data is a run of 4-byte words; known components include <code>AnimCamera</code>, <code>Animation</code>, <code>Bloom</code>, <code>Button</code>, <code>CurveFollower</code>, <code>DamageVolume</code>, <code>Fog</code>, <code>LinearMotion</code>, <code>Mesh</code>, <code>PickUp</code>, <code>RaceMgr</code>, <code>Rotator</code>, <code>SoundPlayer</code> and <code>VisibilityRegion</code>. Some words point at another entity, trigger or spline.</p>
+
+<h2 id="tie">Tie Record</h2>
+<p>The tie loader (<code>0x800f3580</code>) writes its group's address into every tie's 0x40, then swaps the group's model and collision hashes for the loaded objects.</p>
+<table>
+  <thead><tr><th>Offset</th><th>Size</th><th>Type</th><th>Description</th></tr></thead>
+  <tbody>
+    <tr><td>0x00</td><td>64</td><td>f32[16]</td><td>World matrix</td></tr>
+    <tr><td>0x40</td><td>4</td><td>u32</td><td>Runtime: owning tie group</td></tr>
+    <tr><td>0x44</td><td>4</td><td>u8[4]</td><td>First byte 0 to 3, then <code>00 80 3F</code>; not read by the Wii code that walks ties</td></tr>
+    <tr><td>0x48</td><td>4</td><td>f32</td><td>LOD distance: the renderer draws LOD 1 beyond it</td></tr>
+    <tr><td>0x4C</td><td>4</td><td>f32</td><td>A second distance, usually twice 0x48</td></tr>
+    <tr><td>0x50</td><td>4</td><td>f32</td><td>8.0 in every file</td></tr>
+    <tr><td>0x54</td><td>4</td><td>u32</td><td>0</td></tr>
+    <tr><td>0x58</td><td>4</td><td>u32</td><td>RGBA colour, 0xFFFFFFFF in most ties</td></tr>
+    <tr><td>0x5C</td><td>4</td><td>u32</td><td>Instance hash</td></tr>
+    <tr><td>0x60</td><td>4</td><td>u32</td><td>Runtime: collision object (<code>0x800dee30</code>, freed by <code>0x800df2f0</code>)</td></tr>
+    <tr><td>0x64</td><td>1</td><td>u8</td><td>Visibility region bit, 0 to 63</td></tr>
+    <tr><td>0x65</td><td>1</td><td>u8</td><td>Flags: bit 0 tests the region bit; bit 6 skips the collision object</td></tr>
+    <tr><td>0x66</td><td>1</td><td>u8</td><td>n, the number of 12-byte records after the tie</td></tr>
+    <tr><td>0x67</td><td>1</td><td>u8</td><td>0xFF</td></tr>
+    <tr><td>0x68</td><td>8</td><td>u32[2]</td><td>0</td></tr>
+  </tbody>
+</table>
+<p>Every loop over ties steps <code>0x70 + 12 * n</code> bytes. On little-endian 3DS files the four bytes at 0x64 are reversed, so n sits at 0x65 with the 0xFF at 0x64.</p>
+
+<h2>In OmegaStudio</h2>
+<ul>
+  <li>The reader needs version 0x48, a size word equal to the file size, zero words at 0x14, 0x18 and 0xAC, and sections 7 to 9 empty. Every pointer must land on a record of the section it names.</li>
+  <li>The database exports and imports as JSON with pointers turned into record indices and component data decoded where the component's word layout is known. The writer rebuilds every offset and count.</li>
+  <li>Tie and shrub placements export as a glTF scene.</li>
+</ul>
+</body>
+</html>

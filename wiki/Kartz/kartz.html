@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<script src="../script.js"></script>
+</head>
+<body>
+<p>Virtuos built one racing engine for five Nintendo DS games: <em>Madagascar Kartz</em>, <em>DreamWorks Super Star Kartz</em>, <em>Hot Wheels: Battle Force 5</em>, <em>Pimp My Ride: Street Racing</em> and <em>Monster Jam: Path of Destruction</em>. All five share one set of formats. The two Kartz games are the reference pair most measurements come from; the other three move fields around, as listed under <a href="#variants">Engine Variants</a>. Every layout here is checked against OmegaStudio's Virtuos plugin.</p>
+
+<h2>File Formats</h2>
+<ul data-list></ul>
+
+<h2>Conventions</h2>
+<div class="spec-grid">
+  <div class="label">Byte order</div><div>Little-endian</div>
+  <div class="label">World positions</div><div>20.12 signed fixed point (value * 4096)</div>
+  <div class="label">Texture coordinates</div><div>12.4 signed fixed point (value * 16), in texels</div>
+  <div class="label">Colours</div><div>RGB555: red in bits 0-4, green 5-9, blue 10-14</div>
+  <div class="label">Geometry</div><div>Pre-built Nintendo DS GX <a href="track/displaylist.html">display lists</a></div>
+  <div class="label">Paths</div><div>Null-terminated ASCII, backslash-separated</div>
+  <div class="label">Transparency</div><div>Magenta colour key, RGB (255, 0, 255)</div>
+  <div class="label">Up axis</div><div>Z in skeletons and animation; OmegaStudio turns it to Y</div>
+</div>
+
+<h2>Data Layout</h2>
+<p>Each game carries one <a href="archive/gda.html">GDA/GDF/GDT</a> archive triple under <code>Publish.NDS/</code>, plus the <a href="resource/rdf.html">resource databases</a> that say how its files fit together. The archive stem varies by game: Super Star Kartz ships <code>DWK.gda</code> with 1770 entries, Madagascar Kartz <code>MAD.gda</code> with 1377.</p>
+
+<div class="file-tree">Publish.NDS/
+├── &lt;stem&gt;.gda - archive data
+├── &lt;stem&gt;.gdf - path table
+├── &lt;stem&gt;.gdt - offset and size table
+├── main.rdf [RDF] - resource database
+├── ingamemenu.rdf, menupages.rdf [RDF] - Super Star Kartz only
+├── maintrack&lt;track&gt;.rdf [RDF] - one per track, Super Star Kartz only
+└── *.raf [RAF] - one per .rdf, its pointer fixup table</div>
+
+<p>Inside the archive, each track has a directory of its own:</p>
+
+<div class="file-tree">Models\Tracks\FarFarAway\
+├── FarFarAway.trk [TRK] - track geometry
+├── FarFarAway.col [COL] - collision surface
+├── FarFarAway.bpvs [BPVS] - chunk visibility
+├── *.zon [ZON] - scenery bundles
+└── *.5tx [5TX] - the track's textures</div>
+
+<p>Nothing in the archive records which files belong to a track. The RDF does: a track's <code>model</code> list names its <code>.col</code>, <code>.trk</code> and <code>.bpvs</code> by archive index, and its texture table gives the slot each <code>.5tx</code> fills.</p>
+
+<h2 id="variants">Engine Variants</h2>
+<p>The later games move fields rather than change what a file means. OmegaStudio detects each variant per file instead of assuming one layout.</p>
+
+<table>
+  <thead><tr><th>Format</th><th>Variants across the five games</th></tr></thead>
+  <tbody>
+    <tr><td><a href="track/trk.html">.trk</a></td><td>Chunk table field at <code>+0x0C</code> (value <code>0x38</code> in the Kartz games, <code>0x20</code> in Pimp My Ride) or <code>+0x1C</code> (Hot Wheels). Monster Jam stores a u32 chunk count at <code>+0x00</code>, the table at <code>+0x04</code> and the table end at <code>+0x08</code>.</td></tr>
+    <tr><td><a href="track/trk.html#chunk">Chunk</a></td><td>Narrow 24-byte header with 12-byte texture references, or wide 108-byte header with 16-byte references (Monster Jam). A narrow chunk can carry prefix words before its display list (Pimp My Ride).</td></tr>
+    <tr><td><a href="track/col.html">.col</a></td><td>Cross-section pointers at <code>+0x60</code>/<code>+0x64</code> (Kartz), <code>+0x58</code>/<code>+0x5C</code> (Pimp My Ride) or <code>+0x7C</code>/<code>+0x80</code> (Hot Wheels). Sector records are 112, 96 or 136+ bytes.</td></tr>
+    <tr><td><a href="data/zon.html">.zon</a></td><td>12-byte header, or 16 bytes with a spare zero word.</td></tr>
+    <tr><td><a href="data/car.html">.car</a></td><td>Chunk table field at <code>+0x10</code> or <code>+0x14</code>. Later games leave gaps between chunks.</td></tr>
+    <tr><td><a href="data/amd.html">.amd</a></td><td>One chunk with a bone per vertex (Kartz), or parts that each hang from one bone (Hot Wheels).</td></tr>
+    <tr><td><a href="data/ske.html">.ske</a></td><td>68-byte bones that store the step from the parent, or 132-byte bones that store the placed bone and the transform back to its parent.</td></tr>
+    <tr><td><a href="data/ani.html">.ani</a></td><td>8-byte header with 16-bit counts, or 20-byte header with 32-bit counts, a stated end and zero padding.</td></tr>
+  </tbody>
+</table>
+
+<div class="note">
+  <strong>Coverage:</strong> across all five games OmegaStudio reads 86 <code>.trk</code>, 86 <code>.col</code>, 115 <code>.bpvs</code>, 588 <code>.zon</code>, 103 <code>.car</code>, 64 <code>.amd</code>, 43 <code>.ske</code> and 348 <code>.ani</code> files, and each one re-serialises to the bytes it was read from. Monster Jam's 29 <code>.col</code> files are empty and its 29 <code>.bpvs</code> files are 12-byte stubs, so they hold nothing to read.
+</div>
+
+<h2>In OmegaStudio</h2>
+<ul>
+  <li>A <code>.gda</code> opens when its <code>.gdf</code> and <code>.gdt</code> sit beside it. The triple is also found inside a DS ROM and opens in place there; edits go back into the ROM when its rows can be written.</li>
+  <li>Every <code>.rdf</code> beside the archive is read for texture slots, and the Console reports how many databases it found.</li>
+  <li>Textures, tracks, scenery, collision, visibility, cars, characters, skeletons and clips each get their own row. Characters play every clip in their folder whose bone count matches their skeleton.</li>
+  <li>A texture is replaced from a PNG. Tracks, scenery, cars, characters, skeletons, clips and collision are replaced from glTF; <a href="data/other.html">Editing</a> covers the rules.</li>
+  <li>Saving rebuilds the <code>.gda</code> and <code>.gdt</code>. The <code>.gdf</code> is only read.</li>
+</ul>
+</body>
+</html>

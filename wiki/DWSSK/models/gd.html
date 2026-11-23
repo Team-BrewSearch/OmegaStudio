@@ -1,0 +1,307 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<script src="../../script.js"></script>
+</head>
+<body>
+<p>All four model kinds share a 0x50-byte header with materials, textures and shaders, then branch: <code>.gdw</code> is a world mesh, <code>.gdi</code> an instanced shrub, <code>.gdt</code> and <code>.gdt.piece</code> tie meshes, and <code>.gds</code> a skinned mesh that also carries its <a href="ske.html">skeleton</a>. Data starts at 0x50 in every file.</p>
+
+<h2>Header (0x50 bytes)</h2>
+<table>
+  <thead><tr><th>Offset</th><th>Size</th><th>Type</th><th>Description</th></tr></thead>
+  <tbody>
+    <tr><td>0x00</td><td>4</td><td>u32</td><td>Version: <code>0x00010010</code> Wii, <code>0x0001000F</code> PS3, Xbox 360 and 3DS; the loaders reject any other</td></tr>
+    <tr><td>0x04</td><td>4</td><td>u32</td><td>Kind: <code>0x10000000</code> plus 0 world, 1 skinned, 2 instanced, 3 tie</td></tr>
+    <tr><td>0x08</td><td>4</td><td>u32</td><td>Material count</td></tr>
+    <tr><td>0x0C</td><td>4</td><td>off</td><td>Materials</td></tr>
+    <tr><td>0x10</td><td>4</td><td>u32</td><td>Texture count</td></tr>
+    <tr><td>0x14</td><td>4</td><td>off</td><td>Textures, 0x14 bytes each</td></tr>
+    <tr><td>0x18</td><td>4</td><td>u32</td><td>Shader count</td></tr>
+    <tr><td>0x1C</td><td>4</td><td>off</td><td>Shaders, 0x10 bytes each</td></tr>
+    <tr><td>0x20</td><td>4</td><td>u32</td><td>0, not read</td></tr>
+    <tr><td>0x24</td><td>4</td><td>off</td><td>Mesh data</td></tr>
+    <tr><td>0x28</td><td>24</td><td>off[6]</td><td><code>.gds</code> only: skeleton of LOD 0 to 5, 0 where a LOD has none</td></tr>
+    <tr><td>0x40</td><td>4</td><td>f32</td><td>Bounding radius in metres: the farthest vertex from the origin, after the kind's scale</td></tr>
+    <tr><td>0x44</td><td>12</td><td>u32[3]</td><td>0</td></tr>
+  </tbody>
+</table>
+
+<h2>Textures and Shaders</h2>
+<p>A texture entry is 0x14 bytes, starting with the texture's path hash, which the loader turns into a handle; two floats and two words follow. A shader entry is 0x10 bytes: a vertex and pixel shader pair named by path hash. The loader makes one program per shader entry, and material passes name a program by index.</p>
+
+<h2>Materials</h2>
+<p>A material is 0xAC bytes on Wii, 0xC0 on PS3 and Xbox 360, and 0x8C on 3DS. The files set flag bits 0x1, 0x2 and 0x4; the loader adds 0x10 when any parameter scrolls and 0x20 when a texture record uses the reflection callback.</p>
+
+<table>
+  <thead><tr><th>Offset</th><th>Size</th><th>Type</th><th>Description</th></tr></thead>
+  <tbody>
+    <tr><td>0x00</td><td>96</td><td>char[96]</td><td>Name, NUL-padded; not read</td></tr>
+    <tr><td>0x60</td><td>4</td><td>u32</td><td>Material hash; an animated material is registered once per hash</td></tr>
+    <tr><td>0x64</td><td>4</td><td>u32</td><td>Flags</td></tr>
+    <tr><td>0x68</td><td>4</td><td>off</td><td>Scrolling parameters, 0x14 bytes each</td></tr>
+    <tr><td>0x6C</td><td>var</td><td>pass[]</td><td>0x14 bytes each: 3 on Wii, 4 on PS3 and Xbox 360, 1 on 3DS</td></tr>
+    <tr><td>tail</td><td>4</td><td>u8[4]</td><td>At 0xA8 (Wii), 0xBC (PS3, Xbox 360) or 0x88 (3DS): parameter count, blend mode, second alpha reference, alpha reference</td></tr>
+  </tbody>
+</table>
+
+<p>On 3DS, 0x80 to 0x87 are 0. The files use pass 0 on Wii and 3DS, and passes 0, 1 and 3 on PS3 and Xbox 360.</p>
+
+<h3>Pass (0x14 bytes)</h3>
+<table>
+  <thead><tr><th>Offset</th><th>Size</th><th>Type</th><th>Description</th></tr></thead>
+  <tbody>
+    <tr><td>0x00</td><td>4</td><td>u32</td><td>Runtime: shader program from 0x12</td></tr>
+    <tr><td>0x04</td><td>4</td><td>off</td><td>Records, 0x38 bytes each, counted by 0x10: texture records first, then constants</td></tr>
+    <tr><td>0x08</td><td>4</td><td>off</td><td>The first constant record; relocated, not read by the Wii material code</td></tr>
+    <tr><td>0x0C</td><td>4</td><td>off</td><td>Parameter bindings, 4 bytes each, counted by 0x11</td></tr>
+    <tr><td>0x10</td><td>1</td><td>u8</td><td>Record count</td></tr>
+    <tr><td>0x11</td><td>1</td><td>u8</td><td>Binding count</td></tr>
+    <tr><td>0x12</td><td>2</td><td>u16</td><td>Shader index; past the end means the default program</td></tr>
+  </tbody>
+</table>
+
+<h3>Scrolling Parameter (0x14 bytes)</h3>
+<table>
+  <thead><tr><th>Offset</th><th>Size</th><th>Type</th><th>Description</th></tr></thead>
+  <tbody>
+    <tr><td>0x00</td><td>4</td><td>u32</td><td>Name hash, never 0 in the files</td></tr>
+    <tr><td>0x04</td><td>4</td><td>f32</td><td>Rate per second; 0 is still</td></tr>
+    <tr><td>0x08</td><td>4</td><td>f32</td><td>Lower bound, 0.0 in every file</td></tr>
+    <tr><td>0x0C</td><td>4</td><td>f32</td><td>Upper bound, 1.0 in every file</td></tr>
+    <tr><td>0x10</td><td>4</td><td>f32</td><td>Current value</td></tr>
+  </tbody>
+</table>
+<p>Each frame (<code>0x80154a90</code>) the value grows by rate times elapsed time and wraps into the bounds: past the upper bound it continues from the lower, below the lower from the upper. These drive UV scrolling.</p>
+
+<h3>Records (0x38 bytes)</h3>
+<p>Byte 0x34 is 1 for a texture record and 0 for a constant.</p>
+
+<h4>Texture Record</h4>
+<table>
+  <thead><tr><th>Offset</th><th>Size</th><th>Type</th><th>Description</th></tr></thead>
+  <tbody>
+    <tr><td>0x00</td><td>4</td><td>u32</td><td>Runtime: texture handle from the texture table</td></tr>
+    <tr><td>0x04</td><td>4</td><td>off</td><td>Sampler name</td></tr>
+    <tr><td>0x08</td><td>2</td><td>u16</td><td>Texture index; past the end means the default texture</td></tr>
+    <tr><td>0x0A</td><td>1</td><td>u8</td><td>Wrap S</td></tr>
+    <tr><td>0x0B</td><td>1</td><td>u8</td><td>Wrap T</td></tr>
+    <tr><td>0x0C</td><td>1</td><td>u8</td><td>Texture stage</td></tr>
+    <tr><td>0x0D</td><td>1</td><td>u8</td><td>Filter</td></tr>
+    <tr><td>0x10</td><td>4</td><td>u32</td><td>Callback hash, resolved at load into a function that can swap the texture at each draw; 0 for none</td></tr>
+    <tr><td>0x34</td><td>1</td><td>u8</td><td>1</td></tr>
+  </tbody>
+</table>
+
+<h4>Constant Record</h4>
+<table>
+  <thead><tr><th>Offset</th><th>Size</th><th>Type</th><th>Description</th></tr></thead>
+  <tbody>
+    <tr><td>0x04</td><td>4</td><td>off</td><td>Vertex constant name</td></tr>
+    <tr><td>0x08</td><td>4</td><td>u32</td><td>Runtime: vertex constant register, from 0x0C</td></tr>
+    <tr><td>0x0C</td><td>2</td><td>u16</td><td>Vertex constant register, 0xFFFF for none</td></tr>
+    <tr><td>0x10</td><td>4</td><td>u32</td><td>Runtime: set to -1</td></tr>
+    <tr><td>0x14</td><td>4</td><td>off</td><td>Pixel constant name</td></tr>
+    <tr><td>0x18</td><td>4</td><td>u32</td><td>Runtime: pixel constant register, from 0x1C</td></tr>
+    <tr><td>0x1C</td><td>2</td><td>u16</td><td>Pixel constant register, 0xFFFF for none</td></tr>
+    <tr><td>0x20</td><td>16</td><td>f32[4]</td><td>Value</td></tr>
+    <tr><td>0x30</td><td>4</td><td>u32</td><td>Provider hash, resolved at load into a function that fills the value at each draw; 0 for none</td></tr>
+    <tr><td>0x34</td><td>1</td><td>u8</td><td>0</td></tr>
+  </tbody>
+</table>
+<p>A constant feeds either the vertex shader or the pixel shader: one of its two registers is always 0xFFFF.</p>
+
+<h2>Units</h2>
+<p>Positions are drawn with a uniform scale that depends on the kind:</p>
+<ul>
+  <li><code>.gdw</code>, <code>.gdi</code> and <code>.gdt</code>: 0.01, so the stored values are centimetres.</li>
+  <li><code>.gds</code>: the float at mesh + 0x04, 8.0 in every file. Bone translations are centimetres scaled by 1/800 into the same space.</li>
+</ul>
+<p>The header's bounding radius at 0x40 is in metres, after these scales.</p>
+
+<h2>Tie Mesh (.gdt, .gdt.piece)</h2>
+<table>
+  <thead><tr><th>Offset</th><th>Size</th><th>Type</th><th>Description</th></tr></thead>
+  <tbody>
+    <tr><td>0x000</td><td>4</td><td>u32</td><td>Format: 11 Wii, 9 PS3 and Xbox 360, 10 3DS; the loader rejects others</td></tr>
+    <tr><td>0x004</td><td>4</td><td>u32</td><td>LOD count</td></tr>
+    <tr><td>0x008</td><td>0x120</td><td>LOD[6]</td><td>0x30 bytes each</td></tr>
+    <tr><td>0x128</td><td>16</td><td>f32[4]</td><td>Bounding sphere: centre and radius, in centimetres</td></tr>
+  </tbody>
+</table>
+
+<h3>LOD (0x30 bytes)</h3>
+<table>
+  <thead><tr><th>Offset</th><th>Size</th><th>Type</th><th>Description</th></tr></thead>
+  <tbody>
+    <tr><td>0x00</td><td>4</td><td>f32</td><td>Switch distance</td></tr>
+    <tr><td>0x04</td><td>4</td><td>f32</td><td>Scale</td></tr>
+    <tr><td>0x08</td><td>20</td><td>off[5]</td><td>Draw lists: list <em>k</em> runs from entry <em>k</em> to entry <em>k</em> + 1</td></tr>
+    <tr><td>0x1C</td><td>4</td><td>u32</td><td>Wii, 3DS: 0. PS3, Xbox 360: vertex count</td></tr>
+    <tr><td>0x20</td><td>4</td><td>off</td><td>Wii, 3DS: relocated, 0 in files. PS3, Xbox 360: vertices</td></tr>
+    <tr><td>0x24</td><td>4</td><td>u32</td><td>Wii, 3DS: vertex count. PS3, Xbox 360: runtime vertex buffer</td></tr>
+    <tr><td>0x28</td><td>4</td><td>off</td><td>Wii, 3DS: vertices. PS3, Xbox 360: relocated, 0 in files</td></tr>
+    <tr><td>0x2C</td><td>4</td><td>-</td><td>Wii, 3DS: runtime vertex buffer. PS3, Xbox 360: 0</td></tr>
+  </tbody>
+</table>
+<p>The renderer picks a LOD, clamped to the instance's limits and the LOD count. The four draw lists go to different render buckets: list 0 opaque, list 1 alpha-tested, list 2 blended with depth writes off (and again in two other passes), list 3 reflection materials.</p>
+
+<h3>Tie Draws</h3>
+<table>
+  <thead><tr><th>Platform</th><th>Size</th><th>Layout</th></tr></thead>
+  <tbody>
+    <tr><td>Wii</td><td>0x10</td><td>0x00 u32 0 (not read); 0x04 off display list; 0x08 u32 display list size; 0x0C u16 flags (0x4 two-sided, 0x8 culled the other way); 0x0E u8 material; 0x0F u8 hide group</td></tr>
+    <tr><td>PS3, Xbox 360</td><td>0x14</td><td>0x00 runtime index buffer; 0x04 u32 index count; 0x08 off u16 triangle strips; 0x0C u16 flags (0x2 use material pass 1, 0x4 two-sided, 0x8 culled the other way); 0x0E u16 0; 0x10 u8 material; 0x11 u8 hide group; 0x12 u16 0</td></tr>
+    <tr><td>3DS</td><td>0x14</td><td>0x00 u8 material; 0x01 u8 hide group; 0x02 u16 0; 0x04 u32 index count; 0x08 off u16 triangle lists; 0x0C runtime index buffer; 0x10 u16 flags (0x4 two-sided, 0x8 culled the other way); 0x12 u16 0</td></tr>
+  </tbody>
+</table>
+<p>A draw is skipped while its hide group's bit is set in the instance's hidden-parts mask (instance + 0xD4). The hide group is 0 for most draws and 1 to 6 for parts such as held items.</p>
+
+<h2>Instanced Mesh (.gdi)</h2>
+<p>Shrubs, placed by the <a href="../level/bog.html">level database</a>'s shrub records.</p>
+<table>
+  <thead><tr><th>Offset</th><th>Size</th><th>Type</th><th>Description</th></tr></thead>
+  <tbody>
+    <tr><td>0x00</td><td>4</td><td>u32</td><td>Format, 1</td></tr>
+    <tr><td>0x04</td><td>4</td><td>u32</td><td>0</td></tr>
+    <tr><td>0x08</td><td>4</td><td>u32</td><td>Vertex count</td></tr>
+    <tr><td>0x0C</td><td>4</td><td>u32</td><td>Index count</td></tr>
+    <tr><td>0x10</td><td>16</td><td>f32[4]</td><td>Bounding sphere</td></tr>
+    <tr><td>0x20</td><td>4</td><td>u32</td><td>0</td></tr>
+    <tr><td>0x24</td><td>4</td><td>off</td><td>Vertices</td></tr>
+    <tr><td>0x28</td><td>4</td><td>off</td><td>Indices: one u16 triangle strip</td></tr>
+    <tr><td>0x2C</td><td>8</td><td>-</td><td>Xbox 360: runtime u32 copy of the indices, runtime vertex buffer</td></tr>
+  </tbody>
+</table>
+
+<h2>World Mesh (.gdw)</h2>
+<table>
+  <thead><tr><th>Offset</th><th>Size</th><th>Type</th><th>Description</th></tr></thead>
+  <tbody>
+    <tr><td>0x00</td><td>4</td><td>u32</td><td>Format: 8 Wii and 3DS, 6 PS3 and Xbox 360</td></tr>
+    <tr><td>0x04</td><td>4</td><td>f32</td><td>Scale, 1.0 in every file, applied with 0.01</td></tr>
+    <tr><td>0x08</td><td>4</td><td>f32</td><td>1.0 in every file</td></tr>
+    <tr><td>0x0C</td><td>4</td><td>u32</td><td>0</td></tr>
+    <tr><td>0x10</td><td>4</td><td>u32</td><td>Batch count</td></tr>
+    <tr><td>0x14</td><td>4</td><td>off</td><td>Batches, 8 bytes each</td></tr>
+    <tr><td>0x18</td><td>4</td><td>off</td><td>Root of the visibility tree</td></tr>
+    <tr><td>0x1C</td><td>4</td><td>u32</td><td>0</td></tr>
+  </tbody>
+</table>
+<p>A batch is a u16 material index, a u16 zone count and an offset to its zones (0x10 bytes each). A zone is a u16 zone index (the batch draws only while that bit of the 64-bit visible-zone mask is set), a u16 draw count, an offset to the draws, and two words that are 0 in the files.</p>
+
+<h3>World Draw, Wii (0x2C bytes)</h3>
+<table>
+  <thead><tr><th>Offset</th><th>Size</th><th>Type</th><th>Description</th></tr></thead>
+  <tbody>
+    <tr><td>0x00</td><td>16</td><td>f32[4]</td><td>Bounding sphere</td></tr>
+    <tr><td>0x10</td><td>4</td><td>off</td><td>Display list</td></tr>
+    <tr><td>0x14</td><td>4</td><td>u32</td><td>Display list size</td></tr>
+    <tr><td>0x18</td><td>2</td><td>u16</td><td>Visibility tree node, <code>(node - root) / 0x2C</code></td></tr>
+    <tr><td>0x1A</td><td>2</td><td>u16</td><td>Vertex count</td></tr>
+    <tr><td>0x1C</td><td>2</td><td>u16</td><td>0xFFFF in files; the Wii writes the draw's running number here at load</td></tr>
+    <tr><td>0x1E</td><td>2</td><td>u16</td><td>Flags (0, 1, 2, 3, 7 or 11); bit 0x1 is required in one of the world pass's modes</td></tr>
+    <tr><td>0x20</td><td>4</td><td>off</td><td>Vertices, 24 bytes each</td></tr>
+    <tr><td>0x24</td><td>8</td><td>-</td><td>Runtime: display list, vertex buffer</td></tr>
+  </tbody>
+</table>
+
+<h3>World Draw, PS3, Xbox 360 and 3DS (0x3C bytes)</h3>
+<table>
+  <thead><tr><th>Offset</th><th>Size</th><th>Type</th><th>Description</th></tr></thead>
+  <tbody>
+    <tr><td>0x00</td><td>2</td><td>u16</td><td>Visibility tree node</td></tr>
+    <tr><td>0x02</td><td>2</td><td>u16</td><td>Index count; 0 skips the draw</td></tr>
+    <tr><td>0x04</td><td>4</td><td>off</td><td>Indices: u16 strips (lists on 3DS)</td></tr>
+    <tr><td>0x08</td><td>2</td><td>u16</td><td>Vertex count; 0 skips the draw</td></tr>
+    <tr><td>0x0A</td><td>2</td><td>u16</td><td>0xFFFF in files</td></tr>
+    <tr><td>0x0C</td><td>2</td><td>u16</td><td>Flags</td></tr>
+    <tr><td>0x0E</td><td>2</td><td>u16</td><td>0</td></tr>
+    <tr><td>0x10</td><td>4</td><td>off</td><td>Vertices: 72 bytes (PS3, Xbox 360) or 24 (3DS)</td></tr>
+    <tr><td>0x14</td><td>8</td><td>-</td><td>Runtime: index buffer, vertex buffer</td></tr>
+    <tr><td>0x1C</td><td>16</td><td>f32[4]</td><td>Bounding sphere</td></tr>
+    <tr><td>0x2C</td><td>16</td><td>u32[4]</td><td>0</td></tr>
+  </tbody>
+</table>
+
+<h3>Visibility Tree Node (0x2C bytes)</h3>
+<p>f32[3] box minimum, f32[3] box maximum, a u32 at 0x18 that the walk does not read, and four child offsets at 0x1C (0 for none). The walk tests each box and records inside, outside or partial per node; a whole subtree takes its parent's answer when the parent is entirely in or out.</p>
+
+<h2>Skinned Mesh (.gds)</h2>
+<table>
+  <thead><tr><th>Offset</th><th>Size</th><th>Type</th><th>Description</th></tr></thead>
+  <tbody>
+    <tr><td>0x00</td><td>4</td><td>u32</td><td>Format: 6 Wii and Xbox 360, 7 PS3, 9 3DS</td></tr>
+    <tr><td>0x04</td><td>4</td><td>f32</td><td>Position scale, 8.0 in every file</td></tr>
+    <tr><td>0x08</td><td>4</td><td>u32</td><td>LOD count</td></tr>
+    <tr><td>0x0C</td><td>6 * size</td><td>LOD[6]</td><td>Six LOD slots: 0x28 bytes (Wii), 0x14 (Xbox 360, 3DS) or 0x74 (PS3)</td></tr>
+    <tr><td>then</td><td>4</td><td>u32</td><td>Model parameter count: the targets of animation curves, 0 in every file</td></tr>
+    <tr><td>then</td><td>4</td><td>off</td><td>Model parameters, 0x10 bytes each: u32 name hash, u32 sub-index, u32, off</td></tr>
+  </tbody>
+</table>
+<p>The parameter table therefore sits at mesh + 0xFC (Wii), 0x84 (Xbox 360, 3DS) or 0x2C4 (PS3). The renderer picks the LOD from the instance; LOD <em>k</em>'s skeleton is the header's 0x28 + 4<em>k</em>.</p>
+
+<h3>LOD Records</h3>
+<table>
+  <thead><tr><th>Platform</th><th>Layout</th></tr></thead>
+  <tbody>
+    <tr><td>Wii (0x28)</td><td>Draw count and off draws (0x0C each); skinned vertex count and off (32 bytes each); rigid vertex count and off (10 bytes each); UV count and off (4 bytes each); colour count and off (4 bytes each)</td></tr>
+    <tr><td>Xbox 360, 3DS (0x14)</td><td>Five draw-list offsets; list <em>k</em> runs from entry <em>k</em> to entry <em>k</em> + 1</td></tr>
+    <tr><td>PS3 (0x74)</td><td>Five draw-list offsets at 0x00, then four groups of 0x18 bytes at 0x14, one per list: u32 skinned vertex count, u32 rigid vertex count, off skinned vertices (80 bytes each), off rigid vertices (64 bytes each), two runtime vertex buffers</td></tr>
+  </tbody>
+</table>
+
+<h3>Skinned Draws</h3>
+<table>
+  <thead><tr><th>Platform</th><th>Size</th><th>Layout</th></tr></thead>
+  <tbody>
+    <tr><td>Wii</td><td>0x0C</td><td>0x00 off display list; 0x04 u32 size; 0x08 u8 material; 0x09 u8 creation order; 0x0A u8 flags, bit 0x10 rigid; 0x0B u8 bone a rigid draw hangs from</td></tr>
+    <tr><td>PS3</td><td>0x10</td><td>0x00 u32 index count; 0x04 off u16 strips; 0x08 u32; 0x0C u32 flags: material in the top byte, bit 0x1000 rigid, bone in the low byte. Vertices come from the list's group</td></tr>
+    <tr><td>Xbox 360</td><td>0x50</td><td>0x00 u32 index count; 0x04 off indices; 0x08 u32; 0x0C u32 vertex count; 0x10 off vertices; 0x14 u32; 0x18 u8 palette length, then the bone palette; 0x49 u8 material; 0x4A u8 creation order; 0x4B u8 flags, bit 0x10 rigid (64-byte vertices, else 72); 0x4C u8 bone</td></tr>
+    <tr><td>3DS</td><td>0x40</td><td>0x00 u32 index count; 0x04 off indices; 0x08 u32; 0x0C u32 skinned vertex count; 0x10 off skinned vertices (32 bytes each); 0x14 u32 rigid vertex count; 0x18 off rigid vertices (24 bytes each); 0x1C u32; 0x20 u8 palette length, then the palette; 0x39 u8 material; 0x3A u8 creation order; 0x3C u8 flags, bit 0x10 rigid; 0x3E u8 bone</td></tr>
+  </tbody>
+</table>
+
+<h2>Vertex Formats</h2>
+<p>Wii formats are described with <code>GXSetVtxAttrFmt</code>; PS3, Xbox 360 and 3DS formats with named declaration tables.</p>
+
+<h3>Wii</h3>
+<table>
+  <thead><tr><th>Format</th><th>Used by</th><th>Position</th><th>Normal</th><th>Colour</th><th>UV</th></tr></thead>
+  <tbody>
+    <tr><td>3</td><td><code>.gdt</code>, <code>.gdw</code>: 24 bytes, position at 0, normal 12, colour 16, UV 20</td><td>f32 x 3</td><td>s8 x 3, /64</td><td>RGBA8</td><td>s16 x 2, /1024</td></tr>
+    <tr><td>4</td><td><code>.gds</code></td><td>s16 x 3, /16384</td><td>s8 x 3, /64</td><td>RGBA8</td><td>s16 x 2, /1024</td></tr>
+  </tbody>
+</table>
+<p>Every Wii mesh is indexed: positions, normals, colours and UVs each take a u16 index. <code>.gdt</code> and <code>.gdw</code> point all four arrays into one 24-byte vertex, so a vertex's four indices are always equal.</p>
+<ul>
+  <li>Skinned vertex (32 bytes): s16 position x 3 at 0 (/16384, GQR6), s8 normal x 3 at 6 (/64, GQR7), 3 unused bytes, four joint bytes at 0x0C (top bit ignored), four f32 weights at 0x10.</li>
+  <li>Rigid vertex (10 bytes): the same position and normal.</li>
+  <li><code>.gdi</code> vertex (36 bytes): f32 position, f32 UV at 12, f32 normal at 20, RGBA8 colour at 32.</li>
+</ul>
+
+<h3>PS3 and Xbox 360</h3>
+<table>
+  <thead><tr><th>Declaration</th><th>Stride</th><th>Position</th><th>UV 0</th><th>UV 1</th><th>Normal</th><th>Tangent</th><th>Binormal</th><th>Colour 0, 1</th><th>Blend indices</th><th>Blend weights</th></tr></thead>
+  <tbody>
+    <tr><td><code>Static</code> (<code>.gdt</code>, <code>.gdw</code>)</td><td>72</td><td>0 f32 x 3</td><td>12 f32 x 2</td><td>20 f32 x 2</td><td>28</td><td>40</td><td>52</td><td>64, 68</td><td></td><td></td></tr>
+    <tr><td><code>DeformSkin</code> (<code>.gds</code> skinned)</td><td>72 (Xbox 360), 80 (PS3)</td><td>0</td><td>12</td><td></td><td>20</td><td>32</td><td>44</td><td>56, 60</td><td>64 u8 x 4</td><td>68 u8 x 4, normalised</td></tr>
+    <tr><td><code>RigidSkin</code> (<code>.gds</code> rigid, <code>.gdi</code>)</td><td>64</td><td>0</td><td>12</td><td></td><td>20</td><td>32</td><td>44</td><td>56, 60</td><td></td><td></td></tr>
+  </tbody>
+</table>
+<p>Colours are stored A, R, G, B on Xbox 360 and R, G, B, A on PS3. PS3's skinned stride leaves bytes 72 to 79 unused. Blend indices select from the draw's palette on Xbox 360 and index the skeleton directly on PS3.</p>
+
+<h3>3DS</h3>
+<p><code>Static</code>, 24 bytes: f32 position x 3 at 0, s16 UV x 2 (/1024) at 12, u8 normal x 3 at 16 as <code>(n - 128) / 127</code> and a pad byte, RGBA8 colour at 20. The skinned vertex (32 bytes) adds four joint bytes at 24 and four weight bytes at 28.</p>
+
+<h2>Wii Display Lists</h2>
+<p>GX commands zero-padded to 32 bytes. <code>0x98</code> draws a triangle strip, <code>0x90</code> a triangle list and <code>0xA0</code> a fan, followed by a big-endian u16 vertex count and one u16 index per enabled attribute per vertex, in GX order: position, normal, colour, UV. The files use <code>0x9B</code> (format 3) for <code>.gdt</code> and <code>.gdw</code> and <code>0x9C</code> (format 4) for <code>.gds</code>.</p>
+
+<h2>In OmegaStudio</h2>
+<ul>
+  <li>Every kind renders with its textures, each material drawing with the first texture record of pass 0 whose stage is 0. A world splits into one mesh per visibility zone. Positions are shown as stored, without the kind's scale.</li>
+  <li>Skinned models carry their skeleton and play every clip from the <code>.animpack</code> files beside their <code>MASTER</code> folder.</li>
+  <li>Geometry is replaced from glTF (the first LOD). Every model also exports and imports as the JSON and <code>.bin</code> pair the reverse-engineering tools write, which keeps every field and the original block order and padding, so an unchanged model rebuilds byte for byte.</li>
+</ul>
+</body>
+</html>

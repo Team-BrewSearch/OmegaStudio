@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<script src="../../script.js"></script>
+</head>
+<body>
+<p>Every <code>data/*.bin</code> file is a recursively nested table of contents. A table is a count, a list of offsets and the payloads they point at. There is no magic number, no version field and no filename anywhere. Children are often tables themselves, to varying depths.</p>
+
+<h2>Layout</h2>
+<pre>+----------------------+   &lt;-- table base
+| Count                |       u32, number of child slots
++----------------------+   &lt;-- base + 4
+| Offset table         |       count * u32, relative to the table base
++----------------------+
+| 0xFE padding         |       up to the first child
++----------------------+
+| Child payloads       |       each starting on a 32-byte boundary
++----------------------+   &lt;-- end of the parent's slot</pre>
+
+<table>
+  <thead><tr><th>Offset</th><th>Size</th><th>Type</th><th>Description</th></tr></thead>
+  <tbody>
+    <tr><td>0x00</td><td>4</td><td>u32</td><td>Child slot count</td></tr>
+    <tr><td>0x04</td><td>4 * count</td><td>u32[count]</td><td>Child offsets, relative to this table's own base</td></tr>
+    <tr><td>var</td><td>var</td><td>u8[]</td><td><code>0xFE</code> padding up to the first child</td></tr>
+    <tr><td>var</td><td>var</td><td>-</td><td>Child payloads</td></tr>
+  </tbody>
+</table>
+
+<h2>Slots</h2>
+<ul>
+  <li>Offsets are relative to the table that lists them, not to the start of the file.</li>
+  <li>Offsets are <strong>not sorted</strong>.</li>
+  <li>Offsets <strong>may repeat</strong>. Two slots with the same offset are aliases of one shared payload, not two copies.</li>
+  <li>An offset of <code>0</code> is an empty slot.</li>
+  <li>A child runs to the next larger distinct offset. The last child runs to the end of its parent.</li>
+</ul>
+
+<h2>Payload Identification</h2>
+<p>Leaves carry no names or type tags, so a payload is identified by its magic or its structure: <a href="../texture/ringtex2.html">ringtex2</a> textures, <a href="../model/model.html">models</a>, <a href="../animation/anim.html">animation clips</a> and <a href="../audio/audio.html">Ogg and RIFF audio</a>.</p>
+
+<div class="note">
+  <strong>Note:</strong> An animation clip starts with a count followed by offsets, which is structurally the same as a table of contents. A recursive walk has to recognise clips before it recurses, or it splits each one into its bone tracks.
+</div>
+
+<p>Most parent tables also end with a 40 to 96 byte block of <code>0D 0A</code> followed by zeros. It holds no asset data and behaves as an end marker.</p>
+
+<h2 id="checks">In OmegaStudio</h2>
+<p>A slot is treated as a table only when it is not already a recognised payload (texture, model, clip, or anything another plugin claims, such as Ogg or WAV) and it passes every check:</p>
+<ul>
+  <li>The slot is at least 8 bytes and the count is between 1 and 8191.</li>
+  <li>The offset table fits the slot, and every offset lies inside it.</li>
+  <li>Every non-zero offset clears the header, so it is at least <code>4 + 4 * count</code>.</li>
+  <li>Every byte between the end of the offset table and the first child is <code>0xFE</code>.</li>
+  <li>At least one slot is non-empty.</li>
+</ul>
+<p>The whole file is held in memory, which caps an archive at 4 GiB.</p>
+<p>Saving rebuilds the file from the root. Each table writes its count and offsets, pads with <code>0xFE</code> up to the next 32-byte boundary, then writes its children, each padded with <code>0x00</code> to 32 bytes. Aliased slots are written once and keep pointing at the same copy. Replacing one slot of an alias pair gives it a payload of its own; the other slot keeps the original.</p>
+</body>
+</html>

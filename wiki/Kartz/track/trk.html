@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<script src="../../script.js"></script>
+</head>
+<body>
+<p>A <code>.trk</code> holds one track's geometry as pre-built Nintendo DS <a href="displaylist.html">display lists</a>, split into chunks. A header is followed by two parallel per-chunk tables, then the chunks, then a run of tail sections the engine reads at load time. The tables below describe the two Kartz games; <a href="#variants">Variants</a> covers the other three.</p>
+
+<h2>Layout</h2>
+<pre>+----------------------+   &lt;-- 0x00
+| Header               |       56 bytes
++----------------------+   &lt;-- 0x38
+| Chunk offset table   |       numTotal * u32, absolute file offsets
++----------------------+   &lt;-- 0x38 + 4 * numTotal
+| Chunk position table |       numTotal * 12 bytes, i32 x, y, z in 20.12
++----------------------+
+| Chunks               |       the bulk of the file
++----------------------+
+| Tail sections        |       one contiguous run, five header offsets
++----------------------+   &lt;-- EOF</pre>
+
+<h2>Header (56 bytes)</h2>
+<table>
+  <thead><tr><th>Offset</th><th>Size</th><th>Type</th><th>Description</th></tr></thead>
+  <tbody>
+    <tr><td>0x00</td><td>2</td><td>u16</td><td>Entry count of the section at 0x14, the same count as the sectors of the paired <a href="col.html">COL</a> and <a href="bpvs.html">BPVS</a>. Equals the primary chunk count on 10 of 16 Super Star Kartz tracks and is one higher on the rest</td></tr>
+    <tr><td>0x02</td><td>2</td><td>u16</td><td><code>numTotal</code>, the chunk count</td></tr>
+    <tr><td>0x04</td><td>2</td><td>u16</td><td><code>numTotal</code> again</td></tr>
+    <tr><td>0x06</td><td>2</td><td>u16</td><td>Root region: the chunk index in record 0 of the region table at 0x34</td></tr>
+    <tr><td>0x08</td><td>4</td><td>u32</td><td>Always 0</td></tr>
+    <tr><td>0x0C</td><td>4</td><td>u32</td><td>Chunk offset table start, <code>0x38</code></td></tr>
+    <tr><td>0x10</td><td>4</td><td>u32</td><td>Chunk position table start, <code>0x38 + 4 * numTotal</code></td></tr>
+    <tr><td>0x14</td><td>4</td><td>u32</td><td>Section offset: colour table</td></tr>
+    <tr><td>0x18</td><td>4</td><td>u32</td><td>Always 0. Not the entry count of the section at 0x1C</td></tr>
+    <tr><td>0x1C</td><td>4</td><td>u32</td><td>Section offset: road-bound records</td></tr>
+    <tr><td>0x20</td><td>4</td><td>u32</td><td>Entry count of the section at 0x24</td></tr>
+    <tr><td>0x24</td><td>4</td><td>u32</td><td>Section offset: 32-byte records</td></tr>
+    <tr><td>0x28</td><td>4</td><td>u32</td><td>Entry count of the section at 0x2C</td></tr>
+    <tr><td>0x2C</td><td>4</td><td>u32</td><td>Section offset: placement records</td></tr>
+    <tr><td>0x30</td><td>4</td><td>u32</td><td>Entry count of the section at 0x34</td></tr>
+    <tr><td>0x34</td><td>4</td><td>u32</td><td>Section offset: region table, running to the end of the file</td></tr>
+  </tbody>
+</table>
+
+<p>A zero section offset means the section is absent. The sections at 0x24, 0x2C and 0x34 keep their count in the word just before the offset; the section at 0x14 takes its count from 0x00, and the section at 0x1C has no count in the header.</p>
+
+<p>The field at 0x06 is a cached entry point into the region table, not an independent value. A track and its <code>_Reverse</code> variant can store different indices that resolve to the same world position.</p>
+
+<h2>Chunk Tables</h2>
+<p>The offset table holds <code>numTotal</code> absolute file offsets, one per chunk. An offset can point anywhere in the file that holds a valid chunk; zero skips the chunk. Primary chunks always come first: FarFarAway's 388 chunks are 87 primaries at indices 0-86, then 301 detail chunks.</p>
+<p>The position table holds <code>numTotal</code> records of three i32 in 20.12: each chunk's world-space centre. A chunk's <code>MTX_TRANS</code> is always exactly this value.</p>
+
+<h2 id="chunk">Chunk</h2>
+<table>
+  <thead><tr><th>Offset</th><th>Size</th><th>Type</th><th>Description</th></tr></thead>
+  <tbody>
+    <tr><td>+0x00</td><td>2</td><td>u16</td><td>Chunk index, equal to the chunk's own place in the offset table</td></tr>
+    <tr><td>+0x02</td><td>2</td><td>u16</td><td>Chunk type: <code>0x000E</code> primary, <code>0x0000</code> detail, <code>0x0013</code> on 12 chunks only</td></tr>
+    <tr><td>+0x04</td><td>4</td><td>u32</td><td><code>dlSize</code>: byte length of the prefix words plus the display list, a multiple of 4</td></tr>
+    <tr><td>+0x08</td><td>4</td><td>u32</td><td>A copy of the chunk's own <code>MTX_SCALE</code> parameter, raw 20.12</td></tr>
+    <tr><td>+0x0C</td><td>4</td><td>u32</td><td>Bounding radius, 20.12, in world units</td></tr>
+    <tr><td>+0x10</td><td>4</td><td>u32</td><td><code>texCount</code>, the number of texture references that follow</td></tr>
+    <tr><td>+0x14</td><td>4</td><td>u32</td><td>Prefix word count. Zero in the Kartz games, one or two in 100 Pimp My Ride chunks</td></tr>
+    <tr><td>+0x18</td><td>12 * texCount</td><td>ref[]</td><td>Texture references</td></tr>
+    <tr><td>var</td><td>4 * prefix</td><td>u32[]</td><td>Prefix words, counted in <code>dlSize</code></td></tr>
+    <tr><td>var</td><td>var</td><td>-</td><td><a href="displaylist.html">Display list</a></td></tr>
+  </tbody>
+</table>
+
+<p>A chunk ends at <code>start + header + texCount * refSize + dlSize</code>.</p>
+
+<p>The radius at +0x0C tracks half the diagonal of the chunk's vertex bounding box closely and never exceeds it: the exporter fits a sphere in fixed point. Treat it as a radius rather than trying to recompute it exactly.</p>
+
+<p>Chunk type <code>0x0013</code> appears only in ShippingFreighter, in both games. All 12 have <code>texCount == 1</code>, an unusually large scale of 8, 16 or 32, and a radius of 48 to 177 units; they are the freighter's hull slabs. What the type changes at draw time is unknown.</p>
+
+<h3>Texture Reference (12 bytes)</h3>
+<table>
+  <thead><tr><th>Offset</th><th>Size</th><th>Type</th><th>Description</th></tr></thead>
+  <tbody>
+    <tr><td>+0x00</td><td>4</td><td>u32</td><td>Byte offset of a <code>TEXIMAGE_PARAM</code> parameter word in the display list</td></tr>
+    <tr><td>+0x04</td><td>4</td><td>u32</td><td>Byte offset of the same group's <code>PLTT_BASE</code> parameter word</td></tr>
+    <tr><td>+0x08</td><td>4</td><td>u32</td><td>Texture slot in the RDF <a href="../resource/rdf.html#slots">slot table</a>, never 0 in shipped data</td></tr>
+  </tbody>
+</table>
+
+<p>Texture selection goes entirely through this table. Every real <code>TEXIMAGE_PARAM</code> in a display list is exactly <code>0x40000000</code>: texcoord transform on, every address, size and format bit zero, which is not a usable hardware setup on its own. The engine patches the real VRAM address, format and size into that word at load time from this table. Stored slot <em>n</em> is element <em>n</em> of <code>track.textures.texture</code>; slot 0 is always empty.</p>
+
+<h2>Tail Sections</h2>
+<p>The five offsets at 0x14, 0x1C, 0x24, 0x2C and 0x34 point into one <strong>contiguous</strong> run at the end of the file. Non-zero offsets increase, the last section runs to the end of the file, and record sizes divide each section exactly. Counts below are measured on the two Kartz games.</p>
+
+<table>
+  <thead><tr><th>Section</th><th>Count</th><th>Record</th><th>Contents</th></tr></thead>
+  <tbody>
+    <tr><td>0x14</td><td>0x00</td><td>2 bytes, padded to 4</td><td>One RGB555 colour per entry, bit 15 clear. Each is a colour the chunk of the same index emits through <code>COLOR</code>, so it reads as a representative tint rather than a computed average</td></tr>
+    <tr><td>0x1C</td><td>none</td><td>16 bytes</td><td><code>u16</code> always 3, <code>u16 B</code>, <code>u16 C</code>, <code>u16</code> equal to B, then two 20.12 values reading as left and right road bounds, typically &plusmn;12.0 and often mirrored. 20 to 96 records, the same for a track and its reverse. Absent on GallaxharsShip and ShippingFreighter</td></tr>
+    <tr><td>0x24</td><td>0x20</td><td>32 bytes</td><td>Eight i32. Word 0 is 1, words 2 and 3 are 20.12 offsets, word 6 is -1.0, words 1 and 7 are small indices</td></tr>
+    <tr><td>0x2C</td><td>0x28</td><td>28 bytes</td><td>Seven i32: two small selectors, a track section index, a 20.12 heading, and 20.12 lateral and forward offsets. Absent on 9 of 28 tracks</td></tr>
+    <tr><td>0x34</td><td>0x30</td><td>4 + 32 bytes</td><td>Region table, below</td></tr>
+  </tbody>
+</table>
+
+<p>Not every in-range word in the tail is a pointer. In FarFarAway's section at 0x2C, two records hold <code>0x21000</code>, which is both the address 135168 and the coordinate 33.0. They are coordinates: as addresses they would land mid-record, and the neighbouring fields read as a heading of 180.0 with mirrored X positions of &plusmn;7.0.</p>
+
+<h3>Region Table</h3>
+<p>The section opens with its own table of <code>count</code> <strong>absolute file offsets</strong>, one per 32-byte record that follows. They are contiguous and strictly ascending, and the first is always <code>sectionStart + 4 * count</code>. Each record is eight i32, of which only three are ever non-zero:</p>
+
+<table>
+  <thead><tr><th>Word</th><th>Description</th></tr></thead>
+  <tbody>
+    <tr><td>1</td><td>A chunk index, distinct across the table</td></tr>
+    <tr><td>2</td><td>A chunk count</td></tr>
+    <tr><td>7</td><td>The record's own index</td></tr>
+  </tbody>
+</table>
+
+<p>Tracks carry 9 to 19 regions. The counts in word 2 add up to the primary chunk count on 15 of the 28 tracks and fall 1 to 6 short on the rest, so the table splits a track's primary chunks into regions with a few left over on the larger tracks.</p>
+
+<h2 id="variants">Variants</h2>
+<table>
+  <thead><tr><th>Game</th><th>Chunk table</th><th>Chunks</th></tr></thead>
+  <tbody>
+    <tr><td>Madagascar Kartz, Super Star Kartz</td><td>Field at <code>+0x0C</code>, value <code>0x38</code></td><td>Narrow</td></tr>
+    <tr><td>Pimp My Ride</td><td>Field at <code>+0x0C</code>, value <code>0x20</code></td><td>Narrow, some with prefix words</td></tr>
+    <tr><td>Hot Wheels</td><td>Field at <code>+0x1C</code></td><td>Narrow</td></tr>
+    <tr><td>Monster Jam</td><td>u32 count at <code>+0x00</code>, table at <code>+0x04</code>, table end at <code>+0x08</code></td><td>Wide</td></tr>
+  </tbody>
+</table>
+
+<table>
+  <thead><tr><th>Chunk shape</th><th>Header</th><th><code>texCount</code> at</th><th>Reference size</th><th>Prefix words</th></tr></thead>
+  <tbody>
+    <tr><td>Narrow</td><td>24 bytes</td><td><code>+0x10</code></td><td>12 bytes</td><td>Count at <code>+0x14</code></td></tr>
+    <tr><td>Wide</td><td>108 bytes, with a bounding box between the common fields and the references</td><td><code>+0x64</code></td><td>16 bytes</td><td>None</td></tr>
+  </tbody>
+</table>
+
+<p>Of 1,541 chunks across the five games, each matches exactly one shape once its end has to land where the next chunk begins.</p>
+
+<h2>In OmegaStudio</h2>
+<h3>Reading</h3>
+<ul>
+  <li>The chunk count is the u16 at <code>+0x02</code>. The plugin tries the table field at <code>+0x0C</code>, then <code>+0x1C</code>, and takes the first that passes: the table starts at or after <code>0x20</code>, both tables fit the file, the first offset equals the end of the position table, and every non-zero offset is past the offset table and holds a valid chunk.</li>
+  <li>If neither passes, it tries the Monster Jam shape: a count of 1 to 8192 at <code>+0x00</code>, the table at <code>+0x04</code>, and <code>+0x08</code> equal to the table end.</li>
+  <li>A chunk is valid when <code>dlSize</code> is a multiple of 4, <code>texCount</code> is at most 4096 and the chunk fits the file. Its shape is the one whose end equals the next larger chunk offset; with no match, or no later chunk, the first shape that fits is used. A prefix count of 1 to 64 is honoured.</li>
+  <li>The display list is read from after the prefix words. A reference's slot <em>n</em> becomes texture <em>n</em> - 1 in the resolved list; a stored 0 also maps to the first.</li>
+</ul>
+
+<h3>Writing</h3>
+<ul>
+  <li>Only tracks whose chunks are all narrow can be written, so Monster Jam tracks are read-only.</li>
+  <li>The writer keeps the header and tail of the original. It rewrites the chunk count, the table and position fields, the offset and position tables, and every header word that points into the tail, shifted by however much the chunks grew or shrank. For a <code>0x38</code> header it also shifts the region table's own offsets.</li>
+  <li>A chunk with no triangles and no texture references is copied byte for byte from the original.</li>
+  <li>Each reference's display list offsets are written counting from the end of the reference table, so prefix words are included. The reader looks them up from after the prefix words, so in a prefixed Pimp My Ride chunk the two disagree.</li>
+  <li>The result must read back as a track or nothing is written.</li>
+</ul>
+
+<h3>Replacing from glTF</h3>
+<ul>
+  <li>The track keeps its original chunk count and chunk positions. A glTF node or mesh named <code>chunk_&lt;n&gt;</code> goes to chunk <em>n</em>; everything else goes to the chunk whose position is nearest the triangle's centroid.</li>
+  <li>Each chunk keeps its type, radius field and prefix words. Its scale is kept when the new geometry fits inside &plusmn;7.5 units at that scale; otherwise the smallest power of two that fits is used, and <code>+0x08</code> is written to match.</li>
+  <li>Because the layout is unchanged, the paired <code>.bpvs</code> and the tail stay valid and are left alone. If the original layout cannot be read, the import falls back to one chunk and replaces the paired <code>.bpvs</code> with a one-sector, all-visible table.</li>
+  <li>The paired <code>.col</code> is not regenerated and may go stale after geometry edits.</li>
+</ul>
+</body>
+</html>

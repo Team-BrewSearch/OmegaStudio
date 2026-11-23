@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<script src="../../script.js"></script>
+</head>
+<body>
+<p><code>.5tx</code> is the iStudio Nintendo DS texture container: a 16-byte <code>NTTX</code> header, an optional palette section and an image section. Seven pixel formats exist and six appear in the shipped data. The counts below are measured on the two Kartz games; every game on the engine uses the same reader.</p>
+
+<h2>Layout</h2>
+<pre>+----------------------+   &lt;-- 0x00
+| NTTX header          |       16 bytes
++----------------------+   &lt;-- 0x10
+| PALT section         |       zero or more blocks
++----------------------+
+| IMGE section         |       header + texel data
++----------------------+   &lt;-- EOF</pre>
+
+<h2>NTTX Header</h2>
+<table>
+  <thead><tr><th>Offset</th><th>Size</th><th>Type</th><th>Description</th></tr></thead>
+  <tbody>
+    <tr><td>0x00</td><td>4</td><td>char[4]</td><td>Magic <code>"NTTX"</code></td></tr>
+    <tr><td>0x04</td><td>2</td><td>u16</td><td><code>0xFEFF</code>, byte-order mark</td></tr>
+    <tr><td>0x06</td><td>2</td><td>u16</td><td><code>0x0100</code>, version</td></tr>
+    <tr><td>0x08</td><td>4</td><td>u32</td><td>Total file size</td></tr>
+    <tr><td>0x0C</td><td>2</td><td>u16</td><td><code>TextureParam</code>, <code>0x0010</code> on every shipped texture</td></tr>
+    <tr><td>0x0E</td><td>2</td><td>u16</td><td><code>FormatHint</code>, palette bank count plus one (below)</td></tr>
+  </tbody>
+</table>
+
+<div class="note">
+  <strong>Note:</strong> A file with <code>0x0C</code> and <code>0x0E</code> zeroed decodes the same but the game rejects it and draws the texture as a solid fallback colour.
+</div>
+
+<h3>FormatHint</h3>
+<p>Each pixel format addresses a fixed number of palette entries at a time. The field is the palette's <code>numColors</code> divided by that number, rounded up, plus one. A DIRECT texture has no palette and stores 1.</p>
+
+<pre>banks     = (format == DIRECT) ? 0 : max(1, ceil(numColors / entriesPerBank[format]))
+FormatHint = banks + 1</pre>
+
+<table>
+  <thead><tr><th>Format</th><th>Entries per bank</th><th>Observed colour counts</th><th>Observed values</th></tr></thead>
+  <tbody>
+    <tr><td>1 A3I5</td><td>32</td><td>32, 64</td><td>0x0002, 0x0003</td></tr>
+    <tr><td>2 PLTT4</td><td>4</td><td>2, 4, 8, 16</td><td>0x0002, 0x0003, 0x0005</td></tr>
+    <tr><td>3 PLTT16</td><td>16</td><td>4, 8, 16, 32, 48, 80</td><td>0x0002, 0x0003, 0x0004, 0x0006</td></tr>
+    <tr><td>4 PLTT256</td><td>256</td><td>256, 512, 3072</td><td>0x0002, 0x0003, 0x000D</td></tr>
+    <tr><td>6 A5I3</td><td>8</td><td>8, 16</td><td>0x0002, 0x0003</td></tr>
+    <tr><td>7 DIRECT</td><td>-</td><td>0</td><td>0x0001</td></tr>
+  </tbody>
+</table>
+
+<p>Values above <code>0x0002</code> are textures that ship more than one palette for the same image. The largest, <code>0x000D</code>, is a PLTT256 image with twelve banks of 256.</p>
+
+<h2>PALT Section</h2>
+<p>Repeats while the next four bytes read <code>"PALT"</code>. In practice there is at most one.</p>
+<table>
+  <thead><tr><th>Offset</th><th>Size</th><th>Type</th><th>Description</th></tr></thead>
+  <tbody>
+    <tr><td>+0x00</td><td>4</td><td>char[4]</td><td>Magic <code>"PALT"</code></td></tr>
+    <tr><td>+0x04</td><td>4</td><td>u32</td><td>Section size, header included</td></tr>
+    <tr><td>+0x08</td><td>4</td><td>u32</td><td><code>numColors</code></td></tr>
+    <tr><td>+0x0C</td><td>2 * n</td><td>u16[]</td><td>Palette entries, RGB555</td></tr>
+  </tbody>
+</table>
+
+<h2>IMGE Section</h2>
+<table>
+  <thead><tr><th>Offset</th><th>Size</th><th>Type</th><th>Description</th></tr></thead>
+  <tbody>
+    <tr><td>+0x00</td><td>4</td><td>char[4]</td><td>Magic <code>"IMGE"</code></td></tr>
+    <tr><td>+0x04</td><td>4</td><td>u32</td><td>Section size, header included</td></tr>
+    <tr><td>+0x08</td><td>1</td><td>u8</td><td><code>format</code>, see below</td></tr>
+    <tr><td>+0x09</td><td>1</td><td>u8</td><td><code>log2Width</code>: padded width is <code>8 &lt;&lt; log2Width</code></td></tr>
+    <tr><td>+0x0A</td><td>1</td><td>u8</td><td><code>log2Height</code>: padded height is <code>8 &lt;&lt; log2Height</code></td></tr>
+    <tr><td>+0x0B</td><td>1</td><td>u8</td><td><code>c0xp</code>: non-zero makes palette index 0 transparent</td></tr>
+    <tr><td>+0x0C</td><td>2</td><td>u16</td><td><code>origWidth</code></td></tr>
+    <tr><td>+0x0E</td><td>2</td><td>u16</td><td><code>origHeight</code></td></tr>
+    <tr><td>+0x10</td><td>4</td><td>u32</td><td>Texel data size, block data included</td></tr>
+    <tr><td>+0x14</td><td>var</td><td>u8[]</td><td>Texel data, sized to the <strong>padded</strong> dimensions</td></tr>
+    <tr><td>var</td><td>var</td><td>u8[]</td><td>Block data, format 5 only, half the size of the texel data</td></tr>
+  </tbody>
+</table>
+
+<p>Rows are addressed by the padded width; the image is the top-left <code>origWidth</code> by <code>origHeight</code> region. Every shipped texture already has its original size equal to its padded size.</p>
+
+<h2>Pixel Formats</h2>
+<table>
+  <thead><tr><th>Format</th><th>Name</th><th>Bits/px</th><th>Shipped</th><th>Notes</th></tr></thead>
+  <tbody>
+    <tr><td>1</td><td>A3I5</td><td>8</td><td>35</td><td>5-bit palette index, 3-bit alpha</td></tr>
+    <tr><td>2</td><td>PLTT4</td><td>2</td><td>94</td><td>4-colour palette, 4 pixels per byte</td></tr>
+    <tr><td>3</td><td>PLTT16</td><td>4</td><td>1068</td><td>16-colour palette, 2 pixels per byte</td></tr>
+    <tr><td>4</td><td>PLTT256</td><td>8</td><td>134</td><td>256-colour palette, 1 pixel per byte</td></tr>
+    <tr><td>5</td><td>TEX4x4</td><td>2 + block</td><td>0</td><td>4x4 block compression, unused by any shipped asset</td></tr>
+    <tr><td>6</td><td>A5I3</td><td>8</td><td>39</td><td>3-bit palette index, 5-bit alpha</td></tr>
+    <tr><td>7</td><td>DIRECT</td><td>16</td><td>52</td><td>Raw RGB555, no palette</td></tr>
+  </tbody>
+</table>
+
+<h3>Formats 2, 3 and 4: Paletted</h3>
+<p>With <code>iPx = x + y * paddedWidth</code>, the index is <code>(texel[iPx &gt;&gt; shift] &gt;&gt; ((iPx &amp; mask) * bits)) &amp; ((1 &lt;&lt; bits) - 1)</code> and the colour is <code>palette[index]</code>. Alpha is 0 only when <code>index == 0</code> and <code>c0xp</code> is set; otherwise 255.</p>
+
+<h3>Format 1: A3I5</h3>
+<p><code>index = d &amp; 0x1F</code>, with no <code>c0xp</code> rule. Alpha is <code>a3 = (d &gt;&gt; 5) &amp; 7</code>, widened to 5 bits as <code>(a3 &lt;&lt; 2) | (a3 &gt;&gt; 1)</code> and then to 8 bits as <code>(a5 * 510 + 31) / 62</code>.</p>
+
+<h3>Format 6: A5I3</h3>
+<p><code>index = d &amp; 0x7</code>, with no <code>c0xp</code> rule. Alpha is <code>a5 = (d &gt;&gt; 3) &amp; 0x1F</code>, widened to 8 bits the same way.</p>
+
+<h3>Format 7: DIRECT</h3>
+<p>Each texel is an RGB555 word. Alpha is 255 when bit 15 is set, otherwise 0.</p>
+
+<h3>Format 5: TEX4x4</h3>
+<p>4x4 pixel blocks. A u32 per block holds sixteen 2-bit indices; a parallel u16 per block, stored after the whole texel array, holds a palette address and a mode.</p>
+<ul>
+  <li><code>address = (cmp &amp; 0x3FFF) &lt;&lt; 1</code>, always even</li>
+  <li><code>colors[0] = palette[address]</code> and <code>colors[1] = palette[address + 1]</code>, always opaque</li>
+  <li><code>cmp &amp; 0xC000 == 0x0000</code>: <code>colors[2] = palette[address + 2]</code>, <code>colors[3]</code> transparent</li>
+  <li><code>0x4000</code>: <code>colors[2] = Blend(c0, c1, 4)</code>, <code>colors[3]</code> transparent</li>
+  <li><code>0x8000</code>: <code>colors[2] = palette[address + 2]</code>, <code>colors[3] = palette[address + 3]</code>, both opaque</li>
+  <li><code>0xC000</code>: <code>colors[2] = Blend(c0, c1, 3)</code>, <code>colors[3] = Blend(c0, c1, 5)</code>, both opaque</li>
+</ul>
+<p>Per pixel, <code>j = (x &amp; 3) + ((y &amp; 3) &lt;&lt; 2)</code> and the index is <code>(texel &gt;&gt; (2 * j)) &amp; 3</code>. <code>Blend(a, b, f)</code> is <code>(a * (8 - f) + b * f + 4) / 8</code> per channel, passed through a 6-bit-to-8-bit table.</p>
+
+<h2>RGB555</h2>
+<p>Red is bits 0-4, green 5-9, blue 10-14, and bit 15 is unused in palettes. Expansion to 8 bits uses a rounding table, not bit replication: the 5-bit value 3 becomes 25, not the 24 that <code>v &lt;&lt; 3 | v &gt;&gt; 2</code> gives.</p>
+
+<h2>Magenta Colour Key</h2>
+<p>Cutout textures such as foliage, chain-link and glass do <strong>not</strong> use <code>c0xp</code>. They paint pure magenta, RGB (255, 0, 255), wherever the surface should be invisible; <code>FF_tree03.5tx</code> keys out 56.7% of its pixels that way.</p>
+<p>Any pixel whose decoded colour is exactly (255, 0, 255) is fully transparent, in every format. This is a content convention: DS hardware has no colour key, only <code>c0xp</code> and per-format alpha.</p>
+
+<h2>Tracks Ignore c0xp</h2>
+<p>Six textures set <code>c0xp</code>: <code>green_s</code> in Super Star Kartz, and <code>NY_water</code>, <code>WH_river</code> and <code>VO_lava_islands</code> in Madagascar Kartz. None of them is meant to be keyed out, and honouring the flag punches holes through the track.</p>
+<p>On hardware, colour-0 transparency is bit 29 of <code>TEXIMAGE_PARAM</code>, not a property of the file, and every textured group in both games' tracks leaves that bit clear. Track geometry draws palette index 0 opaque whatever its texture says.</p>
+
+<h2 id="binding">Texture Binding</h2>
+<p>A chunk names its texture by slot. The slot resolves through the RDF <a href="../resource/rdf.html#slots">slot table</a> of the record that names the model; the first id in the slot's list that is a 5TX supplies the texture. The display list cannot help: its <code>TEXIMAGE_PARAM</code> is a constant <code>0x40000000</code> with no size, format or address, all of which the game fills in when it binds the texture.</p>
+
+<h2>In OmegaStudio</h2>
+<ul>
+  <li>A blob is a texture when it is at least 16 bytes and starts with <code>NTTX</code>.</li>
+  <li>A PALT section counts only if its size is non-zero and fits the file. At most <code>numColors</code> entries are read, clamped to the bytes left.</li>
+  <li>The reader starts texels at IMGE <code>+0x14</code> and sizes them from the format and padded size, not from the stored size words. <code>log2Width</code> and <code>log2Height</code> are clamped to 0..10. An image larger than its padded size, or larger than 16384 on a side, is rejected. An unknown format decodes as solid red.</li>
+  <li>A texture row honours <code>c0xp</code>. Track, scenery, car and character geometry ignores it, as the game does.</li>
+  <li>When no slot of a model resolves, every slot falls back to the one texture in the same folder whose name shares the most leading and trailing characters with the model's. A tie leaves the model untextured.</li>
+  <li>Replacing from a PNG re-encodes in the original format, or PLTT256 for an unknown one. The image is padded to a power of two (at least 8) by repeating its edge pixels, and the palette is built by median cut at the format's full size.</li>
+  <li>Pixels with alpha below 128 take palette index 0, set to magenta, in PLTT4, PLTT16 and PLTT256. A3I5 and A5I3 quantise alpha to their 3 or 5 bits, and DIRECT sets bit 15 for alpha of 128 or more.</li>
+  <li>The writer always emits a PALT section, an empty one for DIRECT, and carries <code>TextureParam</code>, <code>FormatHint</code> and <code>c0xp</code> through from the original.</li>
+</ul>
+</body>
+</html>

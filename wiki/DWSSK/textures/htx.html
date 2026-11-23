@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<script src="../../script.js"></script>
+</head>
+<body>
+<p><code>.htx</code> is the texture format on all four platforms: a small header of eight words, then pixel data in the platform's own layout. Models name textures by the path hash of their <code>.htx</code> entry.</p>
+
+<h2>Header</h2>
+<table>
+  <thead><tr><th>Offset</th><th>Size</th><th>Type</th><th>Description</th></tr></thead>
+  <tbody>
+    <tr><td>0x00</td><td>4</td><td>u32</td><td>Magic <code>0xFC000001</code>, in the platform's byte order</td></tr>
+    <tr><td>0x04</td><td>4</td><td>u32</td><td>Width</td></tr>
+    <tr><td>0x08</td><td>4</td><td>u32</td><td>Height</td></tr>
+    <tr><td>0x0C</td><td>4</td><td>u32</td><td>Unknown</td></tr>
+    <tr><td>0x10</td><td>4</td><td>u32</td><td>Mipmap level count</td></tr>
+    <tr><td>0x14</td><td>4</td><td>u32</td><td>Format (below)</td></tr>
+    <tr><td>0x18</td><td>4</td><td>u32</td><td>Flags: bit 0 set means swizzled (PS3)</td></tr>
+    <tr><td>0x1C</td><td>4</td><td>off</td><td>Pixel data</td></tr>
+  </tbody>
+</table>
+<p>A file whose first byte is <code>0xFC</code> is big-endian. On Xbox 360 the WAD puts offset 0x80 of each texture on a 4 KB boundary, so pixel data stored there is page-aligned.</p>
+
+<h2>Formats</h2>
+<table>
+  <thead><tr><th>Format</th><th>Name</th><th>PS3</th><th>Xbox 360</th><th>Wii</th><th>3DS</th></tr></thead>
+  <tbody>
+    <tr><td>0</td><td>RGBA8</td><td>B, G, R, A</td><td>A, R, G, B</td><td>GX tiles</td><td>-</td></tr>
+    <tr><td>2</td><td>ARGB1555</td><td>Yes</td><td>Yes</td><td>-</td><td>-</td></tr>
+    <tr><td>3</td><td>ARGB4444</td><td>Yes</td><td>Yes</td><td>-</td><td>-</td></tr>
+    <tr><td>5</td><td>DXT1</td><td>Yes</td><td>Yes</td><td>CMPR</td><td>-</td></tr>
+    <tr><td>6</td><td>DXT3</td><td>Yes</td><td>Yes</td><td>-</td><td>-</td></tr>
+    <tr><td>7</td><td>DXT5</td><td>Yes</td><td>Yes</td><td>-</td><td>-</td></tr>
+    <tr><td>8</td><td>CTPK</td><td>-</td><td>-</td><td>-</td><td>Yes</td></tr>
+    <tr><td>10</td><td>LA8</td><td>Yes</td><td>Yes</td><td>GX tiles</td><td>-</td></tr>
+  </tbody>
+</table>
+<p>16-bit texels are big-endian. Levels follow one another, largest first, each half the size of the last (never below 1).</p>
+
+<h2>Platform Layouts</h2>
+<h3>PS3</h3>
+<p>Uncompressed levels are linear rows, or Morton-swizzled when flag bit 0 is set. DXT levels are standard BCn blocks.</p>
+
+<h3>Xbox 360</h3>
+<p>Each level is stored in rows of blocks (1x1 for uncompressed formats, 4x4 for DXT) with a pitch of <code>max(256, align(blocks wide, 32) * block bytes)</code>. A level's height is padded to a multiple of 32 block rows, except in a single-level texture shorter than 32 pixels. DXT blocks are stored as byte-swapped 16-bit words.</p>
+
+<h3>Wii</h3>
+<ul>
+  <li>RGBA8 uses GX tiles of 4x4 texels, 64 bytes each: 16 A, R pairs, then 16 G, B pairs.</li>
+  <li>LA8 uses 4x4 tiles of A, L byte pairs.</li>
+  <li>DXT1 is GX CMPR, with sizes rounded up to 8 texels. Other sizes round up to 4.</li>
+</ul>
+
+<h3>3DS</h3>
+<p>Format 8 wraps a single-texture <code>CTPK</code> container holding a PICA200 texture: RGBA8, RGB8, RGBA5551, RGB565, RGBA4444, LA8, HILO8, L8, A8, LA4, L4, A4, ETC1 or ETC1A4. The CTPK carries the real size and mipmap count.</p>
+
+<h2>In OmegaStudio</h2>
+<ul>
+  <li>Every platform layout decodes; formats and channel orders follow the tables in the game executables.</li>
+  <li>Replacing from a PNG keeps the size and format and rebuilds every mipmap level. A PNG identical to the current image keeps the original bytes, and the lossless formats give back the same bytes for an unchanged image.</li>
+  <li>A model's texture is looked up in its own WAD, then its other parts, then <code>global.wad</code>, then the rest of the game folder.</li>
+</ul>
+</body>
+</html>

@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<script src="../../script.js"></script>
+</head>
+<body>
+<p><code>.p2b</code> (usually <code>.tuning.p2b</code>) is a self-describing tuning table: it carries the type definitions, enums and strings needed to read its own objects. The Wii loader is <code>0x800925a0</code>, and each object is registered with <code>0x80093270</code>.</p>
+
+<h2>Header</h2>
+<table>
+  <thead><tr><th>Offset</th><th>Size</th><th>Type</th><th>Description</th></tr></thead>
+  <tbody>
+    <tr><td>0x00</td><td>2</td><td>u16</td><td>Version, <code>0x000A</code>; its byte order gives the file's</td></tr>
+    <tr><td>0x02</td><td>2</td><td>u16</td><td>Flags: bit 0 relocated, bit 1 ready; a table with bit 0 set is not relocated again</td></tr>
+    <tr><td>0x04</td><td>8</td><td>u32, off</td><td>Types: count, then 0x0C-byte entries</td></tr>
+    <tr><td>0x0C</td><td>8</td><td>u32, off</td><td>Objects: count, then 8-byte entries</td></tr>
+    <tr><td>0x14</td><td>8</td><td>u32, off</td><td>Enums: count, then 0x0C-byte entries</td></tr>
+    <tr><td>0x1C</td><td>8</td><td>u32, off</td><td>Strings: count, then 8-byte entries</td></tr>
+  </tbody>
+</table>
+
+<h2>Tables</h2>
+<table>
+  <thead><tr><th>Table</th><th>Entry</th></tr></thead>
+  <tbody>
+    <tr><td>Types</td><td>u32 type name hash, u32 field count, off field records</td></tr>
+    <tr><td>Objects</td><td>off descriptor record, off data</td></tr>
+    <tr><td>Enums</td><td>u32 enum name hash, u32 value count, off values (<code>{u32 name hash, i32 value}</code> each)</td></tr>
+    <tr><td>Strings</td><td>u32 hash, off NUL-terminated string</td></tr>
+  </tbody>
+</table>
+<p>The string table names everything else: types, fields, enum values and hashed values all resolve through it.</p>
+
+<h3>Field Record (16 bytes)</h3>
+<table>
+  <thead><tr><th>Offset</th><th>Size</th><th>Type</th><th>Description</th></tr></thead>
+  <tbody>
+    <tr><td>0x00</td><td>1</td><td>u8</td><td>Kind (below)</td></tr>
+    <tr><td>0x01</td><td>3</td><td>-</td><td>Unknown, copied through</td></tr>
+    <tr><td>0x04</td><td>4</td><td>u32</td><td>Type hash: the struct or enum the field uses</td></tr>
+    <tr><td>0x08</td><td>4</td><td>u32</td><td>Field name hash</td></tr>
+    <tr><td>0x0C</td><td>4</td><td>u32</td><td>Offset of the field inside its struct</td></tr>
+  </tbody>
+</table>
+<p>A pointer or array record is followed directly by the record describing what it points to.</p>
+
+<h3>Field Kinds</h3>
+<table>
+  <thead><tr><th>Kind</th><th>Value</th><th>Size</th></tr></thead>
+  <tbody>
+    <tr><td>1</td><td>Nested struct of the field's type</td><td>The struct's size</td></tr>
+    <tr><td>2</td><td>f32</td><td>4</td></tr>
+    <tr><td>3</td><td>u32</td><td>4</td></tr>
+    <tr><td>4</td><td>i32</td><td>4</td></tr>
+    <tr><td>8</td><td>u8</td><td>1</td></tr>
+    <tr><td>9</td><td>bool, u8</td><td>1</td></tr>
+    <tr><td>10</td><td>Pointer to the next record's type; 0 for none</td><td>4</td></tr>
+    <tr><td>12</td><td>Array: u32 count, off elements of the next record's type</td><td>8</td></tr>
+    <tr><td>13</td><td>Offset of a NUL-terminated string</td><td>4</td></tr>
+    <tr><td>14</td><td>Enum value: 4 bytes on big-endian files; on little-endian files 1, 2 or 4 bytes, the smallest that holds every value</td><td>1, 2 or 4</td></tr>
+    <tr><td>17</td><td>Name hash (CRC-32)</td><td>4</td></tr>
+    <tr><td>18</td><td>Wwise ID (FNV-1 of the lower-cased name)</td><td>4</td></tr>
+    <tr><td>19</td><td>Path hash (CRC-32, upper-cased, backslashes)</td><td>4</td></tr>
+  </tbody>
+</table>
+<p>A struct is as large as its furthest field, rounded up to its alignment, which is that of its most aligned field. Strings are hashed by one of four schemes: plain CRC-32, CRC-32 of the upper-cased name, the path hash, or the Wwise FNV-1.</p>
+
+<h2>In OmegaStudio</h2>
+<ul>
+  <li>Tables export and import as JSON: the types, enums and strings, then every object decoded field by field through its own descriptors, with hashes turned back into names. A pointer to another object becomes a reference to it by name.</li>
+  <li>Floats that are not finite keep their exact bits, and an unknown hash stays as <code>#</code> plus its hex value.</li>
+  <li>Writing hashes a new name with the scheme its field kind calls for and rebuilds every table and offset.</li>
+</ul>
+</body>
+</html>

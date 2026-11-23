@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<script src="../script.js"></script>
+</head>
+<body>
+<p><em>DreamWorks Super Star Kartz</em> on PlayStation 3, Xbox 360, Wii and 3DS stores its assets in <code>HIG!</code> WAD containers whose entries are typed and found by path hash. The DS version runs on a different engine and is covered under <a href="../Kartz/kartz.html">Virtuos DS Racing Engine</a>. Layouts here come from the game's own code on all four platforms (addresses are from the Wii executable) and are checked against OmegaStudio's DWSSK plugin.</p>
+
+<h2>File Formats</h2>
+<ul data-list></ul>
+
+<h2>Conventions</h2>
+<div class="spec-grid">
+  <div class="label">Byte order</div><div>Big-endian on PS3, Xbox 360 and Wii; little-endian on 3DS. WAD headers and entry headers are little-endian everywhere.</div>
+  <div class="label">off</div><div>A byte offset from the start of the file or structure; 0 means none</div>
+  <div class="label">Runtime</div><div>A field the game overwrites while loading. The files hold whatever the export tools left there, and nothing reads it.</div>
+  <div class="label">Units</div><div>World positions in <code>.gdw</code>, <code>.gdi</code> and <code>.gdt</code> are centimetres (drawn at 0.01). <code>.gds</code> bone translations are centimetres scaled by 1/800.</div>
+  <div class="label">Vertex colours</div><div>A, R, G, B on Xbox 360 (its <code>D3DCOLOR</code>); R, G, B, A everywhere else</div>
+</div>
+
+<h2>Data Layout</h2>
+<ul>
+  <li>Each level is a <a href="wad/wad.html">WAD</a> in up to three parts, <code>.wad</code>, <code>.wad.mem1</code> and <code>.wad.vram</code>, loaded together.</li>
+  <li><code>global.wad</code> holds shared assets, such as <code>CollisionSurfaces.csd</code> and textures many levels use.</li>
+  <li>Characters keep their models in a <code>MASTER</code> folder with the <code>.animpack</code> files beside it.</li>
+  <li>Sound banks (<code>.bnk</code>), Wwise audio (<code>.wem</code>), Scaleform movies (<code>.swf</code>), Bink videos (<code>.bik</code>) and level name tables (<code>.nog</code>) sit outside the WADs. The first four are standard formats and have no pages here.</li>
+</ul>
+
+<div class="note">
+  <strong>Verification:</strong> OmegaStudio's skinning palettes match the Wii palette builder (<code>0x800cab00</code>) bit for bit across 10 characters and 30 random clips, and its animation decoders match the game's on all 1,748,046 key values in six packs. Its quaternion-to-matrix routine matches <code>System.Numerics</code> to 2e-8.
+</div>
+
+<h2>In OmegaStudio</h2>
+<ul>
+  <li>A level's WAD parts open as one tree. A texture a model names is looked up in its own WAD, then its other parts, then the <code>global.wad</code> in a folder above, and last in the other WADs of the game folder, indexed the first time a texture is missing.</li>
+  <li>WADs, sound banks, movies, videos and name tables also open inside PS3, Xbox 360, Wii and 3DS disc images, where a WAD row decompresses the first time it is expanded and edits go back to the disc when it allows them.</li>
+  <li>Textures decode for every platform and are replaced from PNG. Models render with their textures, skinned models play every clip in their <code>.animpack</code> files, and geometry is replaced from glTF.</li>
+  <li>Level databases, tuning tables, strings, fonts, cameras, collision, collision surfaces, navigation meshes and name tables export and import as JSON. Navigation and collision show in the Viewport and export as OBJ; level placements export as a glTF scene.</li>
+  <li>Shaders export as JSON with their disassembly. Audio decodes inside the plugin (PCM, Wwise IMA, DSP ADPCM, Wwise Vorbis, XMA2) and is replaced from WAV in its own codec; Bink 1 videos play with sound.</li>
+  <li>Every WAD, U8 archive and sound bank extracts to a folder with a manifest and rebuilds from it. TJZIP compression is rebuilt byte for byte, so an untouched WAD saves to the same file.</li>
+</ul>
+</body>
+</html>

@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<script src="../script.js"></script>
+</head>
+<body>
+<p>Polarbit's mobile racing engine runs five iOS games: <em>Crash Bandicoot Nitro Kart 2</em>, <em>Crash Bandicoot Nitro Kart 3D</em>, <em>Krazy Kart Racing</em>, <em>Reckless Getaway</em> and <em>Raging Thunder 2</em>. All five pack their data into <code>.vfs</code> archives of one shared format. Every layout here is checked against OmegaStudio's Polarbit plugin.</p>
+
+<h2>File Formats</h2>
+<ul data-list></ul>
+
+<h2>Engine Generations</h2>
+<table>
+  <thead><tr><th>Games</th><th>3D content</th><th>Other formats</th><th>File names</th></tr></thead>
+  <tbody>
+    <tr><td>CNK2, CNK3D, Krazy Kart Racing</td><td><a href="model/piff.html">PIFF</a> models and tracks</td><td>PNG or PVR textures, PSND and PMOD audio, LANG strings</td><td>Name hashes only</td></tr>
+    <tr><td>Reckless Getaway, Raging Thunder 2</td><td><a href="model/pxc.html">PXC</a> scene graphs</td><td>PVR textures, atlas plates, GLSL shaders, FCOL and CSV strings, PSND audio</td><td>Stored in the archive</td></tr>
+  </tbody>
+</table>
+
+<h2>Archives</h2>
+<table>
+  <thead><tr><th>Archive</th><th>Game</th><th>Size</th><th>Entries</th></tr></thead>
+  <tbody>
+    <tr><td><code>files/cbnk2/data.vfs</code></td><td>Crash Bandicoot Nitro Kart 2 (2010)</td><td>73 MB</td><td>787</td></tr>
+    <tr><td><code>files/cbnk3d/data.vfs</code></td><td>Crash Bandicoot Nitro Kart 3D (2008)</td><td>6.9 MB</td><td>426</td></tr>
+    <tr><td><code>files/kkr/data.vfs</code></td><td>Krazy Kart Racing</td><td>15.6 MB</td><td>649</td></tr>
+    <tr><td><code>files/rg/data.vfs</code></td><td>Reckless Getaway (2011)</td><td>52.6 MB</td><td>288</td></tr>
+    <tr><td><code>files/rg/frontend.vfs</code></td><td>Reckless Getaway, menus and locale</td><td>581 KB</td><td>16</td></tr>
+    <tr><td><code>files/rg/shaders.vfs</code></td><td>Reckless Getaway, GLSL shaders</td><td>10.5 KB</td><td>36</td></tr>
+    <tr><td><code>files/rt2/Data.vfs</code></td><td>Raging Thunder 2 (2010)</td><td>14.5 MB</td><td>309</td></tr>
+  </tbody>
+</table>
+
+<h2>Conventions</h2>
+<div class="spec-grid">
+  <div class="label">Byte order</div><div>Little-endian, except the records of RT2 <a href="texture/plates.html">PLT plates</a></div>
+  <div class="label">Fixed</div><div>Signed 32-bit 16.16 fixed point (value * 65536)</div>
+  <div class="label">GL constants</div><div>Headers use OpenGL ES values directly: 4 <code>GL_TRIANGLES</code>, 5 <code>GL_TRIANGLE_STRIP</code>, 5121 <code>GL_UNSIGNED_BYTE</code>, 5123 <code>GL_UNSIGNED_SHORT</code>, 5132 <code>GL_FIXED</code></div>
+  <div class="label">Texture V</div><div>Runs upward from the bottom; OmegaStudio flips it for glTF</div>
+</div>
+
+<h2>Data Flow</h2>
+<p>An entry is found by the hash of its path in a <a href="vfs/fufs.html">FUFS</a> table, then unwrapped through zero, one or two <a href="vfs/compression.html">zlib layers</a>. What is left is identified by its first bytes:</p>
+<table>
+  <thead><tr><th>Starts with</th><th>Format</th><th>Exported as</th></tr></thead>
+  <tbody>
+    <tr><td><code>89 50 4E 47</code></td><td>PNG</td><td><code>.png</code></td></tr>
+    <tr><td><code>34 00 00 00</code>, <code>"PVR!"</code> at 44</td><td><a href="texture/pvr.html">PVR</a></td><td><code>.pvr</code></td></tr>
+    <tr><td><code>PIFF</code></td><td><a href="model/piff.html">PIFF</a> model or track</td><td><code>.pof</code>, <code>.trk</code></td></tr>
+    <tr><td><code>4D 3C 2B 1A</code></td><td><a href="model/pxc.html">PXC</a> scene</td><td><code>.pxc</code></td></tr>
+    <tr><td><code>PSND</code>, <code>PMOD</code></td><td><a href="audio/audio.html">Sound, music module</a></td><td><code>.psn</code>, <code>.pmod</code></td></tr>
+    <tr><td><code>PFNT</code></td><td><a href="texture/font.html">Bitmap font</a></td><td><code>.fnt</code></td></tr>
+    <tr><td><code>LANG</code>, <code>FCOL</code></td><td><a href="data/strings.html">String table</a></td><td><code>.bin</code>, <code>.fcol</code></td></tr>
+    <tr><td><code>TLPB</code>, or a PLT-shaped header</td><td><a href="texture/plates.html">Atlas plate</a></td><td><code>.plt</code></td></tr>
+    <tr><td><code>D0 CF 11 E0</code></td><td>OLE compound file (<code>Thumbs.db</code>)</td><td><code>.db</code></td></tr>
+    <tr><td><code>&lt;</code> after whitespace, or valid UTF-8</td><td>XML or text</td><td><code>.xml</code>, <code>.txt</code></td></tr>
+  </tbody>
+</table>
+
+<div class="note">
+  <strong>Coverage:</strong> the seven archives hold 2,511 entries. The four 2011 archives store 649 file names, and every one hashes to its table entry.
+</div>
+
+<h2>In OmegaStudio</h2>
+<ul>
+  <li>A <code>.vfs</code> opens when it passes the FUFS header check. Compression layers are removed on read and put back on write, so every row shows the real payload.</li>
+  <li>The older archives store no names, so the plugin recovers them from paths the data mentions (see <a href="vfs/fufs.html#names">FUFS</a>); the Console reports how many it found.</li>
+  <li>PIFF models play their clips in the Animation pane. PIFF tracks and PXC cars, tracks and props render with their textures, found by path or, failing that, by file name.</li>
+  <li>Textures and fonts are replaced from PNG, sounds and PMOD samples from WAV, and PIFF models and PXC meshes from glTF. LANG and FCOL strings are edited in the Properties pane.</li>
+  <li>Saving rebuilds the archive in place. An entry that was not changed keeps its exact original bytes.</li>
+</ul>
+</body>
+</html>

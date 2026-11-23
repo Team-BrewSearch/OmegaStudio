@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<script src="../../script.js"></script>
+</head>
+<body>
+<p>A <code>.car</code> is a rigid vehicle or prop model built from the same chunks a <a href="../track/trk.html#chunk">track</a> uses, with a tail that says where its wheels sit. The layout below is the two-Kartz shape; the later games move the chunk table field from <code>+0x10</code> to <code>+0x14</code>.</p>
+
+<h2>Layout</h2>
+<table>
+  <thead><tr><th>Offset</th><th>Size</th><th>Type</th><th>Description</th></tr></thead>
+  <tbody>
+    <tr><td>0x00</td><td>4</td><td>u32</td><td>Chunk count</td></tr>
+    <tr><td>0x04</td><td>4</td><td>u32</td><td>0 or 3</td></tr>
+    <tr><td>0x08</td><td>4</td><td>i32</td><td>A height, 20.12, equal to the y of every wheel point</td></tr>
+    <tr><td>0x0C</td><td>4</td><td>u32</td><td>4</td></tr>
+    <tr><td>0x10</td><td>4</td><td>u32</td><td>0x24, the offset of the chunk table</td></tr>
+    <tr><td>0x14</td><td>4</td><td>u32</td><td>Start of the tail, which is also the end of the last chunk</td></tr>
+    <tr><td>0x18</td><td>4</td><td>u32</td><td>Offset of a 12-byte block inside the tail</td></tr>
+    <tr><td>0x1C</td><td>4</td><td>u32</td><td>The same offset again, in all but three models</td></tr>
+    <tr><td>0x20</td><td>4</td><td>u32</td><td>Offset of the wheel block</td></tr>
+    <tr><td>0x24</td><td>4 * count</td><td>u32[]</td><td>Absolute offset of each chunk</td></tr>
+    <tr><td>var</td><td>var</td><td>chunk[]</td><td>Chunks, narrow shape, in table order</td></tr>
+    <tr><td>var</td><td>var</td><td>-</td><td>Tail</td></tr>
+  </tbody>
+</table>
+
+<p>Twenty-two of the twenty-seven Kartz models carry one chunk and a 72-byte tail; the rest carry two chunks or a longer middle block. Later games leave gaps between chunks where the Kartz games pack them.</p>
+
+<h2>Wheel Block</h2>
+<p>The last 48 bytes of the file are four wheel positions, each an x, y, z triple in 20.12. The height at <code>+0x08</code> matches the y of every wheel.</p>
+
+<h2>In OmegaStudio</h2>
+<ul>
+  <li>The chunk count is 1 to 256. The table field is <code>+0x10</code>, or <code>+0x14</code> if that fails; the table must start at or after <code>0x20</code> and fit the file.</li>
+  <li>Each chunk offset must be at or past the end of the previous chunk, and each chunk needs a non-zero <code>dlSize</code> that is a multiple of 4, at most 4096 texture references, and room in the file. The tail starts where the last chunk ends.</li>
+  <li>The wheel block is read only when at least 48 bytes follow the last chunk. Wheel coordinates are edited as decimals in the Properties pane.</li>
+  <li>Replacing from glTF puts a node or mesh named <code>chunk_&lt;n&gt;</code> into chunk <em>n</em>, and anything unnamed into the first chunk. The writer keeps the header, packs the chunks back to back, copies empty chunks and the tail byte for byte, and shifts every header word that points into the tail. If the geometry comes back unchanged, the original bytes are kept.</li>
+</ul>
+<p>All 103 <code>.car</code> files across the five games re-serialise to their original bytes and survive an unedited glTF round trip. All 27 Kartz models come back byte for byte.</p>
+</body>
+</html>

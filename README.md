@@ -46,7 +46,7 @@ Nothing is written until you ask. `File ▸ Save` rewrites the archive in place,
 
 ## Formats it ships with
 
-Nine plugins are built from this repository:
+Ten plugins are built from this repository:
 
 | Plugin | Games |
 | --- | --- |
@@ -56,6 +56,7 @@ Nine plugins are built from this repository:
 | Polarbit | Crash Bandicoot Nitro Kart 2 and 3D and three other iOS games |
 | DWSSK | DreamWorks Super Star Kartz (PS3, Xbox 360, Wii, 3DS) |
 | Disgaea DS | Disgaea DS archives, images, music and sound inside the ROM |
+| SSNCR | Shrek Smash n' Crash Racing (DS) |
 | PlayStation 3 | Game discs |
 | Xbox 360 | Game discs |
 | Standard Formats | OGG, WAV, PNG, JPEG, GIF, BMP payloads, anywhere |
@@ -77,6 +78,7 @@ See [docs/PLUGINS.md](docs/PLUGINS.md) for the walkthrough and [docs/ARCHITECTUR
 | [PLUGINS.md](docs/PLUGINS.md) | Writing a plugin |
 | [ARCHITECTURE.md](docs/ARCHITECTURE.md) | How the host works |
 | [DEVELOPMENT.md](docs/DEVELOPMENT.md) | Building, publishing, and continuous integration |
+| [wiki/](wiki/) | Reverse-engineering wiki: file formats of the games BrewSearch takes apart |
 
 ## Licence
 

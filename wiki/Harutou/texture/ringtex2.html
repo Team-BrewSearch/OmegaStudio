@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<script src="../../script.js"></script>
+</head>
+<body>
+<p><strong>ringtex2</strong> is a 64-byte header followed by raw RGBA8 pixels. It is the only texture format in the shipped data: no DXT, no mip chain, no palette. Textures appear both as standalone archive payloads and embedded at the end of <a href="../model/model.html">model blobs</a>.</p>
+
+<h2>Header</h2>
+<table>
+  <thead><tr><th>Offset</th><th>Size</th><th>Type</th><th>Description</th></tr></thead>
+  <tbody>
+    <tr><td>0x00</td><td>16</td><td>char[16]</td><td>Magic <code>"ringtex2"</code>, null padded</td></tr>
+    <tr><td>0x10</td><td>16</td><td>char[16]</td><td>Asset name, null padded, e.g. <code>hi00_body</code></td></tr>
+    <tr><td>0x20</td><td>12</td><td>-</td><td>Unknown</td></tr>
+    <tr><td>0x2C</td><td>4</td><td>u32</td><td>Width in pixels</td></tr>
+    <tr><td>0x30</td><td>4</td><td>u32</td><td>Height in pixels</td></tr>
+    <tr><td>0x34</td><td>12</td><td>-</td><td>Unknown</td></tr>
+    <tr><td>0x40</td><td>4 * w * h</td><td>u8[]</td><td>Pixels, RGBA8, top-down, no row padding</td></tr>
+  </tbody>
+</table>
+
+<p>There is no length field. A texture is exactly <code>0x40 + 4 * w * h</code> bytes, so a 128x128 texture is <code>0x10040</code> bytes.</p>
+
+<h2>Channel Order</h2>
+<p>Pixels are stored <strong>R, G, B, A</strong>, not the B, G, R, A a Direct3D 9 A8R8G8B8 surface would hold in memory. Across the 140 face textures the channel means are 220, 163 and 111, a skin tone. Read as B, G, R the same bytes would average to a saturated sky blue. Alpha is 255 in every shipped texture.</p>
+
+<h2>In OmegaStudio</h2>
+<ul>
+  <li>A blob is a texture when it is at least 0x40 bytes and starts with the 8 bytes <code>ringtex2</code>.</li>
+  <li>Width and height must each be 1 to 16384, the pixel count at most 256 Mi, and the blob must hold <code>0x40 + 4 * w * h</code> bytes.</li>
+  <li>Pixels go to the Texture pane as they are, with no channel swap.</li>
+  <li>Replacing from a PNG keeps the original header, rewrites only the name and size fields, and accepts a new size.</li>
+</ul>
+</body>
+</html>

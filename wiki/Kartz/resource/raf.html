@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<script src="../../script.js"></script>
+</head>
+<body>
+<p>A <code>.raf</code> is the pointer fixup table for the <a href="rdf.html">RDF</a> of the same name. It has no content of its own: each entry is the offset of a word in the <code>.rdf</code> that holds a file offset and must become a real address when the database loads. Every game ships one <code>.raf</code> beside every <code>.rdf</code>.</p>
+
+<h2>Layout</h2>
+<table>
+  <thead><tr><th>Offset</th><th>Size</th><th>Type</th><th>Description</th></tr></thead>
+  <tbody>
+    <tr><td>0x00</td><td>4</td><td>u32</td><td>Entry count</td></tr>
+    <tr><td>0x04</td><td>4 * count</td><td>u32[count]</td><td>Byte offsets into the paired <code>.rdf</code></td></tr>
+  </tbody>
+</table>
+
+<p>The file is exactly <code>4 + 4 * count</code> bytes, with no magic or padding.</p>
+
+<h2>Loading</h2>
+<p>The game reads the whole <code>.rdf</code> into one block and patches each listed word in place. After that pass every pointer in the database is a live address.</p>
+
+<pre>for (u32 o : raf.offsets)
+    *(u32*)(rdf + o) += (u32)rdf;</pre>
+
+<h2>Rules</h2>
+<ul>
+  <li>Every offset is a multiple of 4, ends at least four bytes before the end of the <code>.rdf</code>, and appears once.</li>
+  <li>Every word the table points at is a valid in-file offset and never zero. There is no null pointer: a property with nothing to point at is left out of its record.</li>
+  <li>The offsets are <strong>not</strong> sorted. They follow the order the writer emitted records in.</li>
+  <li>The words they point at are not all 4-byte aligned, because string pointers address a byte-packed pool.</li>
+</ul>
+
+<div class="note">
+  <strong>Rewriting:</strong> Moving any record inside the <code>.rdf</code> invalidates both the stored offsets and this table, and the pointer set cannot be recovered from the <code>.rdf</code> alone: a plausible file offset looks exactly like an integer property of the same size. A rewritten database has to emit its <code>.raf</code> in the same pass that lays out the records.
+</div>
+
+<h2>In OmegaStudio</h2>
+<p>The plugin reads <code>.rdf</code> records directly and never opens the <code>.raf</code>. Since the RDF is never rewritten, the RAF never needs to change.</p>
+</body>
+</html>

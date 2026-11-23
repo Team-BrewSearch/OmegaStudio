@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<script src="../../script.js"></script>
+</head>
+<body>
+<p>An entry payload is stored raw or wrapped in one or two zlib layers. <strong>PLZP</strong> is a small wrapper with sizes; PIFF and PXC files are often a bare zlib stream instead, or both.</p>
+
+<h2>PLZP</h2>
+<table>
+  <thead><tr><th>Offset</th><th>Size</th><th>Type</th><th>Description</th></tr></thead>
+  <tbody>
+    <tr><td>0x00</td><td>4</td><td>char[4]</td><td>Magic <code>"PLZP"</code></td></tr>
+    <tr><td>0x04</td><td>4</td><td>u32</td><td>Uncompressed size</td></tr>
+    <tr><td>0x08</td><td>4</td><td>u32</td><td>Compressed size, the entry size minus 12</td></tr>
+    <tr><td>0x0C</td><td>var</td><td>-</td><td>zlib stream, always <code>78 DA</code></td></tr>
+  </tbody>
+</table>
+<p>PLZP wraps textures, sounds, fonts, plates, some PNG and XML files, and the large track and scene files. Krazy Kart Racing's five fonts are PLZP inside PLZP.</p>
+
+<h2>Bare zlib</h2>
+<p>PIFF and PXC files are often stored as a plain zlib stream: <code>78 9C</code> (level 6) in CNK2, <code>78 9C</code> or <code>78 DA</code> in the other games. Seventeen PIFF files and 56 of the 61 PXC files are double-wrapped, a PLZP whose payload is itself a bare zlib stream.</p>
+<p>A bare stream starts with <code>0x78</code> and satisfies <code>(b0 * 256 + b1) % 31 == 0</code>, and must then inflate cleanly. No raw payload in any archive starts that way by accident.</p>
+
+<h2>Original Compressor Settings</h2>
+<p>These are how the original tools called zlib, recovered by re-compressing every stream until it matched bit for bit. The game does not depend on them: it accepts any valid zlib stream, so an edited file can be compressed normally.</p>
+<ul>
+  <li><strong>Level</strong> follows the FLEVEL bits of the zlib header: <code>78 9C</code> is level 6, <code>78 DA</code> level 9.</li>
+  <li><strong>memLevel</strong> is 9, not zlib's default of 8. It matters for large streams.</li>
+  <li><strong>windowBits</strong> is 15 with the default strategy, with one exception below.</li>
+  <li>The model, track and font writers fed zlib one file section at a time and called <code>deflate(Z_FULL_FLUSH)</code> between sections. Each flush shows up as an empty stored block, <code>00 00 FF FF</code>.</li>
+  <li>The zlib was 1.2.4 or older. From 1.2.5.1 on, a full flush rewinds the sliding window, which makes the first bytes after a flush unmatchable. Old zlib kept the window and only cleared the hash table.</li>
+  <li>An empty fixed-Huffman block (10 bits) sometimes appears just before the empty stored block. Old zlib emitted it when the 8 KB output buffer filled during a flush, which happens when the last data block before the flush exceeds about 8,192 bytes.</li>
+  <li>Raging Thunder 2's <code>font02.fnt</code> compressed its palette section with <code>Z_FILTERED</code> and switched back to the default strategy for the pixels. It is the only stream that needs this.</li>
+</ul>
+
+<div class="note">
+  <strong>Flush placement:</strong> in CNK2 models a flush comes before any chunk of at least about 1 KB (1,032 bytes including its 8-byte header), once about 4.1 KB has built up, and at the end of some FORM groups. That reproduces the flush layout of 95 of the 110 CNK2 model and track streams.
+</div>
+
+<h2>In OmegaStudio</h2>
+<ul>
+  <li>Layers are peeled one at a time: PLZP whenever the magic is present, bare zlib whenever the header check passes and the stream inflates. Each layer and its level are remembered.</li>
+  <li>A PLZP's compressed size must equal the entry size minus 12, its uncompressed size must be at most 256 MiB, and it must inflate to exactly that size.</li>
+  <li>An entry whose payload comes back unchanged keeps its original bytes. An edited one is wrapped again in the same layers, at level 9 for a <code>78 DA</code> layer and level 6 for <code>78 9C</code>, using .NET's zlib with no section flushes.</li>
+</ul>
+</body>
+</html>

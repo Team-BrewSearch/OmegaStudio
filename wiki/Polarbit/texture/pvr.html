@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<script src="../../script.js"></script>
+</head>
+<body>
+<p>All five games use PowerVR legacy (version 2) <strong>PVR</strong> textures with a 52-byte header. CNK2, CNK3D and Krazy Kart Racing also use plain PNG for 2D UI and menus.</p>
+
+<h2>PNG</h2>
+<p>Ordinary PNG files with valid CRCs and nothing after <code>IEND</code>. None use Apple's CgBI variant.</p>
+<table>
+  <thead><tr><th>Game</th><th>Colour types</th></tr></thead>
+  <tbody>
+    <tr><td>CNK2</td><td>249 RGBA, 14 palette, 4 RGB</td></tr>
+    <tr><td>CNK3D</td><td>263 8-bit palette, 49 RGB, 2 4-bit palette, 1 greyscale, 4 RGBA</td></tr>
+    <tr><td>Krazy Kart Racing</td><td>282 RGBA, 160 RGB, 79 palette, 1 greyscale</td></tr>
+  </tbody>
+</table>
+
+<h2>PVR Header</h2>
+<table>
+  <thead><tr><th>Offset</th><th>Size</th><th>Type</th><th>Description</th></tr></thead>
+  <tbody>
+    <tr><td>0x00</td><td>4</td><td>u32</td><td>Header size, 52</td></tr>
+    <tr><td>0x04</td><td>4</td><td>u32</td><td>Height</td></tr>
+    <tr><td>0x08</td><td>4</td><td>u32</td><td>Width</td></tr>
+    <tr><td>0x0C</td><td>4</td><td>u32</td><td>Mipmap count, not counting the top level</td></tr>
+    <tr><td>0x10</td><td>4</td><td>u32</td><td>Flags; the low byte is the pixel format</td></tr>
+    <tr><td>0x14</td><td>4</td><td>u32</td><td>Data size</td></tr>
+    <tr><td>0x18</td><td>4</td><td>u32</td><td>Bits per pixel</td></tr>
+    <tr><td>0x1C</td><td>16</td><td>u32[4]</td><td>R, G, B, A bit masks</td></tr>
+    <tr><td>0x2C</td><td>4</td><td>char[4]</td><td>Magic <code>"PVR!"</code></td></tr>
+    <tr><td>0x30</td><td>4</td><td>u32</td><td>Surface count, 1</td></tr>
+  </tbody>
+</table>
+
+<h2>Pixel Formats</h2>
+<table>
+  <thead><tr><th>Code</th><th>Format</th><th>Level size</th><th>CNK2</th><th>Getaway</th><th>RT2</th></tr></thead>
+  <tbody>
+    <tr><td>0x10</td><td>RGBA4444 (masks <code>F000/0F00/00F0/000F</code>)</td><td>2 * w * h</td><td>-</td><td>-</td><td>15</td></tr>
+    <tr><td>0x11</td><td>RGBA5551 (masks <code>F800/07C0/003E/0001</code>)</td><td>2 * w * h</td><td>-</td><td>3</td><td>42</td></tr>
+    <tr><td>0x12</td><td>RGBA8888</td><td>4 * w * h</td><td>13</td><td>4</td><td>1</td></tr>
+    <tr><td>0x13</td><td>RGB565</td><td>2 * w * h</td><td>-</td><td>-</td><td>-</td></tr>
+    <tr><td>0x16</td><td>I8, 8-bit intensity</td><td>w * h</td><td>-</td><td>-</td><td>1</td></tr>
+    <tr><td>0x17</td><td>AI88, intensity and alpha</td><td>2 * w * h</td><td>-</td><td>1</td><td>1</td></tr>
+    <tr><td>0x18</td><td>PVRTC 2bpp</td><td>8 * max(w/8, 2) * max(h/4, 2)</td><td>-</td><td>2</td><td>55</td></tr>
+    <tr><td>0x19</td><td>PVRTC 4bpp</td><td>8 * max(w/4, 2) * max(h/4, 2)</td><td>294</td><td>165</td><td>109</td></tr>
+  </tbody>
+</table>
+
+<p>The masks show that 0x10 and 0x11 keep alpha in the low bits.</p>
+
+<h2>Data</h2>
+<p>Pixel data runs from offset 52 to the end of the file and holds the whole mipmap chain, largest level first, each level half the size of the one before (never below 1). PVRTC blocks are stored in PowerVR's Morton order with the y bit lowest.</p>
+
+<h3>Flags</h3>
+<table>
+  <thead><tr><th>Bit</th><th>Meaning</th></tr></thead>
+  <tbody>
+    <tr><td>0x100</td><td>Has mipmaps</td></tr>
+    <tr><td>0x200</td><td>Twiddled</td></tr>
+    <tr><td>0x8000</td><td>Has alpha</td></tr>
+    <tr><td>0x10000</td><td>Stored bottom-up</td></tr>
+  </tbody>
+</table>
+
+<p>CNK2 sets 0x8000 and 0x10000 on every file and never sets 0x100 or 0x200, even on mipmapped and PVRTC textures. Getaway and RT2 set 0x100 exactly when there are mipmaps, and 0x200 on PVRTC files. PVRTC files carry zero colour masks, and an alpha mask of 1 when they have alpha.</p>
+
+<h2>In OmegaStudio</h2>
+<ul>
+  <li>A payload is a PVR when it starts with the word 52 and has <code>"PVR!"</code> at 0x2C. The surface count must be 1, the format one of the codes above, each side 1 to 16384, the mipmap count below 16, and uncompressed bits per pixel 8, 16 or 32.</li>
+  <li>The mipmap chain must fill the file exactly. Bottom-up textures are flipped on read and write. Twiddled uncompressed textures are not supported.</li>
+  <li>Uncompressed formats decode through the stored masks; a channel with a zero mask reads as 0, or 255 for alpha. PVRTC decodes in software, punch-through alpha included.</li>
+  <li>Replacing from a PNG with unchanged pixels keeps the original bytes. Otherwise the image is encoded in the same format, any size for uncompressed formats and powers of two for PVRTC. A resized texture with mipmaps gets a full new chain, box-filtered, and an updated header. I8 and AI88 store luminance.</li>
+  <li>PNG textures are decoded and replaced by the host's own codec.</li>
+</ul>
+</body>
+</html>

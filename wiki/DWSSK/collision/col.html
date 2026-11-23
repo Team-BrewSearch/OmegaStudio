@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<script src="../../script.js"></script>
+</head>
+<body>
+<p><code>.col</code> and <code>.col.piece</code> hold collision objects and an optional triangle mesh; <code>.csd</code> defines the surface types they reference. The Wii loader is <code>0x800f3220</code> (<code>collision.cpp</code>).</p>
+
+<h2>Collision File (.col, .col.piece)</h2>
+<table>
+  <thead><tr><th>Offset</th><th>Size</th><th>Type</th><th>Description</th></tr></thead>
+  <tbody>
+    <tr><td>0x00</td><td>4</td><td>char[4]</td><td>Magic <code>PCOL</code></td></tr>
+    <tr><td>0x04</td><td>4</td><td>u32</td><td>Version, 0x29</td></tr>
+    <tr><td>0x08</td><td>4</td><td>u32</td><td>Object count</td></tr>
+    <tr><td>0x0C</td><td>4</td><td>off</td><td>Objects, 0x40 bytes each</td></tr>
+    <tr><td>0x10</td><td>var</td><td>-</td><td>Embedded <code>COL </code> mesh, when the objects start past 0x10</td></tr>
+  </tbody>
+</table>
+
+<h3>Object (0x40 bytes)</h3>
+<table>
+  <thead><tr><th>Offset</th><th>Size</th><th>Type</th><th>Description</th></tr></thead>
+  <tbody>
+    <tr><td>0x00</td><td>4</td><td>u32</td><td>Shape count</td></tr>
+    <tr><td>0x04</td><td>4</td><td>u32</td><td>0</td></tr>
+    <tr><td>0x08</td><td>20</td><td>off[5]</td><td>Five u32 lists</td></tr>
+    <tr><td>0x1C</td><td>20</td><td>u32[5]</td><td>Their counts</td></tr>
+    <tr><td>0x30</td><td>4</td><td>off</td><td>Shapes, 0x30 bytes each</td></tr>
+    <tr><td>0x34</td><td>4</td><td>off</td><td>Properties: f32[3] and a u32 hash</td></tr>
+    <tr><td>0x38</td><td>4</td><td>u8[4]</td><td>Flags</td></tr>
+    <tr><td>0x3C</td><td>4</td><td>u32</td><td>Not read</td></tr>
+  </tbody>
+</table>
+
+<h3>Shape (0x30 bytes)</h3>
+<p>A u32 type, then 11 words. Types 3 and 6 hold an offset to an embedded <code>COL </code> mesh at 0x24 (type 3) or 0x28 (type 6), which the loader opens with <code>0x8008ef70</code>. Types 4 and 5 are attached to a bone: the bone's name hash at 0x18 (type 4) or 0x24 (type 5) is replaced at load by the bone's index in the model's LOD 0 skeleton, or -1 (<code>0x800f33b0</code>), and the centre at 0x04-0x10 follows that bone.</p>
+
+<h2>Collision Mesh (COL)</h2>
+<p>Loaded by <code>0x8008ef70</code>. Offsets count from the start of the <code>COL </code> mesh.</p>
+<table>
+  <thead><tr><th>Offset</th><th>Size</th><th>Type</th><th>Description</th></tr></thead>
+  <tbody>
+    <tr><td>0x00</td><td>4</td><td>char[4]</td><td>Magic <code>COL </code></td></tr>
+    <tr><td>0x04</td><td>4</td><td>u32</td><td>Version, 0x15</td></tr>
+    <tr><td>0x08</td><td>4</td><td>u32</td><td>Vertex count</td></tr>
+    <tr><td>0x0C</td><td>4</td><td>u32</td><td>Triangle count</td></tr>
+    <tr><td>0x10</td><td>4</td><td>u32</td><td>Surface count</td></tr>
+    <tr><td>0x14</td><td>4</td><td>u32</td><td>Tree size</td></tr>
+    <tr><td>0x18</td><td>4</td><td>off</td><td>Vertices, f32 x 3</td></tr>
+    <tr><td>0x1C</td><td>4</td><td>off</td><td>Normals, f32 x 9 per triangle, one per corner</td></tr>
+    <tr><td>0x20</td><td>4</td><td>off</td><td>Surfaces, u32 name hashes; only offsets up to 0x100 are relocated</td></tr>
+    <tr><td>0x24</td><td>4</td><td>off</td><td>Surface index per triangle, u8</td></tr>
+    <tr><td>0x28</td><td>4</td><td>off</td><td>Triangles, u16 x 3</td></tr>
+    <tr><td>0x2C</td><td>4</td><td>off</td><td>Tree</td></tr>
+    <tr><td>0x30</td><td>4</td><td>u32</td><td>Runtime: set to 0</td></tr>
+  </tbody>
+</table>
+
+<h2>Collision Surfaces (.csd)</h2>
+<p><code>CollisionSurfaces.csd</code> in <code>global.wad</code>, loaded by <code>0x8008ee90</code>.</p>
+<table>
+  <thead><tr><th>Offset</th><th>Size</th><th>Type</th><th>Description</th></tr></thead>
+  <tbody>
+    <tr><td>0x00</td><td>4</td><td>char[4]</td><td>Magic <code>STD </code></td></tr>
+    <tr><td>0x04</td><td>4</td><td>u32</td><td>Version, 6</td></tr>
+    <tr><td>0x08</td><td>4</td><td>u32</td><td>Surface count; 0 makes the game use a blank table</td></tr>
+    <tr><td>0x0C</td><td>16 * n</td><td>surface[]</td><td>Surfaces: u32 name hash, u32 flags, u32 hash, u32 hash</td></tr>
+  </tbody>
+</table>
+<p>The game finds a surface by binary search on the name hash (<code>0x8008f030</code>), so the table is sorted by it. A hash it cannot find is logged once and treated as surface 0. The search returns the low 16 bits of the flags and the index. The two hashes at 0x08 and 0x0C are what a kart reads for the surface it touches (<code>0x8006d3b0</code>, <code>0x8006d3e0</code>); the first selects the surface's handling (<code>0x80026c60</code> switches on it).</p>
+
+<h2>In OmegaStudio</h2>
+<ul>
+  <li><code>.col</code>, <code>.col.piece</code> and <code>.csd</code> export and import as JSON. Floats that are not finite keep their exact bits.</li>
+  <li>The collision mesh shows in the Viewport and exports as OBJ.</li>
+  <li>Writing a <code>.csd</code> sorts the surfaces by name hash, as the game's search needs.</li>
+</ul>
+</body>
+</html>

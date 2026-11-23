@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<script src="../../script.js"></script>
+</head>
+<body>
+<p>An <code>.amd</code> is a skinned character model: <a href="../track/trk.html#chunk">chunks</a> plus a table of the bones its vertices hang from. It comes in two shapes. The Kartz games use one chunk and pick a bone per vertex inside the display list. Hot Wheels splits a character into parts, each hanging from one bone with a chunk of its own. Bones index the <a href="ske.html">.ske</a> of the same name.</p>
+
+<h2>Single-Chunk Layout</h2>
+<table>
+  <thead><tr><th>Offset</th><th>Size</th><th>Type</th><th>Description</th></tr></thead>
+  <tbody>
+    <tr><td>0x00</td><td>4</td><td>u32</td><td>1</td></tr>
+    <tr><td>0x04</td><td>4</td><td>u32</td><td>8</td></tr>
+    <tr><td>0x08</td><td>4</td><td>u32</td><td>12</td></tr>
+    <tr><td>0x0C</td><td>4</td><td>u32</td><td>Bone count</td></tr>
+    <tr><td>0x10</td><td>4</td><td>u32</td><td><code>0x1C</code>, offset of the pointer table</td></tr>
+    <tr><td>0x14</td><td>4</td><td>u32</td><td>Offset of a 12-byte block</td></tr>
+    <tr><td>0x18</td><td>4</td><td>u32</td><td>Offset of the chunk</td></tr>
+    <tr><td>0x1C</td><td>4 * bones</td><td>u32[]</td><td>One pointer per bone, each to its entry in the next array</td></tr>
+    <tr><td>var</td><td>4 * bones</td><td>u32[]</td><td>Bone indices into the <code>.ske</code></td></tr>
+    <tr><td>var</td><td>12</td><td>i32[3]</td><td>The block at <code>+0x14</code></td></tr>
+    <tr><td>var</td><td>var</td><td>chunk</td><td>One narrow chunk, running to the end of the file</td></tr>
+  </tbody>
+</table>
+
+<p>The 12-byte block holds three signed 20.12 values, between -0.02 and 0.23 across the 49 Kartz files, with 43 distinct triples. They are neither the model's extent nor any translation its skeleton carries; their purpose is unknown.</p>
+
+<h2>Parts Layout</h2>
+<table>
+  <thead><tr><th>Offset</th><th>Size</th><th>Type</th><th>Description</th></tr></thead>
+  <tbody>
+    <tr><td>0x00</td><td>12</td><td>-</td><td>Header words, copied through</td></tr>
+    <tr><td>0x0C</td><td>4</td><td>u32</td><td>Part count</td></tr>
+    <tr><td>0x10</td><td>4</td><td>u32</td><td><code>0x18</code>, offset of the part table</td></tr>
+    <tr><td>0x14</td><td>4</td><td>u32</td><td>Offset of the record block</td></tr>
+    <tr><td>0x18</td><td>4 * parts</td><td>u32[]</td><td>Offset of each part</td></tr>
+    <tr><td>var</td><td>12 * parts</td><td>-</td><td>Record block, 12 bytes per part, unknown</td></tr>
+    <tr><td>var</td><td>var</td><td>part[]</td><td>Parts, back to back</td></tr>
+  </tbody>
+</table>
+
+<p>Each part is a u32 bone index, a u32 offset of its chunk (always the part's own offset plus 8), then the chunk itself. All 63 parts across Hot Wheels' 15 models name a bone their skeleton lists.</p>
+
+<h2>Skin</h2>
+<p>In the single-chunk shape the skin lives in the display list. <code>MTX_RESTORE</code> picks the matrix stack slot the next vertices use, and the slot is the bone index plus ten. Every one of the 7,480 restores across the two Kartz games names a bone the file's own table lists, and every listed bone is used. A triangle can span bones; 66 of the 160 triangles of one Alex model do.</p>
+<p>Vertices are stored in their bone's space, so a model drawn without posing collapses onto the origin. Placing a vertex means multiplying it by its bone's rest transform.</p>
+
+<h2>In OmegaStudio</h2>
+<h3>Reading</h3>
+<ul>
+  <li>Single chunk: 1 to 1024 bones, the pointer table at <code>0x1C</code>, each pointer aimed at its own entry of the index array, the index array ending at the 12-byte block, the block ending at the chunk, and the chunk ending exactly at the end of the file. The chunk needs a non-zero <code>dlSize</code> that is a multiple of 4 and at most 4096 texture references.</li>
+  <li>Parts: 1 to 1024 parts, the table at <code>0x18</code>, the record block right after it, each part starting where the previous one ends, a bone index of at most 1024, and the last chunk ending at the end of the file.</li>
+  <li>Each vertex is placed by its bone's rest transform and exported to glTF with a joint and weight per vertex, so the skin survives a round trip through a modelling package. The model plays the <code>.ani</code> clips in its folder.</li>
+</ul>
+
+<h3>Replacing from glTF</h3>
+<ul>
+  <li>A <code>.ske</code> beside the model is required. A joint named <code>bone&lt;N&gt;</code> binds to skeleton bone <em>N</em>; any other joint binds by its index.</li>
+  <li>Single chunk: the bone table becomes the set of bones the mesh uses. The chunk keeps its header and texture references and gets a new display list, a single triangle-list block with an <code>MTX_RESTORE</code> whenever the bone changes and a <code>NORMAL</code>, <code>TEXCOORD</code> and <code>VTX_16</code> per vertex. The 12-byte block is copied through.</li>
+  <li>Parts: a part model keeps the parts it came with. A triangle goes to the part named by a <code>chunk_&lt;n&gt;</code> node, or the part that hangs from its first vertex's bone; a triangle on a bone with no part is refused. Unused parts and the 12-byte records are copied byte for byte.</li>
+  <li>Vertices within 4/4096 of their original position snap back to it. If indices and bone slots match exactly and every position and UV is within that tolerance, the original bytes are kept.</li>
+</ul>
+<p>All 64 <code>.amd</code> files across the five games read, draw, export and round trip through glTF. In the Kartz set, 43 of 49 come back byte for byte and the other six differ by at most 0.0014 units, from 1/4096 grid rounding through the rest pose on the deepest bone chains.</p>
+</body>
+</html>

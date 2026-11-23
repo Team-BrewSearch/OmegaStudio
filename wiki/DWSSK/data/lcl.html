@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<script src="../../script.js"></script>
+</head>
+<body>
+<p>Localised text lives in <code>.lcl</code> string tables, one per language, looked up by <code>0x800f5370</code>. Levels also ship <code>.nog</code> name tables, plain lists of names.</p>
+
+<h2>String Table (.lcl)</h2>
+<table>
+  <thead><tr><th>Offset</th><th>Size</th><th>Type</th><th>Description</th></tr></thead>
+  <tbody>
+    <tr><td>0x00</td><td>4</td><td>u32</td><td>String count</td></tr>
+    <tr><td>0x04</td><td>16 * n</td><td>record[]</td><td>Records</td></tr>
+    <tr><td>var</td><td>var</td><td>-</td><td>Strings, NUL-terminated UTF-8</td></tr>
+  </tbody>
+</table>
+
+<h3>Record (16 bytes)</h3>
+<table>
+  <thead><tr><th>Offset</th><th>Size</th><th>Type</th><th>Description</th></tr></thead>
+  <tbody>
+    <tr><td>0x00</td><td>4</td><td>u32</td><td>Hash</td></tr>
+    <tr><td>0x04</td><td>4</td><td>off</td><td>String, from the start of the file</td></tr>
+    <tr><td>0x08</td><td>4</td><td>u32</td><td>0</td></tr>
+    <tr><td>0x0C</td><td>4</td><td>u32</td><td>Tag, the same for every record in a file</td></tr>
+  </tbody>
+</table>
+<p>The lookup reads only the first two words. It is a binary search that expects the hashes in descending order; a hash it cannot find returns an empty string. Identical strings share one copy.</p>
+
+<h2>Name Table (.nog)</h2>
+<table>
+  <thead><tr><th>Offset</th><th>Size</th><th>Type</th><th>Description</th></tr></thead>
+  <tbody>
+    <tr><td>0x00</td><td>4</td><td>char[4]</td><td>Magic <code>NOG </code></td></tr>
+    <tr><td>0x04</td><td>4</td><td>u32</td><td>0</td></tr>
+    <tr><td>0x08</td><td>4</td><td>u32</td><td>File size</td></tr>
+    <tr><td>0x0C</td><td>4</td><td>u32</td><td>Level hash</td></tr>
+    <tr><td>0x10</td><td>var</td><td>char[]</td><td>Names, NUL-terminated, back to back</td></tr>
+  </tbody>
+</table>
+<p>The header is little-endian on every platform.</p>
+
+<h2>In OmegaStudio</h2>
+<ul>
+  <li>Byte order is detected from the first byte of the count. Strings are edited in the Properties pane, keyed by hash, and the table exports and imports as JSON.</li>
+  <li>Writing sorts the records by hash, descending, and stores each distinct string once.</li>
+  <li>A <code>.nog</code> opens on its own or inside a disc and exports and imports as JSON. Its names also resolve hashes in the level database and sound bank event names.</li>
+</ul>
+</body>
+</html>

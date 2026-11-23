@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<script src="../../script.js"></script>
+</head>
+<body>
+<p><strong>PFNT</strong> is Polarbit's bitmap font: one atlas per file, a glyph record for every character it covers, and pixel data in one of four encodings chosen by a format byte and a flags byte.</p>
+
+<h2>Header</h2>
+<table>
+  <thead><tr><th>Offset</th><th>Size</th><th>Type</th><th>Description</th></tr></thead>
+  <tbody>
+    <tr><td>0x00</td><td>4</td><td>char[4]</td><td>Magic <code>"PFNT"</code></td></tr>
+    <tr><td>0x04</td><td>2</td><td>u16</td><td>12, the size of the fixed header that follows</td></tr>
+    <tr><td>0x06</td><td>1</td><td>u8</td><td>0 in every font</td></tr>
+    <tr><td>0x07</td><td>1</td><td>u8</td><td>Widest glyph, pixels</td></tr>
+    <tr><td>0x08</td><td>1</td><td>u8</td><td>Ascent (baseline), smaller than the height</td></tr>
+    <tr><td>0x09</td><td>1</td><td>u8</td><td>Line height, equal to the atlas height</td></tr>
+    <tr><td>0x0A</td><td>2</td><td>u16</td><td>0 in every font</td></tr>
+    <tr><td>0x0C</td><td>2</td><td>u16</td><td>First character code</td></tr>
+    <tr><td>0x0E</td><td>2</td><td>u16</td><td>Last character code</td></tr>
+    <tr><td>0x10</td><td>2</td><td>u16</td><td>Glyph count G</td></tr>
+    <tr><td>0x12</td><td>2 * G</td><td>u16[G]</td><td>Character codes, UCS-2</td></tr>
+    <tr><td>var</td><td>4 * G</td><td>{u16 x, u8 0, u8 width}[G]</td><td>Glyph records</td></tr>
+  </tbody>
+</table>
+
+<p>Glyphs sit side by side in one horizontal strip: glyph <em>i</em> spans <code>x</code> to <code>x + width</code> at full height.</p>
+
+<h2>Atlas</h2>
+<table>
+  <thead><tr><th>Size</th><th>Type</th><th>Description</th></tr></thead>
+  <tbody>
+    <tr><td>1</td><td>u8</td><td>Pixel format: 8 = RGBA8888, 3 = one byte per pixel</td></tr>
+    <tr><td>1</td><td>u8</td><td>Flags</td></tr>
+    <tr><td>2</td><td>u16</td><td>Palette entry count P</td></tr>
+    <tr><td>2</td><td>u16</td><td>Atlas width W</td></tr>
+    <tr><td>2</td><td>u16</td><td>Atlas height H</td></tr>
+    <tr><td>4</td><td>u32</td><td>0</td></tr>
+    <tr><td>5</td><td>{u8 1, u32 0}</td><td>Only when <code>flags &amp; 0x80</code></td></tr>
+    <tr><td>3 * P</td><td>u8[3][P]</td><td>RGB palette</td></tr>
+    <tr><td>var</td><td>u8[]</td><td>W x H pixels, top row first</td></tr>
+  </tbody>
+</table>
+
+<h2>Encodings</h2>
+<table>
+  <thead><tr><th>Fonts</th><th>Format, flags</th><th>Palette</th><th>Pixel meaning</th></tr></thead>
+  <tbody>
+    <tr><td>CNK2 (9), Krazy Kart Racing (5)</td><td>8; 0x00 or 0x82</td><td>None</td><td>RGBA8888, bytes R, G, B, A</td></tr>
+    <tr><td>CNK3D, RT2</td><td>3; 0x38 or 0x78</td><td>None</td><td>Coverage: white at alpha = byte</td></tr>
+    <tr><td>CNK3D, RT2</td><td>3; 0x18 (RT2) or 0x58</td><td>256 entries</td><td>Palette index; index 0 is transparent</td></tr>
+    <tr><td>CNK3D</td><td>3; 0xDE</td><td>35 entries</td><td>3-bit alpha over a 5-bit index: <code>alpha = v &gt;&gt; 5</code>, <code>index = v &amp; 31</code>, like a DS A3I5 texture</td></tr>
+  </tbody>
+</table>
+<p>In the 0xDE font every byte is either below 35 or 224 and up, which is what suggests the A3I5 reading. It rests on that one sample.</p>
+
+<h2>In OmegaStudio</h2>
+<ul>
+  <li>The header size word must be 12, the format 3 or 8, and the word after the atlas height 0. The pixels must fill the file exactly, and every glyph must lie inside the atlas width.</li>
+  <li>The atlas shows in the Texture pane, decoded by the table above; 0xDE alpha is scaled as <code>(v &gt;&gt; 5) * 255 / 7</code>.</li>
+  <li>Replacing from a PNG keeps the atlas size, since the glyph records point into it. RGBA8888 fonts take any colours; coverage fonts take the PNG's alpha. Palette fonts accept only the palette's own colours, plus fully transparent pixels, and refuse any other colour.</li>
+</ul>
+</body>
+</html>

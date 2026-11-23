@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<script src="../../script.js"></script>
+</head>
+<body>
+<p>The <code>.col</code> is the drivable surface, stored as a chain of cross-sections. A sector is the strip between two cross-sections, so the file is a ribbon that follows the road rather than a triangle soup. The layout below is the two-Kartz shape; <a href="#variants">Variants</a> covers the other games.</p>
+
+<h2>Layout</h2>
+<pre>u32[]           sector record offsets, ended by a zero word
+                (so the table is 4 * (sectors + 1) bytes)
+cross-sections  packed back to back, in the order sectors first use them
+sector records  112 bytes each</pre>
+
+<h2>Cross-Section</h2>
+<table>
+  <thead><tr><th>Offset</th><th>Size</th><th>Type</th><th>Description</th></tr></thead>
+  <tbody>
+    <tr><td>+0x00</td><td>2</td><td>u16</td><td><code>0x8000 | m</code>, where <code>m = (n - 1) / 2</code> is the number of vertices either side of the middle</td></tr>
+    <tr><td>+0x02</td><td>2</td><td>u16</td><td>The same value again</td></tr>
+    <tr><td>+0x04</td><td>4</td><td>u32</td><td>Offset of the middle position, element <code>m</code></td></tr>
+    <tr><td>+0x08</td><td>4</td><td>u32</td><td>Offset of the middle normal</td></tr>
+    <tr><td>+0x0C</td><td>4</td><td>u32</td><td>Offset of the middle width</td></tr>
+    <tr><td>+0x10</td><td>12 * n</td><td>i32[3][n]</td><td>Positions, 20.12</td></tr>
+    <tr><td>var</td><td>12 * n</td><td>i32[3][n]</td><td>Normals, 20.12, length 4096</td></tr>
+    <tr><td>var</td><td>4 * (n - 1)</td><td>u32[n-1]</td><td>Widths, 20.12</td></tr>
+  </tbody>
+</table>
+
+<p>The vertex count is stored twice: in the header's low bits, and in the middle pointer as <code>n = 2 * ((middle - first) / 12) + 1</code>. The two agree in all 3219 cross-sections of the Kartz games. <code>n</code> is always odd: 3, 5 or 7. Widths are the distance from the middle vertex out to each other vertex along the polyline, in vertex order with the middle skipped.</p>
+
+<p>Sectors share cross-sections: the end of one sector is the start of the next. The packed sections tile the region between the table and the first record with no gaps.</p>
+
+<p>The two ends of a sector need not have the same vertex count. About one sector in twenty joins a 3-vertex section to a 5-vertex one, and one track joins a 7 to a 3. The middle vertex is the anchor: vertices pair up by their offset from it, not by index, and the extra outer vertices of the wider section fan back to the outermost vertex of the narrower one. Pairing by index pulls the surface sideways and leaves the outer strips open.</p>
+
+<p>Three files count the sectors and must agree: the <code>.col</code> table, the <a href="bpvs.html">.bpvs</a> sector list and the first u16 of the <a href="trk.html">.trk</a> header.</p>
+
+<h2>Sector Record (112 bytes)</h2>
+<table>
+  <thead><tr><th>Offset</th><th>Size</th><th>Type</th><th>Description</th></tr></thead>
+  <tbody>
+    <tr><td>+0x00</td><td>2</td><td>u16</td><td>Sector ordinal, always the record's index in the table</td></tr>
+    <tr><td>+0x02</td><td>2</td><td>u16</td><td>Flags, <code>0x8000</code> throughout</td></tr>
+    <tr><td>+0x04</td><td>4</td><td>i32</td><td>Sector length, 20.12 (derived)</td></tr>
+    <tr><td>+0x08</td><td>12</td><td>i32[3]</td><td>Unit vector from the start section's middle vertex to the end section's, 20.12 (derived)</td></tr>
+    <tr><td>+0x14</td><td>4</td><td>i32</td><td>Distance along the track, 20.12, accumulated in link order, not table order</td></tr>
+    <tr><td>+0x18</td><td>4</td><td>i32</td><td>Zero in 25 of 28 tracks, a large value in the rest</td></tr>
+    <tr><td>+0x1C</td><td>4</td><td>i32</td><td>4096 in 2643 of 3076 sectors, otherwise 4300 to 9400: a multiplier of 1.0 to 2.3</td></tr>
+    <tr><td>+0x20</td><td>8</td><td>u32[2]</td><td>Zero in every sector</td></tr>
+    <tr><td>+0x28</td><td>4</td><td>u32</td><td><code>0xFFFF</code> in the high half, a byte count in the low half (112 in 2400 sectors; otherwise 56, 240, 304, 2112, 4160, 4176 or 4192)</td></tr>
+    <tr><td>+0x2C</td><td>4</td><td>i32</td><td>-1 in most sectors; the rest count 0, 1, 2 and up, twenty per track</td></tr>
+    <tr><td>+0x30</td><td>8</td><td>u32[2]</td><td>Offset of the next sector's record, twice</td></tr>
+    <tr><td>+0x38</td><td>8</td><td>u32[2]</td><td>Offset of the previous sector's record, twice</td></tr>
+    <tr><td>+0x40</td><td>4</td><td>i32</td><td>Zero in 13 of 28 tracks, a large value in the rest</td></tr>
+    <tr><td>+0x44</td><td>4</td><td>i32</td><td>Angle between the start section's chord and the sector heading, 20.12 radians (derived)</td></tr>
+    <tr><td>+0x48</td><td>4</td><td>i32</td><td>The same angle at the end section (derived)</td></tr>
+    <tr><td>+0x4C</td><td>8</td><td>i32[2]</td><td>End section's outer vertex on one side, as distance along the heading and along the start section's arm on that side, 20.12 (derived)</td></tr>
+    <tr><td>+0x54</td><td>8</td><td>i32[2]</td><td>The same pair for the other side (derived)</td></tr>
+    <tr><td>+0x5C</td><td>4</td><td>i16[2]</td><td>The same signed value twice, anywhere in -32759 to 32759</td></tr>
+    <tr><td>+0x60</td><td>4</td><td>u32</td><td>Offset of the start cross-section</td></tr>
+    <tr><td>+0x64</td><td>4</td><td>u32</td><td>Offset of the end cross-section</td></tr>
+    <tr><td>+0x68</td><td>4</td><td>i32</td><td>A small index, -1 to 18, with 9 to 19 distinct values per track</td></tr>
+    <tr><td>+0x6C</td><td>4</td><td>u32</td><td><code>0xFFFFFF</code> in the high three bytes, 1 to 7 in the low byte</td></tr>
+  </tbody>
+</table>
+
+<p>The six derived values from <code>+0x44</code> describe the sector as a quadrilateral in its own frame. The heading is the forward axis; each side's axis runs from the start section's middle vertex to its outer vertex on that side; the two pairs place the end section's outer vertices in that frame, the first pair being the side the heading turns towards. The last record can be a few bytes short, since the archive stores only what the game reads.</p>
+
+<h2 id="variants">Variants</h2>
+<table>
+  <thead><tr><th>Game</th><th>Cross-section pointers</th><th>Record size</th></tr></thead>
+  <tbody>
+    <tr><td>Madagascar Kartz, Super Star Kartz</td><td><code>+0x60</code>, <code>+0x64</code></td><td>112</td></tr>
+    <tr><td>Pimp My Ride</td><td><code>+0x58</code>, <code>+0x5C</code></td><td>96</td></tr>
+    <tr><td>Hot Wheels</td><td><code>+0x7C</code>, <code>+0x80</code></td><td>136 or more</td></tr>
+    <tr><td>Monster Jam</td><td colspan="2">Every <code>.col</code> is empty</td></tr>
+  </tbody>
+</table>
+
+<h2>In OmegaStudio</h2>
+<h3>Reading</h3>
+<ul>
+  <li>The table runs to the first zero word, holds 1 to 8193 entries, and each offset leaves at least 8 bytes in the file. A record runs to the next larger record offset, or the end of the file.</li>
+  <li>The pointer pair is the first of <code>+0x60</code>, <code>+0x58</code> and <code>+0x7C</code> where every record's start and end pointers name valid cross-sections.</li>
+  <li>A cross-section is valid when its middle pointer is past the header on a 12-byte step, its first u16 equals <code>0x8000 | m</code>, and its normal and width pointers land on element <code>m</code> of their arrays.</li>
+  <li>The cross-sections must tile the space from the end of the table to the first record exactly.</li>
+  <li>Next and previous links are found as the fields that, in every record, hold a record offset, 0 or <code>0xFFFFFFFF</code>.</li>
+</ul>
+
+<h3>Replacing from glTF</h3>
+<p>Export repeats each shared vertex once per sector, and a modelling package will usually weld those copies back together. The plugin therefore matches an imported mesh to the surface by geometry, not by vertex order:</p>
+<ul>
+  <li>An unedited export, same vertex count and same triangles, maps one to one.</li>
+  <li>Otherwise every point still where it was is matched by position, and a point that moved is found through the triangles around it, as the vertex the mesh puts opposite the same two neighbours. No two points claim one position. Welding, renumbering, reordering and re-triangulating change nothing, and a point the mesh has no room for stays where it is.</li>
+  <li>If less than half the surface can be traced, each point takes the nearest vertex of the mesh instead.</li>
+  <li>A cross-section the mesh leaves out is laid flat between its neighbours rather than removed, since the sector count is fixed. An import that puts a cross-section within 0.1 units of the next is refused, because that sector would have no length.</li>
+</ul>
+<p>For every sector whose cross-sections moved, the plugin rewrites the widths, the length and heading at <code>+0x04</code> and <code>+0x08</code>, which come back bit for bit, and the shape block from <code>+0x44</code>, but only where it can already reproduce the stored block to within 0.05 units. From retail geometry that holds within 0.0002 units for half the sectors and 0.025 for nine in ten; the rest sit at seams of the chain and are left alone. The distance at <code>+0x14</code> is never rewritten, and every other field is copied through.</p>
+<p>Every <code>.col</code> in the two Kartz games, 28 in all, round trips byte for byte when re-imported unchanged, welded, renumbered, re-triangulated or shuffled.</p>
+</body>
+</html>

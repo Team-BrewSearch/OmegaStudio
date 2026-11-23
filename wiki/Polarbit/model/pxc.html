@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<script src="../../script.js"></script>
+</head>
+<body>
+<p><strong>PXC</strong> replaces PIFF in the 2011 games. One file holds a whole car, track or set of props as a tree of typed objects. Versions 16, 19 and 20 are Raging Thunder 2; 54 and 55 are Reckless Getaway, whose layout adds property lists and multi-block meshes.</p>
+
+<h2>Header</h2>
+<table>
+  <thead><tr><th>Offset</th><th>Size</th><th>Type</th><th>Description</th></tr></thead>
+  <tbody>
+    <tr><td>0x00</td><td>4</td><td>u32</td><td><code>0x1A2B3C4D</code></td></tr>
+    <tr><td>0x04</td><td>2</td><td>u16</td><td>Version: 16, 19 or 20 (RT2), 54 or 55 (Getaway)</td></tr>
+    <tr><td>0x06</td><td>2</td><td>u16</td><td>1</td></tr>
+    <tr><td>0x08</td><td>var</td><td>object</td><td>Root object, running to the end of the file</td></tr>
+  </tbody>
+</table>
+
+<h2>Object</h2>
+<table>
+  <thead><tr><th>Size</th><th>Type</th><th>Description</th></tr></thead>
+  <tbody>
+    <tr><td>4</td><td>char[4]</td><td>Class tag, such as <code>SGNO</code> or <code>SGPS</code></td></tr>
+    <tr><td>4</td><td>u32</td><td>Size of the rest of the object, children included</td></tr>
+    <tr><td>2 + L</td><td>u16, char[L]</td><td>Name length L, then the name and NUL</td></tr>
+    <tr><td>4</td><td>u32</td><td>Flags: 0 almost everywhere, <code>0xC00</code> on some meshes, 1 on a few nodes</td></tr>
+    <tr><td>var</td><td>-</td><td>Getaway only: <a href="#properties">property list</a></td></tr>
+    <tr><td>var</td><td>-</td><td>Containers: <code>i32 -1</code> (Getaway only), <code>u32</code> child count, children</td></tr>
+    <tr><td>var</td><td>-</td><td>Placed classes: <a href="#placement">placement block</a> and animation slot</td></tr>
+    <tr><td>var</td><td>-</td><td>Class body</td></tr>
+  </tbody>
+</table>
+
+<h3>Classes</h3>
+<table>
+  <thead><tr><th>Class</th><th>Meaning</th><th>Children</th><th>Placement</th><th>Body</th></tr></thead>
+  <tbody>
+    <tr><td><code>SGGR</code></td><td>Group, the root</td><td>Yes</td><td>No</td><td>Nothing</td></tr>
+    <tr><td><code>SGNO</code></td><td>Node</td><td>Yes</td><td>Yes, after the children</td><td>Nothing</td></tr>
+    <tr><td><code>SGPS</code></td><td>Mesh instance</td><td>No</td><td>Yes</td><td><a href="#geometry">MESH or LICM</a> chunk</td></tr>
+    <tr><td><code>SGSP</code></td><td>Locator</td><td>No</td><td>Yes</td><td>Nothing</td></tr>
+    <tr><td><code>SGCA</code></td><td>Camera</td><td>No</td><td>Yes</td><td>Fixed aspect, fov, near, far</td></tr>
+    <tr><td><code>SGME</code></td><td>Metadata object (RT2)</td><td>No</td><td>Yes</td><td>Property list</td></tr>
+    <tr><td><code>SGMR</code></td><td>Reference to another object by name (Getaway)</td><td>No</td><td>Yes</td><td><code>u16</code> length and name</td></tr>
+    <tr><td><code>SGPR</code></td><td>Projector (Getaway)</td><td>No</td><td>Yes</td><td>Texture chunk, <code>u32 1</code>, fixed 10.0, fixed 5.0</td></tr>
+    <tr><td><code>SGLI</code></td><td>Light (Getaway)</td><td>No</td><td>Yes</td><td>73 bytes</td></tr>
+    <tr><td><code>SGAN</code></td><td>Animation set (Getaway)</td><td>Yes</td><td>Yes</td><td>Named clips</td></tr>
+    <tr><td><code>SGCU</code></td><td>Curve</td><td>No</td><td>No</td><td><a href="#curves">Points and branches</a></td></tr>
+    <tr><td><code>SGCO</code></td><td>Collision</td><td>No</td><td>No</td><td><a href="#stco">STCO</a> chunk</td></tr>
+    <tr><td><code>SGPC</code></td><td>Portal cells, RT2 track root</td><td>Yes</td><td>No</td><td><a href="#cells">Cell graph</a></td></tr>
+    <tr><td><code>SGG2</code></td><td>Grid cells, Getaway track root</td><td>Yes</td><td>No</td><td><a href="#cells">Cell grid</a></td></tr>
+  </tbody>
+</table>
+
+<h3 id="placement">Placement Block (76 bytes)</h3>
+<table>
+  <thead><tr><th>Offset</th><th>Size</th><th>Type</th><th>Description</th></tr></thead>
+  <tbody>
+    <tr><td>+0x00</td><td>4</td><td>fixed</td><td>Bounding sphere radius, the length of the half size</td></tr>
+    <tr><td>+0x04</td><td>12</td><td>fixed[3]</td><td>Bounding box centre</td></tr>
+    <tr><td>+0x10</td><td>12</td><td>fixed[3]</td><td>Bounding box half extents</td></tr>
+    <tr><td>+0x1C</td><td>36</td><td>fixed[9]</td><td>3x3 rotation and scale, row-major</td></tr>
+    <tr><td>+0x40</td><td>12</td><td>fixed[3]</td><td>Translation</td></tr>
+  </tbody>
+</table>
+<p>Getaway adds one byte, 0 or 1, of unknown meaning. An animation slot chunk follows: <code>"#RES"</code> with size 0 for none, or a <code>SANI</code> chunk. Bounds are in the object's own space; the matrix and translation place it in its parent as <code>parent = M * v + t</code>.</p>
+
+<h3 id="properties">Property List</h3>
+<p>A <code>u32</code> count, then per property a <code>u16</code>-length name (NUL included) and a typed chunk:</p>
+<table>
+  <thead><tr><th>Chunk</th><th>Size</th><th>Value</th></tr></thead>
+  <tbody>
+    <tr><td><code>STRI</code></td><td>var</td><td><code>u16</code> length, then the string and NUL</td></tr>
+    <tr><td><code>REAL</code></td><td>4</td><td>Fixed</td></tr>
+    <tr><td><code>UI32</code></td><td>4</td><td>u32</td></tr>
+    <tr><td><code>bool</code></td><td>1</td><td>u8, 0 or 1</td></tr>
+  </tbody>
+</table>
+
+<h2 id="geometry">Geometry: MESH and LICM</h2>
+<p>An <code>SGPS</code> holds a <code>MESH</code> chunk, or <code>LICM</code> for track scenery. Both open the same way:</p>
+<table>
+  <thead><tr><th>Size</th><th>Type</th><th>Description</th></tr></thead>
+  <tbody>
+    <tr><td>28</td><td>fixed[7]</td><td>Radius, centre[3], half size[3]</td></tr>
+    <tr><td>8</td><td>u32[2]</td><td>Vertex block count V and index block count I; Getaway only, RT2 has one of each</td></tr>
+    <tr><td>var</td><td>block[V]</td><td>Vertex blocks: <code>u32</code> format, <code>u32</code> count, <code>u32 0</code>, then vertices</td></tr>
+    <tr><td>var</td><td>block[I]</td><td>Index blocks: <code>u32 4</code> (<code>GL_TRIANGLES</code>), <code>u32</code> count, <code>u32 5</code>, then <code>u16</code> indices</td></tr>
+    <tr><td>var</td><td>-</td><td>Materials</td></tr>
+    <tr><td>var</td><td>-</td><td>Draw ranges</td></tr>
+  </tbody>
+</table>
+
+<h3>Vertex Formats</h3>
+<p>Every vertex has a fixed position first and fixed texture coordinates last. Bit <code>0x10</code> adds a fixed normal after the position, and bit <code>0x100</code> a 4-byte RGBA colour after that.</p>
+<table>
+  <thead><tr><th>Format</th><th>Stride</th><th>Layout</th></tr></thead>
+  <tbody>
+    <tr><td><code>0x1000</code></td><td>20</td><td>position, uv</td></tr>
+    <tr><td><code>0x1010</code></td><td>32</td><td>position, normal, uv</td></tr>
+    <tr><td><code>0x1100</code></td><td>24</td><td>position, colour, uv</td></tr>
+    <tr><td><code>0x1110</code></td><td>36</td><td>position, normal, colour, uv</td></tr>
+  </tbody>
+</table>
+
+<h3>Materials</h3>
+<table>
+  <thead><tr><th>Game</th><th>Layout</th></tr></thead>
+  <tbody>
+    <tr><td>RT2</td><td><code>u32</code> count, then per material: texture chunk, opaque block (36 bytes in version 16, 44 otherwise), <code>u32</code> shader (0 or 2)</td></tr>
+    <tr><td>Getaway</td><td><code>GaRM</code> chunk: <code>u32</code> count, <code>u32 76</code>, then per material a texture chunk and a 64-byte opaque block</td></tr>
+  </tbody>
+</table>
+<p>A texture chunk tagged <code>TEXT</code> holds a <code>u32</code>, then a <code>u16</code>-length path; any other tag means untextured.</p>
+
+<h3>Draw Ranges</h3>
+<table>
+  <thead><tr><th>Layout</th><th>Record</th></tr></thead>
+  <tbody>
+    <tr><td>MESH, RT2</td><td><code>u32</code> count, then <code>{u16 5, u16 material, u16 index count, u16 first index}</code>, 8 bytes each</td></tr>
+    <tr><td>MESH, Getaway</td><td>The same, padded to 16 bytes</td></tr>
+    <tr><td>LICM, RT2</td><td>MESH ranges, then a cell table: <code>u32</code> cell count, <code>u32 0</code>, <code>u32</code> range count, 40-byte cell records, 8 zero bytes, per-cell range runs</td></tr>
+    <tr><td>LICM, Getaway</td><td>A MESH range count of 0, then <code>u32</code> unknown, <code>u32</code> cell count, <code>u32</code> range count, 4 bytes per cell, then 16-byte ranges: <code>u16</code> unknown, first index, index count, material, vertex block, index block</td></tr>
+  </tbody>
+</table>
+
+<h2 id="curves">Curves</h2>
+<table>
+  <thead><tr><th>Size</th><th>Type</th><th>Description</th></tr></thead>
+  <tbody>
+    <tr><td>4</td><td>u32</td><td>Point count N</td></tr>
+    <tr><td>12 * N</td><td>fixed[N][3]</td><td>Points</td></tr>
+    <tr><td>4</td><td>u32</td><td>Branch count</td></tr>
+    <tr><td>var</td><td>branch[]</td><td>Per branch: <code>u32</code> point count, fixed points[3], fixed fork distance, fixed join distance</td></tr>
+  </tbody>
+</table>
+<p>Driveline curves have one to four branches, shortcuts that leave and rejoin the main line. Other curves are animation paths, AI lanes, and respawn and camera splines.</p>
+
+<h2 id="stco">STCO Collision</h2>
+<p>Both games store track collision as triangles in a spatial hash. Material numbers 0 to 49 index the database's 50-entry material response list.</p>
+
+<h3>RT2</h3>
+<pre>u32  bucket count NB, triangle count NT, reference count NR, slot count S (797)
+u32  bucket count per slot [S]                     (sums to NB)
+NB x { u32 cell key, u32 first reference, u32 ground count, u32 wall count }
+NT x 64-byte triangle:
+     u32 type (1 or 2), fixed vertex[3][3], fixed plane normal[3], fixed plane d,
+     3 colour bytes + 0xFF, u32 surface (low bits 0..15, bit 31 a flag)
+u32  triangle index [NR]</pre>
+
+<h3>Getaway</h3>
+<pre>u32  bucket count NB, reference count NR, slot count S (16000)
+u32  bits x, bits y, bits z                        (such as 11, 7, 14; sum to 32)
+fixed cell size[3], 3 x u32 unknown
+u32  bucket count per slot [S]
+NB x { cell key, first reference, ground count, wall count }   (key mod 16000 = slot)
+"PATA" u32 size:
+  u32  triangle count NT
+  NT x 80-byte triangle:
+       u32 type (1, 2 or 6), fixed vertex[3][3], i32 neighbour[3] (-1 = open edge),
+       fixed plane normal[3], fixed plane d, 2 x u32 unknown, u32 flags (0x40000001 on type 1)
+u32  triangle index [NR]
+fixed bounds[6]</pre>
+
+<h2 id="cells">Cells</h2>
+<h3>SGPC (RT2 track root)</h3>
+<pre>u32  node count, neighbour count, plane count, portal count
+per node: u16 first neighbour, u16 neighbour count, u16 a, u16 b, u32 kind
+u16    neighbour node [neighbour count]
+fixed  plane[4] per plane (unit normal, d)
+fixed  quad[4][3] per portal</pre>
+<p>Nodes alternate between portals (kind <code>0x1000</code>: <code>a = 1</code>, <code>b</code> the portal number) and convex cells (kind <code>0x800</code>: <code>a</code> planes starting at plane <code>b</code>).</p>
+
+<h3>SGG2 (Getaway track root)</h3>
+<pre>fixed min[3], max[3], origin[3]
+u32  nx, nz, 1191, 1191, cell count (= nx * nz)
+per cell: u32 0x100 if the cell has geometry, else 0; fixed box[6]
+u32  cell order [cell count]</pre>
+
+<h2>In OmegaStudio</h2>
+<ul>
+  <li>The magic, the word 1 at 0x06 and a supported version are required, and the root object must end exactly at the end of the file. Objects nest at most 64 levels deep.</li>
+  <li>Containers are <code>SGGR</code>, <code>SGNO</code> and <code>SGPC</code> in RT2, and <code>SGGR</code>, <code>SGNO</code>, <code>SGAN</code> and <code>SGG2</code> in Getaway. Placed classes are <code>SGNO</code>, <code>SGPS</code>, <code>SGSP</code>, <code>SGCA</code> and <code>SGME</code> in RT2, plus <code>SGPR</code>, <code>SGLI</code>, <code>SGMR</code> and <code>SGAN</code> in Getaway (without <code>SGME</code>).</li>
+  <li>Every mesh renders in world space, placed through its parents, with one mesh per vertex block. Normals go through the inverse transpose. Vertex colours are used as baked lighting when no block has normals.</li>
+  <li>Vertex blocks must use one of the four formats and fit the mesh, index blocks must be <code>GL_TRIANGLES</code> u16 lists, and every draw range must name a real material, block and index span.</li>
+  <li>Curves, collision and cells are skipped, not decoded. The Properties pane counts objects by class.</li>
+  <li>Replacing from glTF works on scenes with <code>MESH</code> objects; <code>LICM</code> scenery cannot be replaced. A glTF mesh goes to the object of the same name, and the rest fill the remaining objects in order, surplus merged into the last. Vertices move back into each object's own space, keep the object's vertex format and materials (matched by texture name), and get fresh bounds. Each object holds up to 65,535 vertices and indices. Objects with no glTF mesh are kept.</li>
+</ul>
+</body>
+</html>

@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<script src="../../script.js"></script>
+</head>
+<body>
+<p>Polarbit games use two audio formats: <strong>PSND</strong> sound blocks and <strong>PMOD</strong> tracker modules. CNK2 streams its music as PCM; CNK3D and Krazy Kart Racing play PMOD modules.</p>
+
+<h2>PSND</h2>
+<table>
+  <thead><tr><th>Offset</th><th>Size</th><th>Type</th><th>Description</th></tr></thead>
+  <tbody>
+    <tr><td>0x00</td><td>4</td><td>char[4]</td><td>Magic <code>"PSND"</code></td></tr>
+    <tr><td>0x04</td><td>4</td><td>u32</td><td>Size of what follows</td></tr>
+    <tr><td>0x08</td><td>2</td><td>u16</td><td>A, the header bytes after this field; samples start at <code>10 + A</code></td></tr>
+    <tr><td>0x0A</td><td>2</td><td>u16</td><td>Flags</td></tr>
+    <tr><td>0x0C</td><td>2</td><td>u16</td><td>Sample rate, Hz</td></tr>
+    <tr><td>0x0E</td><td>var</td><td>-</td><td>Optional fields, in flag order</td></tr>
+  </tbody>
+</table>
+
+<table>
+  <thead><tr><th>Flag</th><th>Field</th></tr></thead>
+  <tbody>
+    <tr><td><code>0x001</code></td><td>u8 channels (1 if absent)</td></tr>
+    <tr><td><code>0x002</code></td><td>u8 bits per sample, 8 or 16; its presence means PCM</td></tr>
+    <tr><td><code>0x004</code></td><td>u16 default volume, 0 to 256 (absent means full)</td></tr>
+    <tr><td><code>0x008</code></td><td>u32 loop start, u32 loop end, in samples</td></tr>
+    <tr><td><code>0x010</code></td><td>u8 loop type: 2 is ping-pong (absent means forward)</td></tr>
+    <tr><td><code>0x200</code></td><td>u16 unknown, 80 to 180, always a multiple of 10</td></tr>
+    <tr><td><code>0x400</code></td><td>i16 finetune, 1/128 semitone</td></tr>
+    <tr><td><code>0x800</code></td><td>i8 relative note, semitones</td></tr>
+  </tbody>
+</table>
+
+<p>No other flag bits occur. Without the bits field a sound is mono IMA ADPCM with no header of its own: the high nibble of each byte comes first, and both predictor and step index start at 0. 8-bit PCM is signed.</p>
+
+<h3>Where Each Kind Appears</h3>
+<table>
+  <thead><tr><th>Game</th><th>Stand-alone</th><th>PMOD samples</th></tr></thead>
+  <tbody>
+    <tr><td>CNK2</td><td>66 PCM16 stereo (51 at 44.1 kHz, 14 at 22.05, 1 at 48)</td><td>-</td></tr>
+    <tr><td>CNK3D</td><td>26 PCM16 stereo (25 at 44.1, 1 at 22.05); 2 ADPCM mono at 11.025</td><td>89 ADPCM mono at 8,363 Hz</td></tr>
+    <tr><td>Krazy Kart Racing</td><td>21 PCM16 stereo (8 at 44.1, 13 at 48); 12 ADPCM mono at 22.05</td><td>96 PCM16 and 2 PCM8, mono, 8,363 Hz</td></tr>
+    <tr><td>Reckless Getaway</td><td>72 ADPCM mono (40 at 22.05, 30 at 27, 1 at 44.1)</td><td>-</td></tr>
+    <tr><td>Raging Thunder 2</td><td>52 ADPCM mono at 22.05</td><td>-</td></tr>
+  </tbody>
+</table>
+
+<h2>PMOD</h2>
+<table>
+  <thead><tr><th>Offset</th><th>Size</th><th>Type</th><th>Description</th></tr></thead>
+  <tbody>
+    <tr><td>0x00</td><td>4</td><td>char[4]</td><td>Magic <code>"PMOD"</code></td></tr>
+    <tr><td>0x04</td><td>4</td><td>u32</td><td>File size minus 8</td></tr>
+    <tr><td>0x08</td><td>4</td><td>u32</td><td>30, the header bytes that follow</td></tr>
+    <tr><td>0x0C</td><td>2</td><td>u16</td><td>1, version</td></tr>
+    <tr><td>0x0E</td><td>2</td><td>u16</td><td>4096, unknown</td></tr>
+    <tr><td>0x10</td><td>1</td><td>u8</td><td>Initial speed (CNK3D 2; Krazy Kart Racing 3, 4 or 6)</td></tr>
+    <tr><td>0x11</td><td>1</td><td>u8</td><td>BPM</td></tr>
+    <tr><td>0x12</td><td>2</td><td>u16</td><td>Song length, in orders</td></tr>
+    <tr><td>0x14</td><td>2</td><td>u16</td><td>Restart position</td></tr>
+    <tr><td>0x16</td><td>2</td><td>u16</td><td>Pattern count</td></tr>
+    <tr><td>0x18</td><td>2</td><td>u16</td><td>Rows per pattern, or 0 for per-pattern row counts (Krazy Kart Racing)</td></tr>
+    <tr><td>0x1A</td><td>2</td><td>u16</td><td>Channels (CNK3D 32, Krazy Kart Racing 16, one module 4)</td></tr>
+    <tr><td>0x1C</td><td>2</td><td>u16</td><td>256, unknown</td></tr>
+    <tr><td>0x1E</td><td>2</td><td>u16</td><td>Sample count</td></tr>
+    <tr><td>0x20</td><td>2</td><td>u16</td><td>Instrument count</td></tr>
+    <tr><td>0x22</td><td>2</td><td>u16</td><td>27, unknown</td></tr>
+    <tr><td>0x24</td><td>2</td><td>u16</td><td>0</td></tr>
+    <tr><td>0x26</td><td>4</td><td>u32</td><td>54784, unknown</td></tr>
+    <tr><td>0x2A</td><td>var</td><td>-</td><td>zlib stream (level 9) holding the module body</td></tr>
+  </tbody>
+</table>
+
+<p>The unknown header words are identical in every module. The inflated body holds, in order: the order list (one byte per order), per-pattern <code>u16</code> row counts when the rows field is 0, pattern cells (5 bytes per row per channel), the embedded PSND samples, and the instruments. Each instrument has a keyframe length, a 96-entry keymap, an envelope count and per-envelope points.</p>
+
+<h3>Effect Numbers</h3>
+<table>
+  <thead><tr><th>Effect</th><th>Cells</th><th>Seen with</th><th>Meaning</th></tr></thead>
+  <tbody>
+    <tr><td>0</td><td>2,141</td><td>Parameters 0x47, 0x37, 0x0C, 0x38</td><td>Arpeggio</td></tr>
+    <tr><td>2</td><td>21</td><td>Consecutive rows</td><td>Portamento</td></tr>
+    <tr><td>10</td><td>5</td><td>Last row, parameter below the song length</td><td>Position jump</td></tr>
+    <tr><td>13</td><td>7</td><td>Row 0, parameters 130 to 225</td><td>Set tempo (BPM)</td></tr>
+    <tr><td>26</td><td>5,929</td><td>0x33, 0x44, 0xCC (multiples of 17) or 0x7E</td><td>Set panning</td></tr>
+  </tbody>
+</table>
+<p>The numbering is Polarbit's own; XM would use 0, 2, 0x0B, 0x0F and 8.</p>
+
+<h2>In OmegaStudio</h2>
+<ul>
+  <li>PSND: only the flag bits above are accepted, the optional fields must end at <code>10 + A</code>, bits must be 0, 8 or 16 and channels 1 or 2 (ADPCM mono only). The size word must match the file except in 16-bit PCM.</li>
+  <li>Sounds play in the Audio pane and export as WAV, with a <code>smpl</code> chunk carrying the loop when there is one.</li>
+  <li>Replacing from a WAV (integer PCM, 8 to 32 bits) needs the sound's own channel count and re-encodes in its own codec at the WAV's rate. Loop points are clamped to the new length, and ADPCM keeps the original nibbles wherever they still decode to the same samples.</li>
+  <li>PMOD: the size word and the 30 must match. Each embedded sample shows as a row that plays and can be replaced from a WAV the same way; the body is then re-compressed at level 9.</li>
+</ul>
+</body>
+</html>

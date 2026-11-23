@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<script src="../../script.js"></script>
+</head>
+<body>
+<p><code>Navigation.nav</code> in each level holds the AI's navigation meshes. The Wii loader is <code>0x800952e0</code> (<code>NavMesh.cpp</code>).</p>
+
+<h2>Layout</h2>
+<table>
+  <thead><tr><th>Offset</th><th>Size</th><th>Type</th><th>Description</th></tr></thead>
+  <tbody>
+    <tr><td>0x00</td><td>4</td><td>char[4]</td><td>Magic <code>Nav\0</code></td></tr>
+    <tr><td>0x04</td><td>4</td><td>u32</td><td>Version, 11</td></tr>
+    <tr><td>0x08</td><td>4</td><td>u32</td><td>Mesh count</td></tr>
+    <tr><td>0x0C</td><td>0x28 * n</td><td>mesh[]</td><td>Meshes</td></tr>
+  </tbody>
+</table>
+
+<h2>Mesh (0x28 bytes)</h2>
+<table>
+  <thead><tr><th>Offset</th><th>Size</th><th>Type</th><th>Description</th></tr></thead>
+  <tbody>
+    <tr><td>0x00</td><td>4</td><td>u32</td><td>Vertex count</td></tr>
+    <tr><td>0x04</td><td>4</td><td>u32</td><td>Polygon count</td></tr>
+    <tr><td>0x08</td><td>4</td><td>u32</td><td>Edge count</td></tr>
+    <tr><td>0x0C</td><td>24</td><td>f32[6]</td><td>Bounding box: minimum, maximum</td></tr>
+    <tr><td>0x24</td><td>4</td><td>off</td><td>Data: vertices (f32 x 3), then polygons, then edges (u16 x 2)</td></tr>
+  </tbody>
+</table>
+<p>The loader records the three arrays per mesh and builds a lookup over the polygons.</p>
+
+<h2>Polygon (0x14 bytes)</h2>
+<table>
+  <thead><tr><th>Offset</th><th>Size</th><th>Type</th><th>Description</th></tr></thead>
+  <tbody>
+    <tr><td>0x00</td><td>6</td><td>u16[3]</td><td>Vertex indices</td></tr>
+    <tr><td>0x06</td><td>2</td><td>u16</td><td>Unused</td></tr>
+    <tr><td>0x08</td><td>4</td><td>u32</td><td>First edge</td></tr>
+    <tr><td>0x0C</td><td>4</td><td>u32</td><td>Edge count</td></tr>
+    <tr><td>0x10</td><td>4</td><td>u32</td><td>Flags</td></tr>
+  </tbody>
+</table>
+
+<h2>In OmegaStudio</h2>
+<ul>
+  <li>Byte order is detected from the version word. The meshes show in the Viewport and export as OBJ, one object per mesh.</li>
+  <li>The file exports and imports as JSON. Writing packs each mesh's vertices, polygons and edges back to back after the mesh table.</li>
+</ul>
+</body>
+</html>

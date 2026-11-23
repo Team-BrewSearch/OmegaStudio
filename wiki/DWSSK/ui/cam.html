@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<script src="../../script.js"></script>
+</head>
+<body>
+<p><code>.cam</code> files are camera paths. Their loader has not been found, so this layout comes from the files alone.</p>
+
+<h2>Layout</h2>
+<table>
+  <thead><tr><th>Offset</th><th>Size</th><th>Type</th><th>Description</th></tr></thead>
+  <tbody>
+    <tr><td>0x00</td><td>4</td><td>u32</td><td>Version</td></tr>
+    <tr><td>0x04</td><td>8</td><td>off, u32</td><td>Position keys and their count, 4 x f32 each</td></tr>
+    <tr><td>0x0C</td><td>8</td><td>off, u32</td><td>Direction keys and their count, 4 x f32 each</td></tr>
+    <tr><td>0x14</td><td>8</td><td>off, u32</td><td>Field-of-view keys and their count, 2 x f32 each</td></tr>
+    <tr><td>0x1C</td><td>var</td><td>f32[]</td><td>Key data, in that order</td></tr>
+  </tbody>
+</table>
+<p>The last float of each key is its time.</p>
+
+<h2>In OmegaStudio</h2>
+<ul>
+  <li>Byte order is detected from the first offset, which is always 0x1C. Every file round-trips through the plugin.</li>
+  <li>The file exports and imports as JSON; writing packs the three key arrays back to back from 0x1C.</li>
+</ul>
+</body>
+</html>
