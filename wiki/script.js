@@ -34,6 +34,9 @@
                 { file: 'archive/dsarcfl.html', label: 'DSARC FL', tag: 'archive',
                   sub: 'Named-file archive',
                   blurb: 'the named-file archive behind every audio .dat' },
+                { file: 'archive/dsarcidx.html', label: 'DSARCIDX', tag: 'archive',
+                  sub: 'Index-based archive',
+                  blurb: 'the index-based archive used by every other .dat' },
                 { file: 'archive/dseq.html', label: 'DSEQ', tag: 'music',
                   sub: 'Music container (.msnd)',
                   blurb: 'one piece of music: an SSEQ, its SBNK and its SWAR' },
@@ -223,6 +226,36 @@
                 { file: 'data/other.html', label: 'Editing', tag: 'guide',
                   sub: 'Replacing assets, round trips and known limits',
                   blurb: 'what OmegaStudio can replace, track editing rules, round-trip results and known limits' }
+            ]
+        },
+        {
+            name: 'Shrek Smash n\' Crash Racing',
+            dir: 'SSNCR',
+            home: 'ssncr.html',
+            sub: 'GameCube, PlayStation 2 and PSP file formats',
+            blurb: 'RenderWare 3.6 models, texture dictionaries, sound banks, movies, collision and archives',
+            pages: [
+                { file: 'archive/packfile.html', label: 'Packfile', tag: 'container',
+                  sub: 'PAK archive with zlib streams',
+                  blurb: 'the Packfile.dat archive and its zlib entries' },
+                { file: 'models/trm.html', label: 'Models', tag: 'model',
+                  sub: 'RenderWare models, skeletons and animation',
+                  blurb: 'model headers, instances, frames, animation and native geometry' },
+                { file: 'textures/tex.html', label: 'Textures', tag: 'texture',
+                  sub: 'GameCube, PS2 and PSP texture dictionaries',
+                  blurb: 'GX, GS and GE texture decoding' },
+                { file: 'audio/fsb.html', label: 'FSB', tag: 'audio',
+                  sub: 'Sound bank',
+                  blurb: 'sound banks, details only' },
+                { file: 'movie/thp.html', label: 'THP', tag: 'video',
+                  sub: 'Movie',
+                  blurb: 'the THP movie, details only' },
+                { file: 'collision/col.html', label: 'Collision', tag: 'collision',
+                  sub: 'Collision files',
+                  blurb: 'collision files, details only' },
+                { file: 'data/path.html', label: 'Path', tag: 'data',
+                  sub: 'Path and data files',
+                  blurb: 'path and data files, details only' }
             ]
         }
     ];

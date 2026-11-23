@@ -25,5 +25,21 @@
 </table>
 
 <p>Offsets count from the start of the file; subtract 0x10 from the word at 0x10 to get the SSEQ's. The three chunks always come in the order SSEQ, SBNK, SWAR, each directly after the last.</p>
+
+<h2>Specification notes</h2>
+<ul>
+  <li>The word at <code>0x10</code> is the SSEQ offset plus 16.</li>
+  <li>The SBNK starts at the SSEQ end plus 16, rounded up to 32; the SWAR starts at the SBNK end rounded up to 32.</li>
+  <li>The word at <code>0x2C</code> is kept as found.</li>
+  <li>These rules rebuild every shipped <code>.msnd</code> byte for byte.</li>
+</ul>
+
+<h2>In OmegaStudio</h2>
+<p>The plugin splits a <code>.msnd</code> into its SSEQ, SBNK and SWAR, and shows each as a child. The SSEQ plays through the bank and wave archive, and picking up a replacement of any of the three parts changes the playback. Extract Audio renders the whole song to a WAV. A SWAR lists its waves as SWAV files that play, extract and replace.</p>
+
+<h2>Sequence playback and sound import</h2>
+<p>Sequence playback is HLE in two layers. The driver layer follows the Nitro Composer driver as decompiled from Pokémon Diamond and ported by NCSF: 16 tracks and 16 voices, voice allocation order 4, 5, 6, 7, 2, 0, 3, 1, 8 to 15, the tempo counter stepping one tick per 240, the attack, decay, sustain and release envelope, LFO and sweep, and the SDK volume, pitch and sustain tables. It runs every 64 x 2728 ARM7 cycles and writes its register changes at the start of the next run. The hardware layer models the SPU: each channel timer counts from TMR at half the ARM7 clock and fetches a sample on overflow, a channel starts three samples late, ADPCM saves its state at the loop start and restores it on each loop, samples shorter than 16 bytes stay silent, and PSG and noise use the hardware duty table and LFSR. The mixer runs every 1024 cycles (32728 Hz). There is no interpolation.</p>
+<p>Streaming: when a sequence is opened, a fast pass runs the driver with the SPU channels advanced by arithmetic, which finds the length to the fade in milliseconds. Seeking runs the same fast pass to the target, then rebuilds each channel by replaying only the steps that matter. A seek lands on the same samples as playing from the start.</p>
+<p>Sound import keeps the original header and codec. A block whose samples match the original keeps its original bytes, so an unedited WAV rebuilds the file exactly; a changed block is encoded. IMA-ADPCM picks the closest of the 16 nibbles at each step and starts from the old block's step index. Any PCM WAV (8, 16, 24 or 32-bit), float WAV (32 or 64-bit) or extensible WAV is accepted. Channels are mixed to the sound's own count. A new sample rate scales the timer word by the rate ratio; a rate the 16-bit rate or timer cannot hold is resampled linearly to the sound's original rate. The extracted WAV of a STRM stops at the sample count in its header.</p>
 </body>
 </html>

@@ -39,6 +39,7 @@ src/
     Polarbit/                Polarbit racing engine (iOS)
     DWSSK/                   DreamWorks Super Star Kartz (PS3, Xbox 360, Wii, 3DS)
     Disgaea/                 Disgaea DS archives, images and sound
+    SSNCR/                   Shrek Smash n' Crash Racing (DS)
     Generic/                 OGG, WAV, PNG, JPEG, GIF, BMP recognisers
     PlayStation/             PlayStation 3 game discs
     Xbox/                    Xbox 360 game discs
@@ -88,3 +89,7 @@ The Linux targets bundle the .NET runtime, so they run on a machine with nothing
 ## Continuous integration
 
 `.github/workflows/dotnet-desktop.yml` runs on every push and pull request to `main`. Its build job restores the solution in locked mode, with the NuGet cache keyed on the lock files, then builds and publishes each of the four runtimes on its own operating system. Every published build is checked for at least one format plugin before its artifact is uploaded, so a release that opens nothing cannot land on `main`.
+
+---
+
+**See also:** [README](../README.md) · [USER-GUIDE](USER-GUIDE.md) · [FORMATS](FORMATS.md) · [PLUGINS](PLUGINS.md) · [ARCHITECTURE](ARCHITECTURE.md) · [DEVELOPMENT](DEVELOPMENT.md) · [THIRD-PARTY-NOTICES](THIRD-PARTY-NOTICES.md)

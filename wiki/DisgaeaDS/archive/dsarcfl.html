@@ -37,5 +37,15 @@
 </table>
 
 <p>All integers are little-endian. File data follows the entry table directly, in table order.</p>
+
+<h2>Specification notes</h2>
+<ul>
+  <li>DSARC FL entries can share data: the same name, offset and size appear more than once in <code>voice.dat</code>, <code>song.dat</code> and <code>msgvo.dat</code>. They stay one block, so replacing one replaces all of them.</li>
+  <li>A rebuild keeps the header bytes before the first entry and changes only the size and offset words.</li>
+  <li>Entries are not sorted and may repeat; an offset of 0 is an empty slot.</li>
+</ul>
+
+<h2>In OmegaStudio</h2>
+<p>The Disgaea plugin lists each entry as a child of the archive, in table order. Each entry can be extracted or replaced, and replacing one entry replaces every other entry that shares its offset and size. A rebuild keeps the header bytes before the first entry and rewrites the size and offset words.</p>
 </body>
 </html>

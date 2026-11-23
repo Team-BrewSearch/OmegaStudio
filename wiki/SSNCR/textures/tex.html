@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<script src="../../script.js"></script>
+</head>
+<body>
+<p><strong>.tex</strong> texture dictionaries. Each platform stores its textures differently, and the plugin decodes all of them.</p>
+
+<h2>GameCube</h2>
+<p>Textures use GX formats: CMPR, CI4 and CI8 with an RGB565 or RGB5A3 palette, and the other GX formats. Each entry carries its GX format, dimensions and data offset.</p>
+
+<h2>PlayStation 2</h2>
+<p>PSMT4 and PSMT8 textures are decoded through an emulated GS memory, so the swizzled uploads come out as the game draws them. TBP and CBP are stored as 0 in half the textures, with the CLUT placed by TRXPOS inside the texture's own buffer or at (0,0) on top of it; only the rectangle itself is unambiguous. All 5344 USA and 5425 EUR PS2 textures decode.</p>
+
+<h2>PSP</h2>
+<p>Every texture is decoded from its GE state: CLUT formats, 16- and 32-bit formats, swizzled or linear.</p>
+
+<h2>In OmegaStudio</h2>
+<p>Each texture shows in the Texture pane. GameCube textures decode from their GX format, PS2 textures through the emulated GS memory, and PSP textures from the GE state. Textures are looked up by name: a model's own level folder first, then <code>gcn/textures/structure</code>, then any other dictionary in the pack.</p>
+</body>
+</html>

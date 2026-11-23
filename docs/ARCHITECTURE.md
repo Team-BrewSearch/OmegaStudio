@@ -40,6 +40,7 @@ src/
     Polarbit/                Polarbit racing engine (iOS)
     DWSSK/                   DreamWorks Super Star Kartz (PS3, Xbox 360, Wii, 3DS)
     Disgaea/                 Disgaea DS archives, images and sound
+    SSNCR/                   Shrek Smash n' Crash Racing (DS)
     Generic/                 OGG, WAV, PNG, JPEG, GIF, BMP recognisers
     PlayStation/             PlayStation 3 game discs
     Xbox/                    Xbox 360 game discs
@@ -191,3 +192,7 @@ The search walk is debounced by 200 ms and carries a cancellation token, so typi
 ## Session lifetime
 
 `ArchiveSession` owns one gate, and every operation that touches the open archive goes through it: selection reads, tree expansion, search, commands, undo and redo, save, and animation poses. Each operation captures the session's generation when it is queued; closing or opening an archive bumps the generation, so work queued for the old archive fails with `ArchiveClosedException` instead of reaching a disposed object. Closing waits on the same gate, so the archive is disposed only after the running operation returns; a plugin call cannot be interrupted, only waited for. The video player's reader is disposed after its decoding task ends, and closing awaits that too. A command captures the generation before its file picker opens and refuses to run if the archive changed while the picker was up. The whole edit transaction (before-snapshot, command, after-snapshot and comparison, or rollback) runs on the worker inside the gate, and only the result is published on the UI thread. A property edit, which the contract runs on the UI thread, is refused while another operation holds the gate.
+
+---
+
+**See also:** [README](../README.md) · [USER-GUIDE](USER-GUIDE.md) · [FORMATS](FORMATS.md) · [PLUGINS](PLUGINS.md) · [ARCHITECTURE](ARCHITECTURE.md) · [DEVELOPMENT](DEVELOPMENT.md) · [THIRD-PARTY-NOTICES](THIRD-PARTY-NOTICES.md)

@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<script src="../../script.js"></script>
+</head>
+<body>
+<p><strong>Packfile.dat</strong> is the single archive every Shrek Smash n' Crash Racing disc ships. It opens on its own or in place inside a disc image.</p>
+
+<h2>Layout</h2>
+<pre>+0x00  "PAK\0"
+       entry count (u32)
+       entry table: name hash, offset, size, ...
+       file data, in table order
+       zlib streams prefixed with "!CMP" carry a little-endian unpacked size</pre>
+
+<h2>Entries</h2>
+<table>
+  <thead><tr><th>Field</th><th>Description</th></tr></thead>
+  <tbody>
+    <tr><td>Name hash</td><td>Hash of the entry's path; the original names are recovered by hashing candidate paths</td></tr>
+    <tr><td>Offset</td><td>Byte offset of the payload from the start of the archive</td></tr>
+    <tr><td>Size</td><td>Stored size; an entry beginning with <code>!CMP</code> is zlib-compressed and its first four bytes give the unpacked size</td></tr>
+  </tbody>
+</table>
+
+<h2>In OmegaStudio</h2>
+<p>The plugin reads the table and exposes each entry by its recovered name. Entries are extracted as their stored bytes. A <code>!CMP</code> entry is decompressed on read. The archive is read-only, so nothing is written back.</p>
+</body>
+</html>

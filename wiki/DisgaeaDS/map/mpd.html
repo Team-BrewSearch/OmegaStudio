@@ -7,9 +7,37 @@
 <body>
 <p><strong>MPD</strong> is the tile-based map format shared by <em>Disgaea</em> and <em>Disgaea DS</em>. On the DS, maps ship compressed as <a href="mpds.html">MPDS</a>.</p>
 
-<h2>Specifications</h2>
+<h2>Layout</h2>
+<p>A 16-byte header (<code>u16</code> chunk count, <code>u16</code> actor count), the chunks at 1408 bytes each (64-byte header with offset X and Z floats at 0 and 8, the tile count at <code>0x2C</code> and an id at <code>0x30</code>; 32 objects of 36 bytes; 16 event tiles of 4 bytes; a 128-byte base tile), then every chunk's tiles in chunk order at 128 bytes, the actors at 64 bytes, and a footer of two <code>u32</code> lists, each led by its count.</p>
+
+<h2>Tile (128 bytes)</h2>
+<table>
+  <thead><tr><th>Field</th><th>Offset</th><th>Description</th></tr></thead>
+  <tbody>
+    <tr><td>Twelve 8-byte faces</td><td>0x00-0x5F</td><td>u, v, v right, width, height, height right, texture, transform</td></tr>
+    <tr><td>Corner heights</td><td>0x60</td><td>Four corners X0Z0, X1Z0, X0Z1, X1Z1; -value / 12 is the height in tiles</td></tr>
+    <tr><td>Side bottoms</td><td>0x64</td><td>Side bottom heights</td></tr>
+    <tr><td>Visible</td><td>0x70</td><td>Visibility flag</td></tr>
+    <tr><td>X, Z</td><td>0x71, 0x72</td><td>Signed tile coordinates</td></tr>
+    <tr><td>Mobility</td><td>0x77</td><td>Mobility value (0, 1, 2)</td></tr>
+    <tr><td>Geo colour</td><td>0x78</td><td>Index into the Geo colour table</td></tr>
+    <tr><td>Geo panel</td><td>0x79</td><td>100 for a Geo panel, 0 for none</td></tr>
+  </tbody>
+</table>
+
+<p>Faces 0 to 3 are the -Z, +X, +Z and -X sides (measured against which neighbour is lower over every map), 4 the top, 5 to 8 the side decals. A face's texture <em>n</em> is entry <em>n</em> - 1 of the footer's first list, an index into <code>maptex.dat</code>; 0, or an entry of <code>0xFFFF</code>, is a face the DS does not texture. UVs are in half texels. Tops sample 16 x 16 cells of the <code>prd</code> atlases; sides tile the <code>t</code> textures.</p>
+
+<h2>Specification notes</h2>
 <ul>
-  <li><a href="https://disgaea.rustedlogic.net/MPD_format" target="_blank" rel="noopener">rustedlogic.net: MPD format</a></li>
+  <li>The id is not a sequence: object-only chunks carry ids such as 2 or 3.</li>
+  <li>The 56-byte maps are empty Item World placeholders.</li>
+  <li>Chunk and actor counts are signed 16-bit; the chunk count is clamped to 6; chunks are copied at <code>0x580</code> bytes; each chunk's tile count is read signed from <code>0x2C</code>; header bytes 4 to 15 are copied into the map state and never read again (the word at 4 is 0 or 1, a PS2 leftover).</li>
+  <li><code>0x02042194</code> opens <code>maptex.dat</code> for the footer's first list and <code>mapobjs.dat</code> for its second, through <code>0x020426B4</code>, which skips entries of <code>0xFFFF</code>: the first list is the face textures, the second the object models.</li>
+  <li>Actors are read only by the spawner <code>0x0206028C</code>: class and level signed 16-bit, side signed, X and Z signed with a world position of tile x 12 + 6 and no chunk offset, facing signed x 90 degrees, byte 8 an appearance condition, AI at 9, byte 10 multiplies the unit's stat, items 1 to 4 signed 16-bit at 12, spawn rule at 20, Geo effect at 22, one signed 16-bit weapon mastery at 24 for all seven weapon types, four spells at 26 and their levels at 34.</li>
+  <li>Still from the references rather than the code: the mobility names, the names of the Geo colours, which game stat <code>+0x5B0</code> is, the face transform bits, and the object and chunk-header fields other than the offsets, the tile count and the id.</li>
 </ul>
+
+<h2>In OmegaStudio</h2>
+<p>An MPD opens in the Map tab: paint with Raise, Lower, Set height, Level and Fill height, Add tile, Erase tile, Stamp look, Mobility, Geo panel, Place, Move and Remove unit, and Place or Remove event tile. The Layer box tints cells by height, mobility or Geo panel, and Select shows every field of the cell's tile, units and event tile. The same map opens in the 3D view with textures from <code>maptex.dat</code>, unit markers coloured by alliance, Geo panels and event tiles. Tiles, Actors and Chunks list every record, selectable and editable. Export map as JSON writes every record; Replace map from JSON reads it back.</p>
 </body>
 </html>

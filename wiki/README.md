@@ -6,11 +6,12 @@ has a plugin for a game, every layout is checked against it.
 
 | Game | Platforms | Checked against |
 | --- | --- | --- |
-| Disgaea DS | Nintendo DS | Retail ROM and external specs (no plugin) |
+| Disgaea DS | Nintendo DS | Retail ROM and the Disgaea plugin |
 | DreamWorks Super Star Kartz | PS3, Xbox 360, Wii, 3DS | DWSSK plugin |
 | Polarbit Racing Engine: Crash Bandicoot Nitro Kart 2, Nitro Kart 3D, Krazy Kart Racing, Reckless Getaway, Raging Thunder 2 | iOS | Polarbit plugin |
 | Suzumiya Haruhi no Chourantou / Gekitou | Windows | Harugeki plugin |
 | Virtuos DS Racing Engine: Madagascar Kartz, DreamWorks Super Star Kartz, Hot Wheels: Battle Force 5, Pimp My Ride: Street Racing, Monster Jam: Path of Destruction | Nintendo DS | Virtuos plugin |
+| Shrek Smash n' Crash Racing | GameCube, PlayStation 2, PSP | SSNCR plugin |
 
 ## Layout
 

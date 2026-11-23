@@ -78,6 +78,7 @@ See [docs/PLUGINS.md](docs/PLUGINS.md) for the walkthrough and [docs/ARCHITECTUR
 | [PLUGINS.md](docs/PLUGINS.md) | Writing a plugin |
 | [ARCHITECTURE.md](docs/ARCHITECTURE.md) | How the host works |
 | [DEVELOPMENT.md](docs/DEVELOPMENT.md) | Building, publishing, and continuous integration |
+| [THIRD-PARTY-NOTICES.md](docs/THIRD-PARTY-NOTICES.md) | Third-party code and licences |
 | [wiki/](wiki/) | Reverse-engineering wiki: file formats of the games BrewSearch takes apart |
 
 ## Licence

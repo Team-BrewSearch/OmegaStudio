@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<script src="../../script.js"></script>
+</head>
+<body>
+<p><strong>.trm</strong> models (GameCube and PS2) and <strong>.psp</strong> models (PSP) are RenderWare files with Torus wrappers. A <code>.trm</code> is one RW struct chunk followed by <code>numAtomics</code> RpAtomic chunks and nothing else. The struct's payload begins with a 4-byte endian marker (<code>BA DA 55 35</code> on GameCube, <code>35 55 DA BA</code> on PS2) that the chunk size does not count, so the atomics start at <code>0x10 + size</code>.</p>
+
+<h2>Model header (0x88 bytes, in the marker's byte order)</h2>
+<table>
+  <thead><tr><th>Offset</th><th>Size</th><th>Type</th><th>Description</th></tr></thead>
+  <tbody>
+    <tr><td>0x00, 0x02</td><td>2 each</td><td>u16</td><td>Reference count and global slot, overwritten on load</td></tr>
+    <tr><td>0x04</td><td>2</td><td>u16</td><td>Atomic count</td></tr>
+    <tr><td>0x06</td><td>2</td><td>u16</td><td>Instance count</td></tr>
+    <tr><td>0x08</td><td>2</td><td>u16</td><td>First instance that may take the distance-fade render types (equals the instance count in 319 of 326 GameCube files)</td></tr>
+    <tr><td>0x0A</td><td>2</td><td>u16</td><td>Frame count</td></tr>
+    <tr><td>0x0C</td><td>2</td><td>u16</td><td>Frame name hash count</td></tr>
+    <tr><td>0x0E</td><td>2</td><td>u16</td><td>Named instance count</td></tr>
+    <tr><td>0x10, 0x12, 0x14, 0x16</td><td>2 each</td><td>u16</td><td>Animations (32 bytes each), tracks (16), keys (8), keys (8)</td></tr>
+    <tr><td>0x18</td><td>2</td><td>u16</td><td>Count of 0x54-byte records (none shipped)</td></tr>
+    <tr><td>0x1C-0x30</td><td>4 each</td><td>u32</td><td>Pointer slots (atomics, instances, name hashes, named instances, parents, matrices); overwritten on load, so file values are stale exporter pointers</td></tr>
+    <tr><td>0x34</td><td>4</td><td>u32</td><td>Animation blob size (replaced by its pointer on load)</td></tr>
+    <tr><td>0x38</td><td>4</td><td>u32</td><td>Pointer slot for the 0x54-byte records</td></tr>
+    <tr><td>0x3C</td><td>4</td><td>u32</td><td>Second blob size, 8-aligned allocation; replaced by its pointer</td></tr>
+    <tr><td>0x40-0x47</td><td>8</td><td>u8[8]</td><td>Zero in every file</td></tr>
+    <tr><td>0x48</td><td>64</td><td>char[64]</td><td>Name, such as <code>models\|CreatureFairy.trm</code></td></tr>
+  </tbody>
+</table>
+
+<h2>Arrays (in this order)</h2>
+<ul>
+  <li>Instances: <code>{u16 frame, u16 atomic, u32 ARGB colour}</code>. A colour of 0 becomes the default <code>0xFEFFFFFF</code>; any other is forced opaque (<code>| 0xFF000000</code>), which shows the word is ARGB.</li>
+  <li>Name hashes: <code>{u32 hash, u32 frame}</code></li>
+  <li>Named instances: <code>{u32 name hash, u32 instance index}</code></li>
+  <li>Parents: <code>s16</code>, always lower than the frame's own index</li>
+  <li>Local matrices: RenderWare row-vector 4x4 floats, translation in the last row. A frame's world matrix is its local times its parent's world.</li>
+  <li>The 0x54-byte records (none shipped)</li>
+  <li>The second blob (one GameCube file has 3,242 bytes whose contents are not decoded)</li>
+  <li>The animation blob</li>
+</ul>
+<p>The header size equals the sum of these exactly. The atomic's own RW struct holds stale pointers and is not used. Instancing builds one 0x34-byte runtime record per instance, taking the atomic from the instance's u16 at +2 and the frame's world matrix from the u16 at +0.</p>
+
+<h2>Animation</h2>
+<p>The animation blob holds, in order: animations (32 bytes), tracks (16), keys (8), events (8), then the key data. Counts are header +0x10, +0x12, +0x14 and +0x16. Relocation points each animation at the key data. An animation is <code>{u32 name hash, u32 track count, f32 duration in seconds, u32 0, u16, u16 event count, u32 first track, u32 first event, key data}</code>. A track is <code>{u32 bone name hash, u32 key count, u32 type, u32 first key}</code>, the hash being the one in the model's frame name table. A key is <code>{f32 time in seconds, u32 byte offset into the key data}</code>, and an event is <code>{f32 time, u32 id}</code>. PSP holds the same records with pointers in place of indices. Key data is little-endian on every platform, GameCube included.</p>
+<p>The track type is a mask, and a key holds its parts in this order: rotation (4, a quaternion x, y, z, w as s16 over 16384), translation (2, three floats), uniform scale (1, a float). A key builds the local matrix scale x rotation x translation in RenderWare's row-vector order; between keys the rotation is slerped and the rest interpolated linearly. Frames without a track keep their bind local. Rotation keys are normalized at decode. All 804 GameCube, 811 PS2 and 838 PSP clips pose without a non-finite value.</p>
+<p>glTF export carries every clip losslessly. Rigid atomics in a rig become one-bone skins of their frame, so clips move them. The skin's own inverse bind matrices are exported, including the 27 that disagree with the frame hierarchy. Key parts go out as the decoded translation, rotation and scale. Clip extras hold the anim hash, exact duration, flags and events. Reimporting every model on all six discs and posing each clip under glTF rules matches the viewer's pose to within 6e-6 of model size.</p>
+
+<h2>GameCube native geometry</h2>
+<p>Geometry flags always include <code>rpGEOMETRYNATIVE</code>; the binmesh (<code>0x50E</code>) holds no indices, only per mesh <code>{u32 index count, u32 material}</code>. The native data struct (<code>0x510</code>) begins with three little-endian words: platform 6, header size, data size. The header is big-endian: two words, the attribute count, then per attribute <code>{u32 offset, u8 GX attribute, u8 stride, u8 index type, u8 0}</code>, then per binmesh mesh <code>{u32 display list offset, u32 length}</code>. Offsets count from the end of the header. Attributes seen are position (9, three floats), normal (10, three floats), colour 0 (11, RGBA8), texture 0 and 1 (13 and 14, two floats); index type 2 is 8-bit and 3 is 16-bit. A display list is GX primitives, opcode <code>0x98</code> (triangle strip) in every shipped file, a big-endian vertex count, and one index per attribute per vertex in attribute order; it ends exactly at its stated length. GX strips are clockwise-front, so the host's triangles are emitted reversed.</p>
+
+<h2>Transparency</h2>
+<p>Transparency follows RenderWare's rule of blending whenever the texture raster or the prelight colours carry alpha: a texture whose alpha is only 0 or 255 is drawn as a cutout, one with partial alpha is blended, and so is any mesh whose vertex alpha falls below 254. No shipped vertex colour has alpha 255; 254 is the exporter's full opacity (on PS2 it is twice <code>0x7F</code>).</p>
+
+<h2>In OmegaStudio</h2>
+<p>GameCube and PS2 <code>.trm</code> and PSP <code>.psp</code> models render with their textures and play every animation they carry, and the animations export with the model to glTF. A model's atomics are placed by the frames its instance table names, so a level shows every placed prop. Skinned characters carry their frame hierarchy as a skeleton with per-vertex bones and weights. A texture is looked up by name in the <code>.tex</code> of the model's own level folder, then <code>gcn/textures/structure</code>, then any other dictionary in the pack. Models with no atomics (camera and object animation files) show only their details. Models with no textures still render untextured.</p>
+</body>
+</html>

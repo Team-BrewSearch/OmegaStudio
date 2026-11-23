@@ -7,12 +7,16 @@
 <body>
 <p><strong>SWAR</strong> is Nintendo's DS wave archive: a set of <a href="swav.html">SWAV</a> samples that an <a href="sbnk.html">SBNK</a> refers to by index. In <em>Disgaea DS</em> they appear only inside <a href="../archive/dseq.html">DSEQ</a> files.</p>
 
-<h2>Specifications</h2>
+<h2>Specification notes</h2>
 <ul>
-  <li><a href="https://gota7.github.io/NitroStudio2/specs/waveArchive.html" target="_blank" rel="noopener">NitroStudio2: SWAR</a></li>
-  <li><a href="https://problemkaputt.de/gbatek-ds-sound-files-swar-sound-wave-archive.htm" target="_blank" rel="noopener">GBATEK: SWAR</a></li>
-  <li><a href="https://loveemu.hatenablog.com/entry/20091002/nds_formats" target="_blank" rel="noopener">loveemu: NDS formats</a></li>
-  <li><a href="https://openkh.dev/khds/common/file/type/swar.html" target="_blank" rel="noopener">OpenKH: SWAR</a></li>
+  <li>A 0x3C-byte header, a <code>u32</code> wave count at <code>0x38</code>, absolute <code>u32</code> offsets, then each wave as a SWAV without its 0x18-byte header.</li>
+  <li>In every shipped SWAR the waves sit back to back in table order from the end of the table, each exactly 0x0C plus (loop + non-loop words) x 4 bytes long.</li>
+  <li>A rebuild lays them out the same way and rewrites the file size and the DATA size (file size minus 0x10).</li>
+  <li>A wave shows as a SWAV whose header copies the SWAR's byte-order and version words.</li>
+  <li>All 138 SWARs rebuild byte for byte, also after every wave goes through WAV and back.</li>
 </ul>
+
+<h2>In OmegaStudio</h2>
+<p>Read as part of a <a href="../archive/dseq.html">DSEQ</a>. Each wave shows as a <a href="swav.html">SWAV</a> child that plays, extracts and replaces from a SWAV or a WAV. All 138 shipped SWARs rebuild byte for byte, including after every wave goes through WAV and back.</p>
 </body>
 </html>

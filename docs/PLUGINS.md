@@ -34,7 +34,7 @@ done > trusted-plugins.txt
 
 With that file present, a plugin whose digest is not on the list, or whose file name does not match the name written beside its digest, is refused and the reason is logged. A list that names no valid digest loads nothing rather than everything. Without the file, everything in `formats/` loads. Either way the digest of each file that does load is printed in the Console pane, so what ran is a matter of record.
 
-Plugins built and shipped together with the app (a developer build, or a release you assemble yourself) are already trustworthy in the sense that matters, so the default of loading everything in the folder is right there for developer builds. The list is for the case where the folder is reachable by something the publisher does not control. The CI release packages always carry one: the workflow writes `trusted-plugins.txt` from the nine plugins it just published, and fails if any of them is missing or if an unexpected plugin is in the folder.
+Plugins built and shipped together with the app (a developer build, or a release you assemble yourself) are already trustworthy in the sense that matters, so the default of loading everything in the folder is right there for developer builds. The list is for the case where the folder is reachable by something the publisher does not control. The CI release packages always carry one: the workflow writes `trusted-plugins.txt` from the ten plugins it just published, and fails if any of them is missing or if an unexpected plugin is in the folder.
 
 The host services hand a plugin no network credentials, only the path of the file it is parsing, the folder it was loaded from, and the codecs described under [Host services](#host-services). That is what the host gives, not a limit: the plugin is ordinary .NET code in the host's process and keeps the process's full network and filesystem access.
 
@@ -368,3 +368,7 @@ Validate on the way in, at the boundary where the offending data is still in han
 - [ ] Editable rows validate their input, throw a message worth reading, and leave the archive dirty
 - [ ] Commands set `Changed` and throw on failure, and anything that rewrites the node from a file sets `Role`
 - [ ] Parse errors name the offset and say what was wrong
+
+---
+
+**See also:** [README](../README.md) · [USER-GUIDE](USER-GUIDE.md) · [FORMATS](FORMATS.md) · [PLUGINS](PLUGINS.md) · [ARCHITECTURE](ARCHITECTURE.md) · [DEVELOPMENT](DEVELOPMENT.md) · [THIRD-PARTY-NOTICES](THIRD-PARTY-NOTICES.md)

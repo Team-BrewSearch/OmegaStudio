@@ -7,9 +7,10 @@
 <body>
 <p><strong>MPDS</strong> is a compressed <a href="mpd.html">MPD</a> map. All 198 maps in <code>mpds.dat</code> use it, and <code>mpds.lst</code> pairs each file name with its map ID.</p>
 
-<h2>Specifications</h2>
-<ul>
-  <li><a href="https://disgaea.rustedlogic.net/MPDS_format" target="_blank" rel="noopener">rustedlogic.net: MPDS format</a>, including decompression</li>
-</ul>
+<h2>Compression</h2>
+<p>LZ10. Back-references start at distance 2, and among equally long matches the farthest one wins. That is the game's own compressor: it rebuilds all 432 shipped <code>.mpds</code> and <code>.dsm</code> files byte for byte.</p>
+
+<h2>In OmegaStudio</h2>
+<p>An MPDS or DSM shows one decompressed child (MPD or <code>.bin</code>), and replacing that child compresses the new bytes with the game's own LZ10 compressor, which rebuilds all 432 shipped files byte for byte.</p>
 </body>
 </html>

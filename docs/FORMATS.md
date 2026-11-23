@@ -933,3 +933,6 @@ A plugin is one assembly named `*.Formats.dll`, dropped into the `formats` folde
 executable. The host loads it on the next launch, and everything above applies to it exactly
 as it applies to the in-tree plugins. [PLUGINS.md](PLUGINS.md) is the walkthrough;
 [ARCHITECTURE.md](ARCHITECTURE.md) describes how the host uses what a plugin implements.
+---
+
+**See also:** [README](../README.md) · [USER-GUIDE](USER-GUIDE.md) · [FORMATS](FORMATS.md) · [PLUGINS](PLUGINS.md) · [ARCHITECTURE](ARCHITECTURE.md) · [DEVELOPMENT](DEVELOPMENT.md) · [THIRD-PARTY-NOTICES](THIRD-PARTY-NOTICES.md)

@@ -7,9 +7,13 @@
 <body>
 <p><strong>STRM</strong> is Nintendo's DS streamed audio format, played from storage in blocks rather than held in memory. In <em>Disgaea DS</em> the 173 <code>.strm</code> files in <code>msgvo.dat</code> are the only streams; music uses <a href="sseq.html">SSEQ</a> instead. File extensions in this game do not always match the format inside, so check a file's magic before trusting its name.</p>
 
-<h2>Specifications</h2>
+<h2>Specification notes</h2>
 <ul>
-  <li><a href="https://gota7.github.io/NitroStudio2/specs/stream.html" target="_blank" rel="noopener">NitroStudio2: STRM</a></li>
+  <li>In a STRM, the last-block length at <code>0x38</code> does not include padding; the data as a whole is padded to 4 bytes at the end, and the DATA size and file size count that padding.</li>
+  <li>A STRM stores its loop start in samples at <code>0x20</code>.</li>
 </ul>
+
+<h2>In OmegaStudio</h2>
+<p>STRM sounds play in the Audio pane. PCM8, PCM16 and IMA-ADPCM decode to 16-bit WAV, and Replace sound from WAV encodes a WAV back in the sound's own codec. The extracted WAV stops at the sample count in the header.</p>
 </body>
 </html>

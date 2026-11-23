@@ -8,7 +8,7 @@
 <p>File formats of Nippon Ichi Software's <em>Disgaea DS</em>. The game keeps most of its data in two archive types, <code>DSARC FL</code> and <code>DSARCIDX</code>, and its music in Nintendo's standard SDAT formats wrapped in a custom container.</p>
 
 <div class="note">
-  <strong>Sources:</strong> OmegaStudio has no Disgaea plugin, so nothing here is checked against it. <a href="archive/dsarcfl.html">DSARC FL</a> and <a href="archive/dseq.html">DSEQ</a> are documented from the retail ROM; the other pages point to the external specifications listed on each.
+  <strong>Sources:</strong> Layouts are checked against the Disgaea plugin where it covers a format. <a href="archive/dsarcfl.html">DSARC FL</a> and <a href="archive/dseq.html">DSEQ</a> are documented from the retail ROM and the plugin; the other pages point to the external specifications listed on each.
 </div>
 
 <h2>File Formats</h2>
@@ -112,6 +112,6 @@
 └── wbg{,2,3}.imy (3 files) [IMY]</div>
 
 <h2>In OmegaStudio</h2>
-<p>The Nintendo plugin opens the ROM itself: every file in it can be extracted or replaced, and the header and banner can be edited. The archives and formats on these pages show as raw files.</p>
+<p>The Nintendo plugin opens the ROM itself: every file in it can be extracted or replaced, and the header and banner can be edited. The Disgaea plugin recognises the formats on these pages inside the ROM and gives them panes and edit commands: DSARC FL and DSARCIDX archives, DSEQ music, LZ10 maps and models, IMY images, and SWAV and STRM sound.</p>
 </body>
 </html>

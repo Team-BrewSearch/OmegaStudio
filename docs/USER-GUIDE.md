@@ -131,3 +131,7 @@ Closing the archive or exiting the app with unsaved changes asks whether to save
 **A save failed.** Your edits are kept and the message in the Console pane says what refused it. A single-file save that fails leaves the original untouched, and a WBFS save puts its original clusters back. If the message says putting things back also failed, restore from the `.bak` beside the file. If a nested container could not be written back, change its edits and save again, or close without saving. The full log, with any crash report, is in `omega-studio.log` (see Console).
 
 **A row shows an error.** A plugin threw while reading that row. The rest of the application keeps working, and the failure costs you only that row.
+
+---
+
+**See also:** [README](../README.md) · [USER-GUIDE](USER-GUIDE.md) · [FORMATS](FORMATS.md) · [PLUGINS](PLUGINS.md) · [ARCHITECTURE](ARCHITECTURE.md) · [DEVELOPMENT](DEVELOPMENT.md) · [THIRD-PARTY-NOTICES](THIRD-PARTY-NOTICES.md)

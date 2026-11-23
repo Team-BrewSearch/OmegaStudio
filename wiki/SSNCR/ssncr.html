@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<script src="../script.js"></script>
+</head>
+<body>
+<p><em>Shrek Smash n' Crash Racing</em> (Torus Games, 2006) on GameCube, PlayStation 2 and PSP. The engine is RenderWare 3.6 with Torus wrappers; every chunk header carries the library stamp <code>0x1803FFFF</code>.</p>
+
+<h2>Games</h2>
+<ul>
+  <li>GameCube (USA, EUR)</li>
+  <li>PlayStation 2 (USA, EUR)</li>
+  <li>PSP (USA, EUR)</li>
+</ul>
+
+<h2>File Formats</h2>
+<ul data-list></ul>
+
+<h2>Conventions</h2>
+<ul>
+  <li>Chunk headers are RenderWare structs. The size in the header does not count the 4-byte endian marker that precedes the struct payload.</li>
+  <li>Model, animation and geometry details are read from the GameCube USA <code>main.dol</code> and checked against every shipped <code>.trm</code> and texture.</li>
+  <li>Transparency follows RenderWare's rule: blend whenever the texture raster or the prelight colours carry alpha.</li>
+</ul>
+
+<h2>In OmegaStudio</h2>
+<p>Opens <code>Packfile.dat</code> on its own or in place inside a disc image. Entries whose payload starts with <code>!CMP</code> are zlib streams with a little-endian unpacked size. The archive is read-only. GameCube and PS2 <code>.trm</code> and PSP <code>.psp</code> models render with their textures and play every animation they carry; the animations export with the model to glTF. <code>.tex</code> texture dictionaries decode per platform. <code>.fsb</code> sound banks, the <code>.thp</code> movie, <code>.col</code>, <code>.wcol</code>, <code>.path</code> and <code>.dat</code> show their details only.</p>
+</body>
+</html>

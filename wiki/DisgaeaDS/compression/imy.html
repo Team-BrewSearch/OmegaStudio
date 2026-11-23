@@ -7,9 +7,33 @@
 <body>
 <p><strong>IMY</strong> is <em>Disgaea DS</em>'s compressed image format, used for nearly every texture and screen: map tiles, effects, UI and title art.</p>
 
-<h2>Specifications</h2>
+<h2>Header (32 bytes)</h2>
+<table>
+  <thead><tr><th>Offset</th><th>Size</th><th>Type</th><th>Description</th></tr></thead>
+  <tbody>
+    <tr><td>0x00</td><td>4</td><td>u32</td><td>0</td></tr>
+    <tr><td>0x04</td><td>4</td><td>u32</td><td>Unpacked size</td></tr>
+    <tr><td>0x08</td><td>4</td><td>u32</td><td>Row bytes</td></tr>
+    <tr><td>0x0C</td><td>2</td><td>u16</td><td>0</td></tr>
+    <tr><td>0x0E</td><td>2</td><td>u16</td><td>Flags</td></tr>
+    <tr><td>0x10</td><td>1</td><td>u8</td><td>Bits per pixel</td></tr>
+    <tr><td>0x11</td><td>1</td><td>u8</td><td>0</td></tr>
+    <tr><td>0x12</td><td>2</td><td>u16</td><td>Height</td></tr>
+    <tr><td>0x14</td><td>2</td><td>u16</td><td>Colour count</td></tr>
+    <tr><td>0x16</td><td>16</td><td>u8[16]</td><td>0</td></tr>
+  </tbody>
+</table>
+
+<p>After the header comes the BGR555 palette, then the pixels. Flag bit 0 means stored; otherwise a <code>u16</code> info-byte count, the info bytes and the data follow, and the scheme is the PS2 one documented on Netherworld Research, working in 16-bit units with look-backs of 2, the row, the row plus 2 and the row minus 2. 4bpp pixels are low nibble first. Palette bit 15 is opacity: transparent sprites clear it on index 0.</p>
+
+<h2>Specification notes</h2>
 <ul>
-  <li><a href="https://disgaea.rustedlogic.net/IMY_format" target="_blank" rel="noopener">rustedlogic.net: IMY format</a>, including decompression</li>
+  <li>IMY replacement keeps each pixel's old index when its colour has not changed, because palettes repeat colours.</li>
+  <li>New colours must fit the palette size; otherwise the palette is rebuilt.</li>
+  <li>The image is refused when it uses more colours than the IMY holds.</li>
 </ul>
+
+<h2>In OmegaStudio</h2>
+<p>An IMY shows in the Texture pane and can be replaced from a PNG of the same size. Replacement keeps each pixel's old index when its colour has not changed; new colours must fit the palette size, otherwise the palette is rebuilt, and the image is refused when it uses more colours than the IMY holds.</p>
 </body>
 </html>

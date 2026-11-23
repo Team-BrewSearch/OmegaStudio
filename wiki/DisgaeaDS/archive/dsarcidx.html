@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<script src="../../script.js"></script>
+</head>
+<body>
+<p><strong>DSARCIDX</strong> is the index-based archive used for every other <code>.dat</code> in <em>Disgaea DS</em>, and for the <code>.dso</code> files inside <code>dspack.dat</code>. It pairs a list of file IDs with an entry table that holds offsets and sizes.</p>
+
+<h2>Layout</h2>
+<pre>+----------------------+   &lt;-- 0x00
+| ID list              |       u16 per file
++----------------------+   &lt;-- rounded up to 4 with 0xFF
+| Entry table          |       count entries, 512 bytes apart
++----------------------+
+| File data            |       in entry order
++----------------------+   &lt;-- EOF, on the same 512-byte step</pre>
+
+<h2>Specification notes</h2>
+<ul>
+  <li>The entry table starts after the <code>u16</code> ID list, rounded up to 4 with <code>0xFF</code>.</li>
+  <li>Both archive kinds place entries 512 bytes apart, counted from the first entry, and the file ends on the same step.</li>
+  <li>The gaps hold leftover junk, which a rebuild writes as zeros.</li>
+</ul>
+
+<h2>In OmegaStudio</h2>
+<p>The Disgaea plugin reads a DSARCIDX and lists each entry as a child, using the ID list to name them. Entries can be extracted or replaced, and the archive rebuilds byte for byte.</p>
+</body>
+</html>
